@@ -71,7 +71,7 @@ android {
     }
 
     base {
-        archivesName.set("antiGem")
+        archivesName.set("antibot")
     }
 
     compileOptions {
