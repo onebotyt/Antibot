@@ -35,13 +35,15 @@ if [[ "${MODE}" == "release" ]]; then
     "${ROOT_DIR}/gradlew" -p "${ROOT_DIR}" :app:assembleTermuxRelease
 
     APKS_SRC="${ROOT_DIR}/app/build/outputs/apk"
-    find "${APKS_SRC}/termux/release" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antibot.apk" \;
+    find "${APKS_SRC}/termux/release" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" \;
+    cp "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" "${OUTPUT_DIR}/antibot.apk" 2>/dev/null || true
 else
     echo "🔨 Compiling Termux Debug (:app:assembleTermuxDebug)..."
     "${ROOT_DIR}/gradlew" -p "${ROOT_DIR}" :app:assembleTermuxDebug
 
     APKS_SRC="${ROOT_DIR}/app/build/outputs/apk"
-    find "${APKS_SRC}/termux/debug" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antibot.apk" \;
+    find "${APKS_SRC}/termux/debug" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" \;
+    cp "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" "${OUTPUT_DIR}/antibot.apk" 2>/dev/null || true
 
     if [[ -f "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" ]]; then
         cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"

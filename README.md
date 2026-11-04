@@ -22,11 +22,10 @@
 ---
 
 ### 📥 1-Click Direct Download
-👉 **[Download antibot.apk (Latest Version)](https://github.com/onebotyt/Antibot/releases/latest/download/antibot.apk)**
+👉 **[Download Latest AntiBot APK (antibot.apk)](https://github.com/onebotyt/Antibot/releases/latest/download/antibot.apk)**
 
-* **1-Tap Direct Download**: Clicking the link above immediately downloads `antibot.apk` to your device.
+* **Versioned APKs**: Every release publishes `antibot-v<version>.apk` (e.g. `antibot-v1.0.1.apk`) on the **[Releases Page](https://github.com/onebotyt/Antibot/releases)** so you can easily distinguish between new and old versions.
 * **Standalone App**: Installs as an independent app (`com.antibot`) side by side with AntiGem without replacing or updating it.
-* You can also view all builds on the **[Releases Page](https://github.com/onebotyt/Antibot/releases)**.
 
 ---
 
