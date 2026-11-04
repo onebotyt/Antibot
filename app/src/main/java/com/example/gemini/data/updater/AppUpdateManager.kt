@@ -112,7 +112,7 @@ class AppUpdateManager(private val context: Context) {
                         versionName = remoteVersionName,
                         currentVersionCode = BuildConfig.VERSION_CODE,
                         currentVersionName = BuildConfig.VERSION_NAME,
-                        packageName = currentPkg,
+                        packageName = context.packageName,
                         downloadUrl = downloadUrl,
                         changelog = changelog,
                         isCritical = isCritical
