@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- AntiBot Antennae & Signal Nodes -->
+    <path
+        android:strokeColor="#06B6D4"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M42,32 L34,21" />
+    <path
+        android:fillColor="#00F0FF"
+        android:pathData="M34,21 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+
+    <path
+        android:strokeColor="#06B6D4"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M66,32 L74,21" />
+    <path
+        android:fillColor="#00F0FF"
+        android:pathData="M74,21 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+
+    <!-- Bot Head Base Chassis (Deep Slate Carbon) -->
+    <path
+        android:fillColor="#1E293B"
+        android:strokeColor="#334155"
+        android:strokeWidth="1.5"
+        android:strokeLineJoin="round"
+        android:pathData="M40,30 L68,30 Q74,30 77,35 L81,46 Q83,50 82,55 L79,69 Q78,74 74,78 L64,86 Q59,90 54,90 Q49,90 44,86 L34,78 Q30,74 29,69 L26,55 Q25,50 27,46 L31,35 Q34,30 40,30 Z" />
+
+    <!-- Bot Lateral Sensor Mounts (Ears) -->
+    <path
+        android:fillColor="#0E7490"
+        android:pathData="M24,48 L27,48 L27,62 L24,62 Z" />
+    <path
+        android:fillColor="#0E7490"
+        android:pathData="M81,48 L84,48 L84,62 L81,62 Z" />
+
+    <!-- Brow Armor Plate -->
+    <path
+        android:fillColor="#334155"
+        android:pathData="M38,34 L70,34 L74,42 L34,42 Z" />
+
+    <!-- Visor Field (Electric Cyan Core) -->
+    <path
+        android:fillColor="#06B6D4"
+        android:strokeColor="#00F0FF"
+        android:strokeWidth="1"
+        android:pathData="M34,46 L74,46 Q77,46 78,49 L79,59 Q79,63 76,63 L32,63 Q29,63 29,59 L30,49 Q31,46 34,46 Z" />
+
+    <!-- Dual Luminous Sensor Beams (Eyes) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M40,54 L48,54" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M60,54 L68,54" />
+
+    <!-- Central Neural Node Pulse -->
+    <path
+        android:fillColor="#E0F2FE"
+        android:pathData="M54,54 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+
+    <!-- Antigravity Delta Chevron (Core Reactor) -->
+    <path
+        android:fillColor="#6366F1"
+        android:strokeColor="#818CF8"
+        android:strokeWidth="1"
+        android:pathData="M54,82 L46,70 L62,70 Z" />
+
+    <!-- Micro Ventilation Slits -->
+    <path
+        android:strokeColor="#475569"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:pathData="M48,75 L49,75" />
+    <path
+        android:strokeColor="#475569"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:pathData="M59,75 L60,75" />
+
+</vector>
