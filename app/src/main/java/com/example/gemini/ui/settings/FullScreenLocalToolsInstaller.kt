@@ -103,7 +103,7 @@ fun FullScreenLocalToolsInstaller(
                 title = {
                     Column {
                         Text(
-                            text = "AntiGem Environment",
+                            text = "AntiBot Environment",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -119,7 +119,7 @@ fun FullScreenLocalToolsInstaller(
                     if (installerState !is LocalInstallerState.Downloading && installerState !is LocalInstallerState.Extracting) {
                         TextButton(
                             onClick = onSkip,
-                            colors = ButtonDefaults.textButtonColors(contentColor = ClaudeTerracotta)
+                            colors = ButtonDefaults.textButtonColors(contentColor = AntiBotCyan)
                         ) {
                             Text("Skip for Now", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(modifier = Modifier.width(4.dp))
@@ -153,7 +153,7 @@ fun FullScreenLocalToolsInstaller(
                         when (installerState) {
                             is LocalInstallerState.Success -> QuotaGreen.copy(alpha = 0.15f)
                             is LocalInstallerState.Error -> Color.Red.copy(alpha = 0.15f)
-                            else -> ClaudeTerracotta.copy(alpha = 0.15f)
+                            else -> AntiBotCyan.copy(alpha = 0.15f)
                         }
                     ),
                 contentAlignment = Alignment.Center
@@ -168,7 +168,7 @@ fun FullScreenLocalToolsInstaller(
                     tint = when (installerState) {
                         is LocalInstallerState.Success -> QuotaGreen
                         is LocalInstallerState.Error -> Color.Red
-                        else -> ClaudeTerracotta
+                        else -> AntiBotCyan
                     },
                     modifier = Modifier.size(44.dp)
                 )
@@ -197,9 +197,9 @@ fun FullScreenLocalToolsInstaller(
 
             Text(
                 text = when (installerState) {
-                    is LocalInstallerState.Success -> if (isTermux) "Termux-compatible shell, coreutils & AGY tools are installed and ready." else "Ubuntu ARM64 container, bash, glibc & AGY tools are ready."
+                    is LocalInstallerState.Success -> if (isTermux) "Linux shell, coreutils & AGY tools are installed and ready." else "Ubuntu ARM64 container, bash, glibc & AGY tools are ready."
                     is LocalInstallerState.Error -> "Failed to unpack rootfs. You can retry or pick a local ZIP archive."
-                    is LocalInstallerState.Idle -> if (isTermux) "Select how you would like to set up the local Termux environment for AntiGem:" else "Select how you would like to set up the Ubuntu Linux container for AntiGem:"
+                    is LocalInstallerState.Idle -> if (isTermux) "Select how you would like to set up the local Linux environment for AntiBot:" else "Select how you would like to set up the Linux container for AntiBot:"
                     is LocalInstallerState.Discovering -> "Checking releases for the latest verified rootfs archive."
                     is LocalInstallerState.AwaitingConfirmation -> "Review details below and confirm to begin installation."
                     is LocalInstallerState.Downloading -> "Fetching rootfs archive into secure application storage."
@@ -235,7 +235,7 @@ fun FullScreenLocalToolsInstaller(
                             imageVector = Icons.Outlined.Memory,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = ClaudeTerracotta
+                            tint = AntiBotCyan
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -876,7 +876,7 @@ fun FullScreenLocalToolsInstaller(
                             .fillMaxWidth()
                             .height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                        colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
@@ -886,13 +886,13 @@ fun FullScreenLocalToolsInstaller(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = when (selectedSourceType) {
-                                0 -> if (isTermux) "Download & Install AntiGem (~350MB)" else "Download & Install Ubuntu Base"
-                                1 -> "Download Base Termux (~33MB)"
+                                0 -> if (isTermux) "Download & Install AntiBot (~350MB)" else "Download & Install Base Tools"
+                                1 -> "Download Base Linux (~33MB)"
                                 else -> if (selectedFileUri != null) "Install Local ZIP" else "Choose ZIP File"
                             },
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.Black
                         )
                     }
 
@@ -905,7 +905,7 @@ fun FullScreenLocalToolsInstaller(
                             .height(46.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Skip Setup & Open AntiGem Chat", fontSize = 14.sp)
+                        Text("Skip Setup & Open AntiBot Chat", fontSize = 14.sp)
                     }
                 }
 
@@ -926,11 +926,11 @@ fun FullScreenLocalToolsInstaller(
                                 .weight(1f)
                                 .height(48.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                            colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black)
                         ) {
                             Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Confirm & Install", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Confirm & Install", fontWeight = FontWeight.Bold, color = Color.Black)
                         }
 
                         OutlinedButton(
@@ -968,7 +968,7 @@ fun FullScreenLocalToolsInstaller(
                             .height(48.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Run in Background & Open AntiGem")
+                        Text("Run in Background & Open AntiBot")
                     }
                 }
 
@@ -979,7 +979,7 @@ fun FullScreenLocalToolsInstaller(
                             .fillMaxWidth()
                             .height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                        colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black)
                     ) {
                         Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))

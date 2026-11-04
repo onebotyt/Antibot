@@ -46,29 +46,30 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.gemini.domain.model.AgentKind
+import com.example.gemini.theme.AntiBotCyan
 import com.example.gemini.ui.components.accent
 
 private data class AgentOption(val agents: Set<AgentKind>, val title: String, val description: String)
 
 private val AGENT_OPTIONS = listOf(
     AgentOption(
+        setOf(AgentKind.LOCAL),
+        "AntiBot Local Model (Offline)",
+        "100% Offline & 0 Tokens: On-device coding, dev server recipes, and terminal execution without cloud tokens."
+    ),
+    AgentOption(
         setOf(AgentKind.AGY),
         "Antigravity",
-        "Google's coding agent through the agy hub: Gemini and Claude models on your Google plan."
+        "Google's cloud coding agent through the agy hub: Gemini and Claude models on your Google plan."
     ),
     AgentOption(
-        setOf(AgentKind.CLAUDE),
-        "Claude Code",
-        "Anthropic's Claude Code CLI on this device: your Claude subscription or Anthropic Console account."
-    ),
-    AgentOption(
-        setOf(AgentKind.AGY, AgentKind.CLAUDE),
-        "Both",
-        "Pick the agent for each new chat. Both share the chat list, status and accounts."
+        setOf(AgentKind.LOCAL, AgentKind.AGY),
+        "Hybrid (Both)",
+        "Pick the agent for each new chat. Seamlessly toggle between AntiBot Local Model and Antigravity."
     )
 )
 
-/** Three choices: Antigravity, Claude Code, or both. */
+/** Three choices: AntiBot Local Model, Antigravity, or both. */
 @Composable
 fun AgentSelector(selected: Set<AgentKind>, onSelect: (Set<AgentKind>) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -87,8 +88,8 @@ fun AgentSelector(selected: Set<AgentKind>, onSelect: (Set<AgentKind>) -> Unit, 
                         AgentMark(option.agents.first(), size = 40.dp)
                     } else {
                         Box(Modifier.size(width = 52.dp, height = 40.dp)) {
-                            AgentMark(AgentKind.AGY, size = 34.dp)
-                            AgentMark(AgentKind.CLAUDE, size = 34.dp, modifier = Modifier.offset(x = 18.dp, y = 6.dp))
+                            AgentMark(AgentKind.LOCAL, size = 34.dp)
+                            AgentMark(AgentKind.AGY, size = 34.dp, modifier = Modifier.offset(x = 18.dp, y = 6.dp))
                         }
                     }
                     Spacer(Modifier.width(12.dp))
@@ -112,10 +113,10 @@ fun AgentSelector(selected: Set<AgentKind>, onSelect: (Set<AgentKind>) -> Unit, 
     }
 }
 
-/** First launch: which agents the app should run (Antigravity preselected). */
+/** First launch: which agents the app should run (Hybrid preselected). */
 @Composable
 fun AgentChoiceDialog(onConfirm: (Set<AgentKind>) -> Unit) {
-    var selected by remember { mutableStateOf(setOf(AgentKind.AGY)) }
+    var selected by remember { mutableStateOf(setOf(AgentKind.LOCAL, AgentKind.AGY)) }
     Dialog(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false)
@@ -128,14 +129,14 @@ fun AgentChoiceDialog(onConfirm: (Set<AgentKind>) -> Unit) {
         ) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.size(width = 76.dp, height = 56.dp)) {
-                    AgentMark(AgentKind.AGY, size = 48.dp)
-                    AgentMark(AgentKind.CLAUDE, size = 48.dp, modifier = Modifier.offset(x = 28.dp, y = 8.dp))
+                    AgentMark(AgentKind.LOCAL, size = 48.dp)
+                    AgentMark(AgentKind.AGY, size = 48.dp, modifier = Modifier.offset(x = 28.dp, y = 8.dp))
                 }
                 Spacer(Modifier.height(14.dp))
                 Text("Choose your agent", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "The app runs only the agents you pick. You can change this later in Settings → Agents.",
+                    "AntiBot can run 100% offline with zero cloud tokens or connect to Antigravity. You can change this later in Settings → Agents.",
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     textAlign = TextAlign.Center,
@@ -147,6 +148,7 @@ fun AgentChoiceDialog(onConfirm: (Set<AgentKind>) -> Unit) {
                 Button(
                     onClick = { onConfirm(selected) },
                     shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black),
                     contentPadding = PaddingValues(vertical = 12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Continue", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
@@ -179,6 +181,7 @@ fun AgentsSettingsPage(
             onClick = { confirm = true },
             enabled = selected != enabled && !isApplying,
             shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black),
             contentPadding = PaddingValues(vertical = 12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {

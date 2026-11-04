@@ -27,27 +27,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 private val DarkColorScheme = darkColorScheme(
-    primary = ClaudeTerracotta,
-    secondary = ClaudeTerracottaDark,
-    background = ClaudeDarkBg,
-    surface = ClaudeDarkBg,
+    primary = AntiBotCyan,
+    secondary = AntiBotBlue,
+    background = AntiBotSpaceBg,
+    surface = AntiBotSurfaceSlate,
     surfaceTint = Color.Transparent,
-    onPrimary = Color.White,
-    onBackground = TextPrimaryDark,
-    onSurface = TextPrimaryDark,
-    surfaceVariant = ClaudeUserBubbleDark
+    onPrimary = Color.Black,
+    onBackground = AntiBotTextWhite,
+    onSurface = AntiBotTextWhite,
+    surfaceVariant = AntiBotCardSurface
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = ClaudeTerracotta,
-    secondary = ClaudeTerracottaDark,
-    background = ClaudeCream,
-    surface = ClaudeCream,
+    primary = AntiBotBlue,
+    secondary = AntiBotCyan,
+    background = Color(0xFFF8FAFC),
+    surface = Color(0xFFFFFFFF),
     surfaceTint = Color.Transparent,
     onPrimary = Color.White,
-    onBackground = TextPrimaryLight,
-    onSurface = TextPrimaryLight,
-    surfaceVariant = ClaudeUserBubbleLight
+    onBackground = Color(0xFF0F172A),
+    onSurface = Color(0xFF0F172A),
+    surfaceVariant = Color(0xFFE2E8F0)
 )
 
 private val NeonColorScheme = darkColorScheme(

@@ -31,8 +31,8 @@ val LocalAccent = Color(0xFF10B981)
 val AgyAccent = Color(0xFF3B82F6)
 
 fun AgentKind.label(): String = when (this) {
+    AgentKind.LOCAL -> "AntiBot Local Model (0 Tokens)"
     AgentKind.AGY -> "Antigravity"
-    AgentKind.LOCAL -> "Local Model (0 Tokens)"
     AgentKind.CLAUDE -> "Claude Code"
 }
 

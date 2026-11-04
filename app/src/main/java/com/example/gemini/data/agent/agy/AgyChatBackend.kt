@@ -1873,12 +1873,14 @@ class AgyChatBackend(
                 if (showToastFeedback) {
                     withContext(Dispatchers.Main) {
                         if (failureError != null) {
-                            val msg = if (failureError.contains("Connect", ignoreCase = true) || failureError.contains("failed to connect", ignoreCase = true)) {
-                                "Failed to refresh: Antigravity Hub (${AuthPreferences.currentHubUrl}) unreachable"
+                            val msg = if (failureError.contains("Connect", ignoreCase = true) || failureError.contains("failed to connect", ignoreCase = true) || failureError.contains("not running", ignoreCase = true)) {
+                                "Antigravity Hub is starting or offline"
+                            } else if (failureError.contains("CSRF", ignoreCase = true)) {
+                                "Antigravity Hub initializing..."
                             } else {
-                                "Failed to refresh: $failureError"
+                                "Refresh status: $failureError"
                             }
-                            android.widget.Toast.makeText(application, msg, android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(application, msg, android.widget.Toast.LENGTH_SHORT).show()
                         } else {
                             android.widget.Toast.makeText(application, "Quotas & models refreshed", android.widget.Toast.LENGTH_SHORT).show()
                         }

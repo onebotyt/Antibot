@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Base application theme with white splash screen and centered logo -->
+    <!-- Base application theme with deep dark splash screen and AntiBot vector logo -->
     <style name="Theme.Gemini" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
-        <item name="android:windowSplashScreenBackground">#FFFFFF</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowSplashScreenBackground">#090D16</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_antibot_logo</item>
+        <item name="android:statusBarColor">#090D16</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <!-- Facebook Messenger-style Floating Multitasking Window Theme -->
-    <style name="Theme.AntiGem.FloatingTranslucent" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.AntiBot.FloatingTranslucent" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>

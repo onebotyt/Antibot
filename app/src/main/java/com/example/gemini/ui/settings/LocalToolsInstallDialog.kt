@@ -154,7 +154,7 @@ fun LocalToolsInstallDialog(
                     text = when (installerState) {
                         is LocalInstallerState.Success -> if (isTermux) "Termux-compatible shell, coreutils & toolchain are now active." else "Ubuntu ARM64 container, bash, glibc & AGY tools are ready."
                         is LocalInstallerState.Error -> "Failed to configure local environment. You can retry below."
-                        is LocalInstallerState.Idle -> if (isTermux) "Select how you would like to download and install the Termux rootfs:" else "Select how you would like to set up the Ubuntu Linux container for AntiGem:"
+                        is LocalInstallerState.Idle -> if (isTermux) "Select how you would like to download and install the Linux rootfs:" else "Select how you would like to set up the Linux container for AntiBot:"
                         else -> "Downloading and unpacking native Linux toolchain inside your app sandbox."
                     },
                     fontSize = 12.5.sp,
@@ -317,7 +317,7 @@ fun LocalToolsInstallDialog(
                                         )
                                         Spacer(modifier = Modifier.height(3.dp))
                                         Text(
-                                            text = "AntiGem runs a full Ubuntu Linux environment inside a user-space PRoot container on 64-bit ARM. No device root required.",
+                                            text = "AntiBot runs a full Linux environment inside a user-space container on 64-bit ARM. No device root required.",
                                             fontSize = 11.5.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

@@ -174,7 +174,7 @@
         <activity
             android:name=".ui.bubble.FloatingChatActivity"
             android:exported="false"
-            android:theme="@style/Theme.AntiGem.FloatingTranslucent"
+            android:theme="@style/Theme.AntiBot.FloatingTranslucent"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:excludeFromRecents="true"
             android:noHistory="true"

@@ -62,3 +62,13 @@ val OledBlackSurface = Color(0xFF111111)
 val OledBubbleDark = Color(0xFF1A1A1A)
 val OledAccent = Color(0xFF38BDF8)
 
+// AntiBot High-Tech Modern Cyber Palette
+val AntiBotCyan = Color(0xFF06B6D4)
+val AntiBotCyanGlow = Color(0xFF00F0FF)
+val AntiBotBlue = Color(0xFF2563EB)
+val AntiBotSpaceBg = Color(0xFF090D16)
+val AntiBotSurfaceSlate = Color(0xFF0F172A)
+val AntiBotCardSurface = Color(0xFF1E293B)
+val AntiBotTextWhite = Color(0xFFF8FAFC)
+val AntiBotTextMuted = Color(0xFF94A3B8)
+

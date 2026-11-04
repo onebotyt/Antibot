@@ -425,7 +425,7 @@ fun ChatHistoryDrawer(
             },
             title = {
                 Text(
-                    text = "Exit AntiGem?",
+                    text = "Exit AntiBot?",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -829,11 +829,11 @@ fun ChatHistoryDrawer(
                 ) {
                     listOf<Pair<com.example.gemini.domain.model.AgentKind?, String>>(
                         null to "All",
-                        com.example.gemini.domain.model.AgentKind.AGY to "Antigravity",
-                        com.example.gemini.domain.model.AgentKind.CLAUDE to "Claude"
+                        com.example.gemini.domain.model.AgentKind.LOCAL to "Local (0 Tokens)",
+                        com.example.gemini.domain.model.AgentKind.AGY to "Antigravity"
                     ).forEach { (agent, label) ->
                         val selected = agentFilter == agent
-                        val accent = agent?.accent() ?: ClaudeTerracotta
+                        val accent = agent?.accent() ?: MaterialTheme.colorScheme.primary
                         Text(
                             text = label,
                             fontSize = 11.5.sp,
@@ -886,26 +886,38 @@ fun ChatHistoryDrawer(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Text(
-                                text = "Unable to load chats",
+                                text = "Antigravity Hub Offline",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = errorMessage ?: "Connection error",
+                                text = errorMessage ?: "Start the local server or switch to AntiBot Local Model.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = onRetry,
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                Text("Retry", fontSize = 12.5.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = onRetry,
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Retry", fontSize = 12.5.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        agentFilter = com.example.gemini.domain.model.AgentKind.LOCAL
+                                        onNewChat()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Use Local Model", fontSize = 12.5.sp)
+                                }
                             }
                         }
                     }

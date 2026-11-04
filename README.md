@@ -56,6 +56,6 @@ Every commit pushed to the repository automatically triggers the **Build AntiBot
 
 1. Go to the **[Actions tab](https://github.com/onebotyt/Antibot/actions)**.
 2. Select the latest workflow run.
-3. Download the compiled **`AntiBot-APKs`** artifact containing:
-   - `antiBot-termux-v*-debug.apk` (Recommended standalone edition)
+3. Download the compiled **`AntiBot-v<version>-APKs`** artifact containing:
+   - `antibot-v<version>.apk` & `antibot.apk` (Recommended standalone edition)
    - `antiBot-standard-v*-debug.apk`

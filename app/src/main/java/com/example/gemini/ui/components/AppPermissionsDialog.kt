@@ -199,13 +199,13 @@ fun AppPermissionsDialog(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(CircleShape)
-                        .background(ClaudeTerracotta.copy(alpha = if (isDark) 0.16f else 0.12f)),
+                        .background(AntiBotCyan.copy(alpha = if (isDark) 0.16f else 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Shield,
                         contentDescription = null,
-                        tint = ClaudeTerracotta,
+                        tint = AntiBotCyan,
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -213,7 +213,7 @@ fun AppPermissionsDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Welcome to AntiGem",
+                    text = "Welcome to AntiBot",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = textPrimary,
@@ -245,8 +245,8 @@ fun AppPermissionsDialog(
                     icon = Icons.Outlined.NotificationsActive,
                     title = "Notifications & Service",
                     badgeText = "Required",
-                    badgeColor = ClaudeTerracotta,
-                    accentColor = ClaudeTerracotta,
+                    badgeColor = AntiBotCyan,
+                    accentColor = AntiBotCyan,
                     description = "Required for persistent background terminal service, live status alerts, updates, and rootfs package installer progress.",
                     isGranted = hasNotification,
                     onGrantClick = {
@@ -266,7 +266,7 @@ fun AppPermissionsDialog(
                     badgeText = "Optional",
                     badgeColor = GeminiBlue,
                     accentColor = GeminiBlue,
-                    description = "Allows AntiGem to access /sdcard to import local bootstrap packages, inspect files, and manage external code workspaces.",
+                    description = "Allows AntiBot to access /sdcard to import local bootstrap packages, inspect files, and manage external code workspaces.",
                     isGranted = hasStorage,
                     onGrantClick = { requestStorage() }
                 )
@@ -312,14 +312,14 @@ fun AppPermissionsDialog(
                         .height(52.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = ClaudeTerracotta,
-                        contentColor = Color.White,
+                        containerColor = AntiBotCyan,
+                        contentColor = Color.Black,
                         disabledContainerColor = if (isDark) Color(0xFF282724) else Color(0xFFE5E7EB),
                         disabledContentColor = if (isDark) Color(0xFF6B7280) else Color(0xFF9CA3AF)
                     )
                 ) {
                     Text(
-                        text = if (hasNotification) "Continue to AntiGem 🚀" else "Notifications Required to Proceed",
+                        text = if (hasNotification) "Continue to AntiBot 🚀" else "Notifications Required to Proceed",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )

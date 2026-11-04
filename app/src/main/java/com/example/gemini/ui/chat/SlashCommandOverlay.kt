@@ -51,7 +51,7 @@ private fun groupOf(type: String): SlashGroup = when (type) {
     "app" -> SlashGroup("Opens in the app", Icons.AutoMirrored.Outlined.OpenInNew, AgyAccent)
     "command" -> SlashGroup("Commands", Icons.Outlined.Terminal, ClaudeTerracotta)
     "custom" -> SlashGroup("Custom commands", Icons.Outlined.AutoAwesome, ClaudeTerracotta)
-    "plugin" -> SlashGroup("Custom AntiGem plugins", Icons.Outlined.Extension, AgyAccent)
+    "plugin" -> SlashGroup("Custom AntiBot plugins", Icons.Outlined.Extension, AgyAccent)
     else -> SlashGroup("Skills & plugins", Icons.Outlined.Extension, QuotaGreen)
 }
 
