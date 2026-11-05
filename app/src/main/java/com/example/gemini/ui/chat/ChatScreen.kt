@@ -1152,19 +1152,22 @@ fun ChatScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    color = AntiBotCyan.copy(alpha = 0.15f)
                                 ) {
                                     Text(
-                                        text = "v1.0.21",
+                                        text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        color = AntiBotCyan,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                     )
                                 }
                             }
@@ -1238,6 +1241,34 @@ fun ChatScreen(
                         }
                     },
                     actions = {
+                        if (!systemConnectionState.isAuth) {
+                            Surface(
+                                onClick = { viewModel.loginToAgyHub(force = true) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = AntiBotCyan.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.35f)),
+                                modifier = Modifier.padding(end = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.Login,
+                                        contentDescription = "Sign In",
+                                        tint = AntiBotCyan,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Sign In",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AntiBotCyan
+                                    )
+                                }
+                            }
+                        }
                         if (isInFloatingWindow) {
                             IconButton(onClick = onMinimizeWindow) {
                                 Icon(
@@ -1281,7 +1312,7 @@ fun ChatScreen(
                             Icon(
                                 imageVector = Icons.Outlined.Terminal,
                                 contentDescription = "Terminal",
-                                tint = if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                tint = if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) AntiBotCyan else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                             )
                         }
                         IconButton(onClick = onNavigateToIde) {
@@ -1296,7 +1327,7 @@ fun ChatScreen(
                                 Icon(
                                     imageVector = Icons.Outlined.Analytics,
                                     contentDescription = "Chat Telemetry & Tokens",
-                                    tint = ClaudeTerracotta
+                                    tint = AntiBotCyan
                                 )
                             }
                         }
@@ -1476,7 +1507,7 @@ fun ChatScreen(
                                         )
                                         Spacer(modifier = Modifier.height(16.dp))
                                         Text(
-                                            text = "Welcome to AntiBot v1.0.21",
+                                            text = "Welcome to AntiBot v${com.example.gemini.BuildConfig.VERSION_NAME}",
                                             fontSize = 21.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface,
@@ -1484,12 +1515,118 @@ fun ChatScreen(
                                         )
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = "High-Performance AI Coding & Terminal Workspace\n100% Offline Local Model · 0 Cloud Tokens",
+                                            text = "High-Performance AI Coding & Autonomous Workspace",
                                             fontSize = 13.5.sp,
                                             lineHeight = 19.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                             textAlign = TextAlign.Center
                                         )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFF10B981).copy(alpha = 0.12f),
+                                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(7.dp)
+                                                        .background(Color(0xFF10B981), CircleShape)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Local Model Active · 0 Tokens (100% Offline)",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFF10B981)
+                                                )
+                                            }
+                                        }
+
+                                        if (!systemConnectionState.isAuth) {
+                                            Spacer(modifier = Modifier.height(20.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                                border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.3f)),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp)
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(16.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.CloudQueue,
+                                                            contentDescription = null,
+                                                            tint = AntiBotCyan,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "Google / Antigravity Cloud",
+                                                            fontSize = 14.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = "Sign in to access Gemini 2.5 Pro, Flash, Claude, and cloud AI tools.",
+                                                        fontSize = 12.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                    Spacer(modifier = Modifier.height(14.dp))
+                                                    Button(
+                                                        onClick = { viewModel.loginToAgyHub(force = true) },
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = AntiBotCyan,
+                                                            contentColor = Color.Black
+                                                        ),
+                                                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.AutoMirrored.Outlined.Login,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Sign In with Google",
+                                                            fontSize = 12.5.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(20.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            SuggestionChip(
+                                                onClick = {
+                                                    textFieldValue = androidx.compose.ui.text.input.TextFieldValue("Explain the current workspace and project files")
+                                                },
+                                                label = { Text("⚡ Explain Project", fontSize = 11.sp) }
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            SuggestionChip(
+                                                onClick = {
+                                                    textFieldValue = androidx.compose.ui.text.input.TextFieldValue("Create a simple Python hello world script")
+                                                },
+                                                label = { Text("🐍 Python Script", fontSize = 11.sp) }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2094,8 +2231,8 @@ fun ChatScreen(
 
                 // Chat Input Bar with Bottom Model & Thinking Selector Pills (Claude Android Style)
                 ChatInputBar(
-                    isOnline = if (isClaudeChat) !claudeState.isBlocking else systemConnectionState.canSend,
-                    isAuth = if (isClaudeChat) claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN else systemConnectionState.isAuth,
+                    isOnline = if (isLocalChat) true else if (isClaudeChat) !claudeState.isBlocking else systemConnectionState.canSend,
+                    isAuth = if (isLocalChat) true else if (isClaudeChat) claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN else systemConnectionState.isAuth,
                     offlineMessage = if (isClaudeChat) when (claudeState) {
                         com.example.gemini.data.agent.claude.ClaudeStatus.NOT_INSTALLED -> "Claude Code is not installed. Set it up in Settings."
                         com.example.gemini.data.agent.claude.ClaudeStatus.BRIDGE_OUTDATED -> "Restart the local server to use Claude Code."

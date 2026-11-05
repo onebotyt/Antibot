@@ -197,8 +197,12 @@ object LocalServerManager {
 
     private fun resolveServerCommand(context: Context): String? {
         val authPrefs = AuthPreferences(context)
-        val bridgeCmd =
+        val binBridge = File(LocalEnvironmentManager.getBinDir(context), "agy_ide_bridge")
+        val bridgeCmd = if (binBridge.exists()) {
+            binBridge.absolutePath
+        } else {
             authPrefs.getAgyBridgeBinaryPathSync().trim().ifBlank { AuthPreferences.DEFAULT_BRIDGE_BINARY_PATH }
+        }
         val agyCmd = authPrefs.getAgyBinaryPathSync().trim().ifBlank { AuthPreferences.DEFAULT_AGY_BINARY_PATH }
 
         val token = authPrefs.getSecurityTokenSync()

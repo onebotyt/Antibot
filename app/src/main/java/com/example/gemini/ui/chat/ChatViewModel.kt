@@ -218,7 +218,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun onDrawerOpened() = agyBackend.onDrawerOpened()
     fun cancelAgyLogin() = agyBackend.cancelAgyLogin()
     fun checkAgyAuthStatus(userInitiated: Boolean = false) = agyBackend.checkAgyAuthStatus(userInitiated)
-    fun loginToAgyHub(force: Boolean = false) = agyBackend.loginToAgyHub(force)
+    fun loginToAgyHub(force: Boolean = false) {
+        com.example.gemini.data.local.LocalServerManager.startServer(getApplication(), forceRestart = false)
+        agyBackend.loginToAgyHub(force)
+    }
     fun logoutFromAgyHub() = agyBackend.logoutFromAgyHub()
     val activeInstances = agyBackend.activeInstances
     val isAnyGenerationOrTaskActive = agyBackend.isAnyGenerationOrTaskActive
