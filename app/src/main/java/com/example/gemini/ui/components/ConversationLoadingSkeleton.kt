@@ -367,13 +367,13 @@ fun NewChatSignInPromptCard(
             modifier = Modifier
                 .size(60.dp)
                 .clip(CircleShape)
-                .background(ClaudeTerracotta.copy(alpha = 0.12f)),
+                .background(AntiBotCyan.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Person,
                 contentDescription = null,
-                tint = ClaudeTerracotta,
+                tint = AntiBotCyan,
                 modifier = Modifier.size(30.dp)
             )
         }
@@ -381,7 +381,7 @@ fun NewChatSignInPromptCard(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Sign in to Antigravity",
+            text = "Sign in to AntiBot AI",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -404,8 +404,8 @@ fun NewChatSignInPromptCard(
             onClick = onSignInClick,
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = ClaudeTerracotta,
-                contentColor = Color.White
+                containerColor = AntiBotCyan,
+                contentColor = Color.Black
             ),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
         ) {
@@ -496,13 +496,13 @@ fun NewChatCheckingAuthPromptCard(
             modifier = Modifier
                 .size(60.dp)
                 .clip(CircleShape)
-                .background(ClaudeTerracotta.copy(alpha = 0.12f)),
+                .background(AntiBotCyan.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Outlined.SmartToy,
                 contentDescription = null,
-                tint = ClaudeTerracotta,
+                tint = AntiBotCyan,
                 modifier = Modifier.size(30.dp)
             )
         }
