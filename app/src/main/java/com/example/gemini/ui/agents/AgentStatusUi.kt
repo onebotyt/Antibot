@@ -90,15 +90,15 @@ fun agyStatusEntry(
         isAuthBusy -> entry("Signing in…", SystemStatus.ACQUIRING_CSRF.dotColor, "Finish signing in with Google in your browser.", AgentStatusAction("Check", onCheckAuth), pending = true)
         status == SystemStatus.OFFLINE && inStartupGrace -> entry("Starting…", SystemStatus.STARTING.dotColor, "Starting the local server.", pending = true)
         status == SystemStatus.OFFLINE && state is SystemConnectionState.Connected -> entry(
-            if (authInfo.isAuthenticated) "Offline" else "Sign in",
-            detail = if (authInfo.isAuthenticated) "The Antigravity hub is stopped." else "Sign in with Google to chat with Antigravity.",
-            action = if (authInfo.isAuthenticated) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Sign in", onSignIn)
-        ).copy(isSignedOut = !authInfo.isAuthenticated)
+            if (authInfo.isLoggedIn) "Offline" else "Sign in",
+            detail = if (authInfo.isLoggedIn) "The Antigravity hub is stopped." else "Sign in with Google to chat with Antigravity.",
+            action = if (authInfo.isLoggedIn) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Sign in", onSignIn)
+        ).copy(isSignedOut = !authInfo.isLoggedIn)
         status == SystemStatus.OFFLINE -> entry(
-            if (authInfo.isAuthenticated) "Offline" else "Sign in",
-            detail = if (authInfo.isAuthenticated) "The local server is not running." else "Sign in with Google to chat with Antigravity.",
-            action = if (authInfo.isAuthenticated) AgentStatusAction("Start", onRestartServer) else AgentStatusAction("Sign in", onSignIn)
-        ).copy(isSignedOut = !authInfo.isAuthenticated)
+            if (authInfo.isLoggedIn) "Offline" else "Sign in",
+            detail = if (authInfo.isLoggedIn) "The local server is not running." else "Sign in with Google to chat with Antigravity.",
+            action = if (authInfo.isLoggedIn) AgentStatusAction("Start", onRestartServer) else AgentStatusAction("Sign in", onSignIn)
+        ).copy(isSignedOut = !authInfo.isLoggedIn)
         status == SystemStatus.STARTING -> entry("Starting…", detail = "The Antigravity hub is starting.", pending = true)
         status == SystemStatus.ACQUIRING_CSRF -> entry("Connecting…", detail = "Getting a session token from the hub.", pending = true)
         status == SystemStatus.CHECKING_AUTH -> entry("Checking sign-in…", pending = true)
@@ -113,10 +113,10 @@ fun agyStatusEntry(
                 .filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null }
         )
         else -> entry(
-            if (authInfo.isAuthenticated) "Error" else "Sign in",
+            if (authInfo.isLoggedIn) "Error" else "Sign in",
             detail = (state as? SystemConnectionState.Connected)?.error ?: (state as? SystemConnectionState.Error)?.message ?: "Sign in to connect to Antigravity.",
-            action = if (!authInfo.isAuthenticated) AgentStatusAction("Sign in", onSignIn) else if (state is SystemConnectionState.Connected) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Retry", onRetry)
-        ).copy(isSignedOut = !authInfo.isAuthenticated)
+            action = if (!authInfo.isLoggedIn) AgentStatusAction("Sign in", onSignIn) else if (state is SystemConnectionState.Connected) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Retry", onRetry)
+        ).copy(isSignedOut = !authInfo.isLoggedIn)
     }
 }
 
