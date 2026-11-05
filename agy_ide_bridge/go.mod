@@ -1,6 +1,6 @@
 module gemini-server
 
-go 1.22
+go 1.26.5
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
