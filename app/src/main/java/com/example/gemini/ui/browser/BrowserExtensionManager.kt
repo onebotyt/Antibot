@@ -289,12 +289,12 @@ class BrowserExtensionManager private constructor() {
         try {
             val homeDir = LocalEnvironmentManager.getHomeDir(context)
             list.add(File(homeDir, "extensions"))
-            list.add(File(LocalEnvironmentManager.getProjectsDir(context), "antiGem/extensions"))
+            list.add(File(LocalEnvironmentManager.getProjectsDir(context), "antiBot/extensions"))
         } catch (_: Exception) {}
 
         list.add(File(context.filesDir, "extensions"))
         list.add(File(context.filesDir, "browser-extensions"))
-        val extStorage = File("/sdcard/antiGem/extensions")
+        val extStorage = File("/sdcard/antiBot/extensions")
         if (extStorage.exists()) list.add(extStorage)
         return list.distinctBy { it.absolutePath }
     }

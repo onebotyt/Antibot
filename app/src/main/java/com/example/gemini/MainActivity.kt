@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity() {
                             "EMERALD" -> com.example.gemini.theme.EmeraldMatrixBg.toArgb()
                             "AMETHYST" -> com.example.gemini.theme.AmethystCosmicBg.toArgb()
                             "OLED" -> com.example.gemini.theme.OledBlackBg.toArgb()
-                            else -> if (useDarkTheme) com.example.gemini.theme.ClaudeDarkBg.toArgb() else com.example.gemini.theme.ClaudeCream.toArgb()
+                            else -> if (useDarkTheme) com.example.gemini.theme.AntiBotSpaceBg.toArgb() else com.example.gemini.theme.AntiBotSpaceBg.toArgb()
                         }
                         window.statusBarColor = bgArgb
                         window.navigationBarColor = bgArgb
@@ -201,9 +201,9 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
-            var hasSkippedInstaller by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+            var hasSkippedInstaller by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
 
-            val showFullScreenInstaller = !isInstalledState && !hasSkippedInstaller
+            val showFullScreenInstaller = false
 
             GeminiTheme(themeMode = themeMode, darkTheme = useDarkTheme) {
                 Surface(

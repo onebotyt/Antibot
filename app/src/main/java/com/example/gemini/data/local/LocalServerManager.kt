@@ -274,7 +274,7 @@ object LocalServerManager {
             )
             return
         }
-        if (!LocalEnvironmentManager.isInstalled(context)) {
+        if (!LocalEnvironmentManager.isInstalled(context) && !hasServerScript(context)) {
             Log.d(TAG, "[ServerManager] Bootstrap not installed yet, deferring auto-start until installation completes")
             return
         }
@@ -310,7 +310,7 @@ object LocalServerManager {
             return
         }
 
-        if (!LocalEnvironmentManager.isInstalled(context)) {
+        if (!LocalEnvironmentManager.isInstalled(context) && !hasServerScript(context)) {
             Log.d(TAG, "[ServerManager] Bootstrap not installed, skipping server start")
             return
         }

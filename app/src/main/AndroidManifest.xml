@@ -244,9 +244,9 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Background terminal and AI language server execution" />
             <intent-filter>
-                <action android:name="com.termux.service_wake_lock" />
-                <action android:name="com.termux.service_wake_unlock" />
-                <action android:name="com.termux.service_stop" />
+                <action android:name="${applicationId}.service_wake_lock" />
+                <action android:name="${applicationId}.service_wake_unlock" />
+                <action android:name="${applicationId}.service_stop" />
             </intent-filter>
         </service>
 
@@ -288,7 +288,7 @@
         <activity
             android:name="com.example.gemini.ui.settings.ManageSpaceActivity"
             android:exported="true"
-            android:label="AntiGem Space Manager"
+            android:label="AntiBot Space Manager"
             android:theme="@style/Theme.Gemini">
             <intent-filter>
                 <action android:name="android.intent.action.MANAGE_SPACE" />

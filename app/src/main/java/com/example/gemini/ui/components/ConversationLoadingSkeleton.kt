@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.gemini.theme.ClaudeTerracotta
+import com.example.gemini.theme.AntiBotCyan
 
 @Composable
 fun EngineWarmingUpView(
@@ -43,13 +44,13 @@ fun EngineWarmingUpView(
             modifier = Modifier
                 .size(64.dp)
                 .clip(CircleShape)
-                .background(ClaudeTerracotta.copy(alpha = 0.12f)),
+                .background(AntiBotCyan.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Outlined.SmartToy,
                 contentDescription = null,
-                tint = ClaudeTerracotta,
+                tint = AntiBotCyan,
                 modifier = Modifier.size(32.dp)
             )
         }
@@ -57,7 +58,7 @@ fun EngineWarmingUpView(
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = "Waking up Antigravity...",
+            text = "Starting AntiBot Engine...",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -67,7 +68,7 @@ fun EngineWarmingUpView(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "The background AI engine is starting up. Your chats and workspace will be ready in a moment.",
+            text = "The background AI engine is starting up. Your workspace and chat tools will be ready in a moment.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             textAlign = TextAlign.Center,
@@ -91,13 +92,13 @@ fun DrawerEngineWarmingUpView(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(ClaudeTerracotta.copy(alpha = 0.12f)),
+                .background(AntiBotCyan.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Outlined.SmartToy,
                 contentDescription = null,
-                tint = ClaudeTerracotta,
+                tint = AntiBotCyan,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -105,7 +106,7 @@ fun DrawerEngineWarmingUpView(
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "Waking up Antigravity...",
+            text = "Starting AntiBot Engine...",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -534,7 +535,9 @@ fun NewChatCheckingAuthPromptCard(
  */
 @Composable
 fun ServerStoppedPromptCard(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onStartServer: () -> Unit = {},
+    onSwitchToLocal: () -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -545,25 +548,25 @@ fun ServerStoppedPromptCard(
     ) {
         Box(
             modifier = Modifier
-                .size(60.dp)
+                .size(68.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                .background(AntiBotCyan.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Outlined.PowerSettingsNew,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                modifier = Modifier.size(28.dp)
+                tint = AntiBotCyan,
+                modifier = Modifier.size(32.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         Text(
-            text = "Antigravity is stopped",
+            text = "AntiBot Engine Standby",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
         )
@@ -571,12 +574,44 @@ fun ServerStoppedPromptCard(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "The local AI engine is currently stopped. Tap the status dot in the top header to start, restart, or stop the server and inspect live logs.",
+            text = "The background engine is paused. You can start the engine for full tools, or chat immediately using AntiBot Local Model (Offline · 0 Tokens).",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             textAlign = TextAlign.Center,
             lineHeight = 20.sp
         )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Button(
+            onClick = onStartServer,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AntiBotCyan,
+                contentColor = Color.Black
+            ),
+            modifier = Modifier.fillMaxWidth(0.85f)
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Start AntiBot Engine", fontWeight = FontWeight.SemiBold)
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedButton(
+            onClick = onSwitchToLocal,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = AntiBotCyan
+            ),
+            border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth(0.85f)
+        ) {
+            Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Use Offline Local Model (0 Tokens)", fontWeight = FontWeight.Medium)
+        }
     }
 }
 

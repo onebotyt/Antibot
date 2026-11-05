@@ -44,6 +44,9 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.painterResource
+import com.example.gemini.R
+import com.example.gemini.theme.AntiBotCyan
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -574,6 +577,41 @@ fun ChatHistoryDrawer(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
+            // Sleek AntiBot App Header in Drawer
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp, top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_antibot_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Unspecified
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "AntiBot",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = AntiBotCyan.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = "v1.0.21",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AntiBotCyan,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
+
             // Top Action Row: New Chat + Workspace Folders Toggle + Search Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -598,8 +636,8 @@ fun ChatHistoryDrawer(
                         .height(36.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = ClaudeTerracotta,
-                        contentColor = Color.White
+                        containerColor = AntiBotCyan,
+                        contentColor = Color.Black
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
@@ -607,14 +645,14 @@ fun ChatHistoryDrawer(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "New Chat",
-                        tint = Color.White,
+                        tint = Color.Black,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = "New Chat",
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        color = Color.Black,
                         fontSize = 13.5.sp
                     )
                 }

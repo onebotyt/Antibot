@@ -1,16 +1,13 @@
 {
-  "version_code": 120,
-  "version_name": "1.0.20",
+  "version_code": 121,
+  "version_name": "1.0.21",
   "min_supported_version_code": 1,
   "changelog": [
-    "Rebranded to AntiBot with new high-tech vector logo and dark splash screen",
-    "Added Local Model Only (0 Tokens / Offline) mode with custom local command runner",
-    "Added 5 new themes: Neon Cyberpunk, Midnight Sapphire, Matrix Emerald, Cosmic Amethyst, OLED Pure Black",
-    "Added direct image clipboard paste support in chat",
-    "Added self-learning project dev server runner with 0-token launch recipes",
-    "Replaced emoji token indicators with clear textual metrics (Tokens In, Out, Duration, TPS)",
-    "Fixed OutOfMemoryError crashes by streaming attachments in chunks",
-    "Removed Claude Code and TelemetryDeck bloat for high performance"
+    "Rebranded to AntiBot v1.0.21 with Cyber Cyan AI UI and versioned app label",
+    "Isolated all ports (2234/2235/9765) and intents to completely avoid collision with AntiGem",
+    "Bypassed blocking first-launch rootfs download for immediate offline chat",
+    "AntiBot Local Model (Offline · 0 Tokens) ready out of the box",
+    "New AntiBot Studio header and modern standby controls"
   ],
   "is_critical": false
 }

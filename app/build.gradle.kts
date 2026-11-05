@@ -27,6 +27,7 @@ android {
         targetSdk = 28
         versionCode = appVersionCode
         versionName = appVersionName
+        resValue("string", "app_name", "AntiBot v$appVersionName")
     }
 
     signingConfigs {
@@ -43,16 +44,16 @@ android {
         create("standard") {
             dimension = "mode"
             applicationId = "com.antibot.standard"
-            buildConfigField("int", "BRIDGE_PORT", "1236")
-            buildConfigField("int", "HUB_PORT", "1237")
-            buildConfigField("int", "BROWSER_MCP_PORT", "8767")
+            buildConfigField("int", "BRIDGE_PORT", "2236")
+            buildConfigField("int", "HUB_PORT", "2237")
+            buildConfigField("int", "BROWSER_MCP_PORT", "9767")
         }
         create("termux") {
             dimension = "mode"
             applicationId = "com.antibot"
-            buildConfigField("int", "BRIDGE_PORT", "1234")
-            buildConfigField("int", "HUB_PORT", "1235")
-            buildConfigField("int", "BROWSER_MCP_PORT", "8765")
+            buildConfigField("int", "BRIDGE_PORT", "2234")
+            buildConfigField("int", "HUB_PORT", "2235")
+            buildConfigField("int", "BROWSER_MCP_PORT", "9765")
         }
     }
 
@@ -88,6 +89,7 @@ android {
       compose = true
       aidl = false
       buildConfig = true
+      resValues = true
       shaders = false
     }
 

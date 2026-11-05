@@ -55,12 +55,12 @@ open class TermuxService : Service(), LifecycleOwner, ViewModelStoreOwner, Saved
 
     companion object {
         private const val TAG = "TermuxService"
-        private const val CHANNEL_ID = "antigem_termux_service_channel"
+        private const val CHANNEL_ID = "antibot_terminal_service_channel"
         private const val NOTIFICATION_ID = 1337
 
-        const val ACTION_WAKE_LOCK = "com.termux.service_wake_lock"
-        const val ACTION_WAKE_UNLOCK = "com.termux.service_wake_unlock"
-        const val ACTION_STOP_SERVICE = "com.termux.service_stop"
+        const val ACTION_WAKE_LOCK = "com.antibot.service_wake_lock"
+        const val ACTION_WAKE_UNLOCK = "com.antibot.service_wake_unlock"
+        const val ACTION_STOP_SERVICE = "com.antibot.service_stop"
 
         fun start(context: Context) {
             val intent = Intent(context, com.termux.app.TermuxService::class.java)
