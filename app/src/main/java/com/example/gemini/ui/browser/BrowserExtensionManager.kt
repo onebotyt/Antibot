@@ -193,11 +193,14 @@ class BrowserExtensionManager private constructor() {
                 if (it.isDirectory) command.addAll(listOf("--extra-root", it.absolutePath))
             }
             val builder = ProcessBuilder(command).directory(LocalEnvironmentManager.getHomeDir(context)).redirectErrorStream(true)
-            builder.environment().putAll(mapOf("HOME" to LocalEnvironmentManager.getHomeDir(context).absolutePath,
+            builder.environment().putAll(mapOf(
+                "HOME" to LocalEnvironmentManager.getHomeDir(context).absolutePath,
                 "PREFIX" to LocalEnvironmentManager.getPrefixDir(context).absolutePath,
-                "PATH" to "${LocalEnvironmentManager.getBinDir(context).absolutePath}:/system/bin",
+                "LD_LIBRARY_PATH" to LocalEnvironmentManager.getLdLibraryPath(context),
+                "PATH" to "${LocalEnvironmentManager.getHomeDir(context).absolutePath}/.local/bin:${LocalEnvironmentManager.getBinDir(context).absolutePath}:/system/bin",
                 "TMPDIR" to LocalEnvironmentManager.getTmpDir(context).absolutePath,
-                "AGY_PARENT_PID" to android.os.Process.myPid().toString()))
+                "AGY_PARENT_PID" to android.os.Process.myPid().toString()
+            ))
             // Everything the host prints, plus its exit code, goes to ~/extension-host.log so a failing phone can be diagnosed.
             val logFile = File(LocalEnvironmentManager.getHomeDir(context), "extension-host.log")
             synchronized(hostTail) { hostTail.clear() }

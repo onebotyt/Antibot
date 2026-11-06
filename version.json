@@ -1,13 +1,13 @@
 {
-  "version_code": 141,
-  "version_name": "1.0.21",
+  "version_code": 142,
+  "version_name": "1.0.22",
   "min_supported_version_code": 1,
   "changelog": [
-    "Permanent release signing keystore committed to fix package conflicts on future updates",
-    "Restored full-screen 350MB Linux environment & rootfs installer screen on setup",
-    "Added live server supervisor PTY terminal output logs dialog",
-    "Added WebSocket monitor & Termux Go daemon streaming logs dialog",
-    "Added direct diagnostics & installer triggers in Standby prompt card, Chat Drawer, Top-Bar indicator, and Settings"
+    "Fixed dynamic linker LD_LIBRARY_PATH for bash and shell verification test",
+    "Resolved library linking for AntiBot package namespace and native Termux ELF binaries",
+    "Added automatic path rewrites for legacy symlinks and script shebangs",
+    "Applied recursive execute and read permissions to usr/bin and usr/lib shared libraries",
+    "Added resilient verification fallback and preserved rootfs on verification retries"
   ],
   "is_critical": false
 }

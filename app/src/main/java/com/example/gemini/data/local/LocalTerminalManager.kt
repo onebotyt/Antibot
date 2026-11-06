@@ -301,9 +301,11 @@ class LocalPtySession(
                     }
                 } catch (_: Exception) {}
 
+                val ldLibPath = LocalEnvironmentManager.getLdLibraryPath(context)
+                envMap["LD_LIBRARY_PATH"] = ldLibPath
                 envMap["PREFIX"] = prefix.absolutePath
                 envMap["HOME"] = home.absolutePath
-                envMap["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:/system/bin:/system/xbin"
+                envMap["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
                 envMap["TMPDIR"] = tmp.absolutePath
                 envMap["TERM"] = "xterm-256color"
                 envMap["COLORTERM"] = "truecolor"
@@ -1224,8 +1226,7 @@ object LocalTerminalManager {
     }
 
     fun autoLaunchServerIfReady(context: Context) {
-        val pkg = context.packageName
-        val isTermux = pkg == "com.termux" || pkg.contains("termux")
+        val isTermux = LocalEnvironmentManager.isTermuxPackage(context)
         if (!isTermux) return
 
         if (!LocalEnvironmentManager.isInstalled(context)) {

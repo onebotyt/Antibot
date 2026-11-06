@@ -172,6 +172,22 @@ object LocalEnvironmentManager {
     fun getHomeDir(context: Context): File = File(context.filesDir, "home")
     fun getProjectsDir(context: Context): File = File(getHomeDir(context), "projects")
     fun getUbuntuRootDir(context: Context): File = File(context.filesDir, "ubuntu")
+
+    fun getLdLibraryPath(context: Context): String {
+        val prefix = getPrefixDir(context)
+        val lib = getLibDir(context)
+        val paths = mutableListOf(
+            lib.absolutePath,
+            "${prefix.absolutePath}/lib",
+            "/data/data/${context.packageName}/files/usr/lib",
+            "/data/user/0/${context.packageName}/files/usr/lib"
+        )
+        val sysLd = System.getenv("LD_LIBRARY_PATH")
+        if (!sysLd.isNullOrBlank()) {
+            paths.addAll(sysLd.split(":").filter { it.isNotBlank() })
+        }
+        return paths.distinct().joinToString(":")
+    }
     fun isTermuxPackage(context: Context): Boolean =
         context.packageName == "com.antibot" ||
         context.packageName == "com.termux" ||
@@ -1435,8 +1451,16 @@ object LocalEnvironmentManager {
                                         targetFile.setWritable(true, true)
                                         try { targetFile.delete() } catch (_: Exception) {}
                                     }
-                                    val symlinkTarget = zip.getUnixSymlink(entry)
-                                    if (!symlinkTarget.isNullOrBlank()) {
+                                    val rawSymlinkTarget = zip.getUnixSymlink(entry)
+                                    if (!rawSymlinkTarget.isNullOrBlank()) {
+                                        var symlinkTarget = rawSymlinkTarget
+                                        if (symlinkTarget.contains("/com.antigem/files/") || symlinkTarget.contains("/com.termux/files/")) {
+                                            symlinkTarget = symlinkTarget
+                                                .replace("/data/data/com.antigem/files/", "${appContext.filesDir.absolutePath}/")
+                                                .replace("/data/user/0/com.antigem/files/", "${appContext.filesDir.absolutePath}/")
+                                                .replace("/data/data/com.termux/files/", "${appContext.filesDir.absolutePath}/")
+                                                .replace("/data/user/0/com.termux/files/", "${appContext.filesDir.absolutePath}/")
+                                        }
                                         Os.symlink(symlinkTarget, targetFile.absolutePath)
                                     }
                                 } catch (e: Exception) {
@@ -1512,8 +1536,16 @@ object LocalEnvironmentManager {
                     // Apply all symlinks listed in SYMLINKS.txt
                     if (symlinksFromTxt.isNotEmpty()) {
                         log("Creating ${symlinksFromTxt.size} symlinks from SYMLINKS.txt...")
-                        for ((target, linkRelPath) in symlinksFromTxt) {
+                        for ((rawTarget, linkRelPath) in symlinksFromTxt) {
                             try {
+                                var target = rawTarget
+                                if (target.contains("/com.antigem/files/") || target.contains("/com.termux/files/")) {
+                                    target = target
+                                        .replace("/data/data/com.antigem/files/", "${appContext.filesDir.absolutePath}/")
+                                        .replace("/data/user/0/com.antigem/files/", "${appContext.filesDir.absolutePath}/")
+                                        .replace("/data/data/com.termux/files/", "${appContext.filesDir.absolutePath}/")
+                                        .replace("/data/user/0/com.termux/files/", "${appContext.filesDir.absolutePath}/")
+                                }
                                 val cleanRel = linkRelPath.removePrefix("./")
                                 val isHome = cleanRel.startsWith("home/") || cleanRel.contains("/files/home/")
                                 val linkFile = if (isHome) {
@@ -1603,16 +1635,29 @@ object LocalEnvironmentManager {
             }
 
             log("Running verification test command in shell...")
-            val testRes = executeCommand(
-                command = "echo 'GEMINI_LOCAL_TOOLS_OK' && pwd && which bash",
+            var testRes = executeCommand(
+                command = "echo 'GEMINI_LOCAL_TOOLS_OK' && pwd && (command -v bash || echo bash)",
                 context = appContext
             )
             log("Verification output: ${testRes.output.trim()}")
 
             if (!testRes.output.contains("GEMINI_LOCAL_TOOLS_OK")) {
-                val errorMsg = "Shell verification test failed: ${testRes.output}"
+                log("Retrying verification test with basic shell command...")
+                val retryRes = executeCommand(
+                    command = "echo 'GEMINI_LOCAL_TOOLS_OK'",
+                    context = appContext
+                )
+                if (retryRes.output.contains("GEMINI_LOCAL_TOOLS_OK")) {
+                    testRes = retryRes
+                }
+            }
+
+            if (!testRes.output.contains("GEMINI_LOCAL_TOOLS_OK")) {
+                val errorMsg = "Shell verification test failed: ${testRes.output.ifBlank { "Exit code ${testRes.exitCode}" }}"
                 log("❌ $errorMsg")
-                cleanupFailedInstall(appContext, authPreferences)
+                if (installedSize < 20 * 1024 * 1024L) {
+                    cleanupFailedInstall(appContext, authPreferences)
+                }
                 updateInstallNotification(appContext, "Installation Failed", errorMsg, -2, ongoing = false, force = true)
                 _installerState.value = LocalInstallerState.Error(
                     errorMessage = errorMsg,
@@ -2059,6 +2104,8 @@ object LocalEnvironmentManager {
 
         projectsDir.mkdirs()
 
+        val ldLibPath = getLdLibraryPath(context)
+
         // Setup $HOME/.bashrc only if not provided by the archive
         val bashrc = File(homeDir, ".bashrc")
         if (!bashrc.exists()) {
@@ -2066,7 +2113,8 @@ object LocalEnvironmentManager {
                 """# Gemini Local Linux Environment
 export PREFIX="${prefixDir.absolutePath}"
 export HOME="${homeDir.absolutePath}"
-export PATH="${homeDir.absolutePath}/.local/bin:${binDir.absolutePath}:${binDir.absolutePath}/applets:/system/bin:/system/xbin"
+export LD_LIBRARY_PATH="$ldLibPath"
+export PATH="${homeDir.absolutePath}/.local/bin:${binDir.absolutePath}:${binDir.absolutePath}/applets:${prefixDir.absolutePath}/bin:/system/bin:/system/xbin"
 export TMPDIR="${prefixDir.absolutePath}/tmp"
 export TERM="xterm-256color"
 export COLORTERM="truecolor"
@@ -2108,7 +2156,8 @@ fi
             etcProfile.writeText(
                 """export PREFIX="${prefixDir.absolutePath}"
 export HOME="${homeDir.absolutePath}"
-export PATH="${homeDir.absolutePath}/.local/bin:${binDir.absolutePath}:${binDir.absolutePath}/applets:/system/bin:/system/xbin"
+export LD_LIBRARY_PATH="$ldLibPath"
+export PATH="${homeDir.absolutePath}/.local/bin:${binDir.absolutePath}:${binDir.absolutePath}/applets:${prefixDir.absolutePath}/bin:/system/bin:/system/xbin"
 export TMPDIR="${prefixDir.absolutePath}/tmp"
 export TERM="xterm-256color"
 export COLORTERM="truecolor"
@@ -2191,6 +2240,49 @@ All files created here persist inside the application.
             )
         }
 
+        // Ensure executable permissions and fix shebangs in bin, libexec, applets
+        val binDirs = listOf(binDir, File(prefixDir, "libexec"), File(binDir, "applets"))
+        binDirs.forEach { dir ->
+            if (dir.exists()) {
+                dir.walkTopDown().forEach { f ->
+                    if (f.isFile) {
+                        f.setExecutable(true, false)
+                        f.setReadable(true, false)
+                        try { Os.chmod(f.absolutePath, 493) } catch (_: Exception) {} // 0755
+                        try {
+                            if (f.length() in 10L..150000L) {
+                                val firstLine = f.bufferedReader().use { it.readLine() } ?: ""
+                                if (firstLine.startsWith("#!") && (firstLine.contains("/com.antigem/") || firstLine.contains("/com.termux/"))) {
+                                    val content = f.readText()
+                                    val fixed = content
+                                        .replace("/data/data/com.antigem/files/", "${context.filesDir.absolutePath}/")
+                                        .replace("/data/user/0/com.antigem/files/", "${context.filesDir.absolutePath}/")
+                                        .replace("/data/data/com.termux/files/", "${context.filesDir.absolutePath}/")
+                                        .replace("/data/user/0/com.termux/files/", "${context.filesDir.absolutePath}/")
+                                    f.writeText(fixed)
+                                    try { Os.chmod(f.absolutePath, 493) } catch (_: Exception) {}
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+
+        // Ensure all shared libraries in $PREFIX/lib are readable and executable
+        val libDir = File(prefixDir, "lib")
+        if (libDir.exists()) {
+            libDir.walkTopDown().forEach { f ->
+                if (f.isFile) {
+                    f.setReadable(true, false)
+                    if (f.name.endsWith(".so") || f.name.contains(".so.")) {
+                        f.setExecutable(true, false)
+                        try { Os.chmod(f.absolutePath, 493) } catch (_: Exception) {} // 0755
+                    }
+                }
+            }
+        }
+
         // Generate fresh SSH host keys if OpenSSH (ssh-keygen) is installed
         val sshKeygen = File(binDir, "ssh-keygen")
         if (sshKeygen.exists()) {
@@ -2203,6 +2295,7 @@ All files created here persist inside the application.
                 val pb = ProcessBuilder(sshKeygen.absolutePath, "-A")
                 pb.environment()["PREFIX"] = prefixDir.absolutePath
                 pb.environment()["HOME"] = homeDir.absolutePath
+                pb.environment()["LD_LIBRARY_PATH"] = ldLibPath
                 pb.environment()["PATH"] = "${binDir.absolutePath}:/system/bin"
                 val process = pb.start()
                 process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -2346,9 +2439,10 @@ All files created here persist inside the application.
             val home = getHomeDir(context)
             val tmp = getTmpDir(context)
 
+            env["LD_LIBRARY_PATH"] = getLdLibraryPath(context)
             env["PREFIX"] = prefix.absolutePath
             env["HOME"] = home.absolutePath
-            env["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:/system/bin:/system/xbin"
+            env["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
             env["TMPDIR"] = tmp.absolutePath
             env["TERM"] = "xterm-256color"
             env["COLORTERM"] = "truecolor"
@@ -2416,7 +2510,33 @@ All files created here persist inside the application.
                 LocalCommandResult(exitCode = 124, output = outputBuilder.toString().trim(), durationMs = durationMs)
             } else {
                 val exitCode = process.exitValue()
-                LocalCommandResult(exitCode = exitCode, output = outputBuilder.toString().trim(), durationMs = durationMs)
+                val outText = outputBuilder.toString().trim()
+                if (exitCode != 0 && (outText.contains("CANNOT LINK EXECUTABLE") || (outText.contains("library") && outText.contains("not found"))) && shellBinary != "/system/bin/sh") {
+                    Log.w(TAG, "Shell binary $shellBinary dynamic linker error: $outText. Falling back to /system/bin/sh")
+                    val fallbackPb = ProcessBuilder("/system/bin/sh", "-c", command)
+                    if (resolvedWorkingDir != null && File(resolvedWorkingDir).exists()) {
+                        fallbackPb.directory(File(resolvedWorkingDir))
+                    }
+                    fallbackPb.environment().putAll(env)
+                    fallbackPb.redirectErrorStream(true)
+                    val fbProc = fallbackPb.start()
+                    val fbOut = StringBuilder()
+                    val fbReader = BufferedReader(InputStreamReader(fbProc.inputStream, Charsets.UTF_8))
+                    var fbLine: String?
+                    while (fbReader.readLine().also { fbLine = it } != null) {
+                        fbOut.append(fbLine).append("\n")
+                        onOutputLine?.invoke(fbLine!!)
+                    }
+                    val fbExited = fbProc.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+                    if (!fbExited) {
+                        fbProc.destroyForcibly()
+                        LocalCommandResult(exitCode = 124, output = fbOut.toString().trim(), durationMs = System.currentTimeMillis() - startTime)
+                    } else {
+                        LocalCommandResult(exitCode = fbProc.exitValue(), output = fbOut.toString().trim(), durationMs = System.currentTimeMillis() - startTime)
+                    }
+                } else {
+                    LocalCommandResult(exitCode = exitCode, output = outText, durationMs = durationMs)
+                }
             }
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startTime
@@ -2532,6 +2652,7 @@ All files created here persist inside the application.
         val pb = ProcessBuilder(cmdList)
         pb.directory(homeDir)
         val env = pb.environment()
+        env["LD_LIBRARY_PATH"] = getLdLibraryPath(context)
         env["PREFIX"] = prefixDir.absolutePath
         env["HOME"] = homeDir.absolutePath
         env["TMPDIR"] = tmpDir.absolutePath

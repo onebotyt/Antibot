@@ -186,15 +186,22 @@ class AgyPluginService(
 
                     val envMap = cmdEntry.env.toMutableMap()
                     // Android / Termux environment loader injection
-                    val isAndroidTermux = java.io.File("/data/data/com.termux/files/usr/lib/libtermux-exec.so").exists() ||
-                                          System.getenv("PREFIX") != null ||
-                                          (System.getProperty("java.vendor")?.contains("Android", ignoreCase = true) == true)
-                    if (isAndroidTermux) {
-                        if (!envMap.containsKey("LD_PRELOAD") && java.io.File("/data/data/com.termux/files/usr/lib/libtermux-exec.so").exists()) {
-                            envMap["LD_PRELOAD"] = "/data/data/com.termux/files/usr/lib/libtermux-exec.so"
+                    val prefixPath = System.getenv("PREFIX") ?: if (java.io.File("/data/data/com.termux/files/usr").exists()) "/data/data/com.termux/files/usr" else null
+                    val homePath = System.getenv("HOME") ?: if (java.io.File("/data/data/com.termux/files/home").exists()) "/data/data/com.termux/files/home" else null
+                    val isAndroidTermux = prefixPath != null || (System.getProperty("java.vendor")?.contains("Android", ignoreCase = true) == true)
+                    if (isAndroidTermux && prefixPath != null) {
+                        if (!envMap.containsKey("PREFIX")) {
+                            envMap["PREFIX"] = prefixPath
+                        }
+                        if (!envMap.containsKey("HOME") && homePath != null) {
+                            envMap["HOME"] = homePath
                         }
                         if (!envMap.containsKey("PATH")) {
-                            envMap["PATH"] = "/data/data/com.termux/files/home/.local/bin:/data/data/com.termux/files/usr/bin:/system/bin"
+                            val hBin = if (homePath != null) "$homePath/.local/bin:" else ""
+                            envMap["PATH"] = "$hBin$prefixPath/bin:/system/bin"
+                        }
+                        if (!envMap.containsKey("LD_LIBRARY_PATH")) {
+                            envMap["LD_LIBRARY_PATH"] = "$prefixPath/lib"
                         }
                     }
 
