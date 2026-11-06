@@ -50,7 +50,8 @@ fun MultiToolBubblePalette(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val tools = remember {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tools = remember(primaryColor) {
         listOf(
             PaletteToolItem(
                 type = AssistantToolType.DRAW_SCREEN,
@@ -92,7 +93,7 @@ fun MultiToolBubblePalette(
                 title = "Assistant Chat & Code",
                 subtitle = "Open full floating workspace",
                 icon = Icons.Default.Chat,
-                iconColor = MaterialTheme.colorScheme.primary
+                iconColor = primaryColor
             )
         )
     }

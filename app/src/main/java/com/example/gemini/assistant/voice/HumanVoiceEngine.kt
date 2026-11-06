@@ -77,7 +77,7 @@ class HumanVoiceEngine private constructor(private val appContext: Context) {
                     .filter { voice ->
                         voice.locale.language == locale.language &&
                                 !voice.isNetworkConnectionRequired &&
-                                voice.features?.contains(Voice.KEY_FEATURE_NOT_INSTALLED) != true
+                                voice.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) != true
                     }
                     .maxByOrNull { voice ->
                         var score = 0
