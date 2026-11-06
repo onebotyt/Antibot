@@ -250,49 +250,112 @@ class LocalAgentBackend(
         store.currentConversation.value = runningConv
 
         activeJob = backendScope.launch(Dispatchers.IO) {
+            val assistantId = UUID.randomUUID().toString()
             try {
-                val responseContent = processLocalTurn(prompt, curConv.workspaceUri)
-                val elapsed = System.currentTimeMillis() - startTime
+                val result = LocalIntelligenceEngine.generateResponse(
+                    prompt = prompt,
+                    messages = _messages.value,
+                    workspaceUri = curConv.workspaceUri,
+                    context = application
+                )
 
-                val assistantMsg = ChatMessage(
-                    id = UUID.randomUUID().toString(),
+                if (!isActive) return@launch
+
+                // 1. Initial emission with thoughtText and empty content
+                val initialMsg = ChatMessage(
+                    id = assistantId,
                     conversationId = curConv.id,
                     role = MessageRole.ASSISTANT,
-                    content = responseContent,
+                    content = "",
+                    thoughtText = result.thoughtText,
+                    toolCalls = result.toolCalls,
+                    isStreaming = true,
                     createdAt = System.currentTimeMillis(),
-                    modelId = "local-model-only",
-                    tokenUsage = TokenUsage(
-                        promptTokens = 0,
-                        outputTokens = 0,
-                        cachedTokens = 0,
-                        totalTokens = 0,
-                        durationMs = elapsed
-                    )
+                    modelId = "local-model-only"
                 )
 
                 withContext(Dispatchers.Main) {
-                    val finalMsgs = _messages.value + assistantMsg
-                    _messages.value = finalMsgs
-                    store.messages.value = finalMsgs
+                    val list = _messages.value + initialMsg
+                    _messages.value = list
+                    store.messages.value = list
+                }
+
+                // 2. Stream content in natural chunks
+                val fullContent = result.content
+                val totalLength = fullContent.length
+                val chunkSize = when {
+                    totalLength > 2000 -> 60
+                    totalLength > 1000 -> 40
+                    totalLength > 500 -> 25
+                    else -> 12
+                }
+
+                var index = 0
+                while (index < totalLength && isActive) {
+                    val nextIndex = (index + chunkSize).coerceAtMost(totalLength)
+                    val partialContent = fullContent.substring(0, nextIndex)
+                    index = nextIndex
+
+                    withContext(Dispatchers.Main) {
+                        val updatedList = _messages.value.map { m ->
+                            if (m.id == assistantId) {
+                                m.copy(
+                                    content = partialContent,
+                                    isStreaming = index < totalLength
+                                )
+                            } else m
+                        }
+                        _messages.value = updatedList
+                        store.messages.value = updatedList
+                    }
+
+                    if (index < totalLength) {
+                        delay(16)
+                    }
+                }
+
+                val elapsed = System.currentTimeMillis() - startTime
+                val estPromptTokens = prompt.length / 4
+                val estOutputTokens = fullContent.length / 4
+                val totalTokens = estPromptTokens + estOutputTokens
+
+                withContext(Dispatchers.Main) {
+                    val completedList = _messages.value.map { m ->
+                        if (m.id == assistantId) {
+                            m.copy(
+                                content = fullContent,
+                                isStreaming = false,
+                                tokenUsage = TokenUsage(
+                                    promptTokens = estPromptTokens,
+                                    outputTokens = estOutputTokens,
+                                    cachedTokens = 0,
+                                    totalTokens = totalTokens,
+                                    durationMs = elapsed
+                                )
+                            )
+                        } else m
+                    }
+                    _messages.value = completedList
+                    store.messages.value = completedList
 
                     val idleConv = runningConv.copy(isRunning = false)
                     _currentConversation.value = idleConv
                     store.currentConversation.value = idleConv
 
-                    persistMessagesFor(curConv.id, finalMsgs)
+                    persistMessagesFor(curConv.id, completedList)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) return@launch
                 withContext(Dispatchers.Main) {
                     val errorMsg = ChatMessage(
-                        id = UUID.randomUUID().toString(),
+                        id = assistantId,
                         conversationId = curConv.id,
                         role = MessageRole.ASSISTANT,
                         content = "⚠️ **Local Execution Error:** ${e.localizedMessage ?: e.message}",
                         createdAt = System.currentTimeMillis(),
                         modelId = "local-model-only"
                     )
-                    val finalMsgs = _messages.value + errorMsg
+                    val finalMsgs = _messages.value.filter { it.id != assistantId } + errorMsg
                     _messages.value = finalMsgs
                     store.messages.value = finalMsgs
 
@@ -301,124 +364,6 @@ class LocalAgentBackend(
                     store.currentConversation.value = idleConv
                 }
             }
-        }
-    }
-
-    private suspend fun processLocalTurn(prompt: String, workspaceUri: String): String {
-        val trimmed = prompt.trim()
-        val lower = trimmed.lowercase()
-        val projectDir = File(workspaceUri.ifBlank { "/data/user/0/com.termux/files/home/projects" })
-
-        // 1. Dev Server execution
-        if (lower.contains("start server") || lower.contains("run server") || lower.contains("start dev") ||
-            lower.contains("run dev") || lower.contains("pnpm dev") || lower.contains("npm start") ||
-            lower.contains("python app.py") || lower.contains("start project")
-        ) {
-            val runner = RunConfigManager.getEffectiveProjectRunner(projectDir.absolutePath)
-            return if (runner != null) {
-                """
-                ### ⚡ Local Dev Server Runner (0 Cloud Tokens)
-                
-                **Workspace:** `${projectDir.absolutePath}`  
-                **Detected Engine:** `${runner.name}`  
-                **Command:** `${runner.command}`  
-                
-                The local model dispatched the dev server recipe without spending any remote tokens.
-                
-                ```bash
-                cd ${projectDir.absolutePath}
-                ${runner.command}
-                ```
-                *Status: Server recipe verified & active.*
-                """.trimIndent()
-            } else {
-                """
-                ### ⚡ Local Server Detection
-                
-                Scanning directory: `${projectDir.absolutePath}`  
-                No `.ide/launch.json` or standard Node.js/Python server configuration found.
-                
-                To start a server locally, specify your start command:
-                `$ pnpm dev` or `$ python main.py`
-                
-                *Next time, the local model will auto-record this recipe and launch it automatically.*
-                """.trimIndent()
-            }
-        }
-
-        // 2. Shell Command Execution ($ ... or ! ... or "run ...")
-        if (trimmed.startsWith("$") || trimmed.startsWith("!") || lower.startsWith("run ")) {
-            val cmd = when {
-                trimmed.startsWith("$") || trimmed.startsWith("!") -> trimmed.drop(1).trim()
-                else -> trimmed.drop(4).trim()
-            }
-            if (cmd.isNotBlank()) {
-                val output = executeShellCommand(cmd, projectDir)
-                return """
-                ### ⚡ Local Command Output (0 Tokens)
-                
-                ```bash
-                $ $cmd
-                $output
-                ```
-                """.trimIndent()
-            }
-        }
-
-        // 3. File Inspection / Directory Listing
-        if (lower.startsWith("ls") || lower.startsWith("dir") || lower.contains("list files")) {
-            val files = projectDir.listFiles()?.take(25)?.joinToString("\n") { f ->
-                val type = if (f.isDirectory) "📁 [DIR]" else "📄"
-                "$type ${f.name} (${f.length()} bytes)"
-            } ?: "No files found."
-            return """
-            ### 📂 Local Project Directory: `${projectDir.name}`
-            
-            ```text
-            $files
-            ```
-            *(Showing up to 25 items)*
-            """.trimIndent()
-        }
-
-        // 4. Recap / Summary request
-        if (lower.contains("recap") || lower.contains("summary") || lower.contains("what did you do") || lower.contains("status")) {
-            return """
-            ### ⚡ Local Intelligence Summary
-            
-            - **Mode:** Local Model Only (0 Cloud Tokens Consumed)
-            - **Current Workspace:** `${projectDir.absolutePath}`
-            - **Status:** All operations executed and cached locally on-device.
-            - **Suggested Next Step:** Run project dev server or review recent files.
-            """.trimIndent()
-        }
-
-        // 5. Default Local Response
-        return """
-        ### ⚡ AntiBot Local Model (Offline · 0 Tokens)
-        
-        I received your request:
-        > "$prompt"
-        
-        **Available Local Actions:**
-        - **Run Dev Server:** Type `start server` to run this project's server locally.
-        - **Run Command:** Type `$ <command>` (e.g. `$ git status` or `$ pnpm list`).
-        - **Browse Files:** Type `ls` to list directory files.
-        - **Zero Cloud Cost:** All operations run locally without consuming Antigravity tokens.
-        """.trimIndent()
-    }
-
-    private fun executeShellCommand(command: String, workingDir: File): String {
-        return try {
-            val pb = ProcessBuilder("sh", "-c", command)
-                .directory(if (workingDir.exists()) workingDir else application.filesDir)
-                .redirectErrorStream(true)
-            val process = pb.start()
-            val text = process.inputStream.bufferedReader().use { it.readText() }
-            process.waitFor()
-            if (text.isBlank()) "(Command finished with no output)" else text.take(8000)
-        } catch (e: Exception) {
-            "Error executing command: ${e.message}"
         }
     }
 }

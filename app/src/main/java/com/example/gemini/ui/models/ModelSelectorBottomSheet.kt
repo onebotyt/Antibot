@@ -353,7 +353,7 @@ private fun MainCategoryListView(
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "100% on-device execution for tasks, shell commands, and dev servers",
+                        text = "100% on-device conversational AI: coding, debugging, workspace analysis, and terminal execution",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         lineHeight = 16.sp
