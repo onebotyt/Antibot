@@ -580,7 +580,7 @@ fun ChatInputBar(
 
     val canSend = textFieldValue.text.trim().isNotEmpty() || attachments.isNotEmpty()
     val familyColor = when {
-        selectedModel.id == "local-model-only" -> Color(0xFF10B981)
+        selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> Color(0xFF10B981)
         selectedModel.family == ModelFamily.CLAUDE -> ClaudeTerracotta
         else -> GeminiBlue
     }
@@ -972,9 +972,17 @@ fun ChatInputBar(
                                 onTextFieldValueChange(newVal)
                             },
                             placeholder = {
+                                val inputPlaceholder = when {
+                                    selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
+                                        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
+                                        domain.placeholderPrompt
+                                    }
+                                    selectedModel.family == ModelFamily.CLAUDE -> "Ask Claude..."
+                                    else -> "Ask ${selectedModel.displayName.split(" ").firstOrNull() ?: "Gemini"}..."
+                                }
                                 Text(
-                                    text = "Reply to ${selectedModel.displayName.split(" ").firstOrNull() ?: "Gemini"}...",
-                                    fontSize = 15.sp,
+                                    text = inputPlaceholder,
+                                    fontSize = 14.5.sp,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                                 )
                             },
@@ -1227,12 +1235,18 @@ fun ChatInputBar(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = familyColor,
-                                        modifier = Modifier.size(13.dp)
-                                    )
+                                    val isLocal = selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only"
+                                    if (isLocal) {
+                                        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
+                                        Text(text = domain.iconEmoji, fontSize = 12.sp)
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = familyColor,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = selectedModel.displayName,
@@ -1244,22 +1258,39 @@ fun ChatInputBar(
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
 
-                                    val pct = quota?.percentage
-                                    if (pct != null) {
+                                    if (isLocal) {
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(badgeColor.copy(alpha = 0.15f))
+                                                .background(Color(0xFF10B981).copy(alpha = 0.15f))
                                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
                                             Text(
-                                                text = "$pct%",
+                                                text = "0 Tokens",
                                                 fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = badgeColor
+                                                color = Color(0xFF10B981)
                                             )
+                                        }
+                                    } else {
+                                        val pct = quota?.percentage
+                                        if (pct != null) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(badgeColor.copy(alpha = 0.15f))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Text(
+                                                    text = "$pct%",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = badgeColor
+                                                )
+                                            }
                                         }
                                     }
 

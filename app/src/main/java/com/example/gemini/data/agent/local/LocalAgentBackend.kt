@@ -34,6 +34,22 @@ class LocalAgentBackend(
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
+    private val _selectedModelId = MutableStateFlow("local-backend")
+    val selectedModelId: StateFlow<String> = _selectedModelId.asStateFlow()
+
+    fun selectModel(modelId: String) {
+        if (com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(modelId)) {
+            _selectedModelId.value = modelId
+            val cur = _currentConversation.value
+            if (cur != null) {
+                val updated = cur.copy(modelId = modelId)
+                _currentConversation.value = updated
+                store.currentConversation.value = updated
+                persistConversations()
+            }
+        }
+    }
+
     private var activeJob: Job? = null
     private val storageDir = File(application.filesDir, "local_chats").apply { mkdirs() }
 
@@ -135,14 +151,17 @@ class LocalAgentBackend(
         } catch (_: Exception) {}
     }
 
-    fun startNewChat() {
+    fun startNewChat(modelId: String? = null) {
+        val effectiveModel = modelId ?: _selectedModelId.value
+        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(effectiveModel)
         val newConv = Conversation(
             id = UUID.randomUUID().toString(),
-            title = "New Chat (Local)",
-            modelId = "local-model-only",
+            title = "New Chat (${domain.shortName})",
+            modelId = domain.modelId,
             agent = AgentKind.LOCAL,
             workspaceUri = "/data/user/0/com.termux/files/home/projects"
         )
+        _selectedModelId.value = domain.modelId
         _currentConversation.value = newConv
         _conversations.value = listOf(newConv) + _conversations.value.filter { it.id != newConv.id }
         _messages.value = emptyList()
@@ -155,6 +174,7 @@ class LocalAgentBackend(
     fun selectConversation(id: String) {
         val conv = _conversations.value.find { it.id == id } ?: return
         _currentConversation.value = conv
+        _selectedModelId.value = conv.modelId.ifBlank { "local-backend" }
         val loaded = loadMessagesFor(id)
         _messages.value = loaded
 
@@ -225,6 +245,7 @@ class LocalAgentBackend(
             _currentConversation.value!!
         }
 
+        val effectiveModel = curConv.modelId.ifBlank { _selectedModelId.value }
         val startTime = System.currentTimeMillis()
         val userMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
@@ -232,7 +253,7 @@ class LocalAgentBackend(
             role = MessageRole.USER,
             content = prompt,
             createdAt = startTime,
-            modelId = "local-model-only"
+            modelId = effectiveModel
         )
 
         val updatedList = _messages.value + userMsg
@@ -240,7 +261,7 @@ class LocalAgentBackend(
         store.messages.value = updatedList
 
         // Update title if still default
-        if (curConv.title == "New Chat (Local)" || curConv.title == "New Chat") {
+        if (curConv.title.startsWith("New Chat")) {
             val newTitle = prompt.trim().lines().firstOrNull()?.take(40) ?: "Local Task"
             renameConversation(curConv.id, newTitle)
         }
@@ -256,7 +277,8 @@ class LocalAgentBackend(
                     prompt = prompt,
                     messages = _messages.value,
                     workspaceUri = curConv.workspaceUri,
-                    context = application
+                    context = application,
+                    modelId = effectiveModel
                 )
 
                 if (!isActive) return@launch
@@ -271,7 +293,7 @@ class LocalAgentBackend(
                     toolCalls = result.toolCalls,
                     isStreaming = true,
                     createdAt = System.currentTimeMillis(),
-                    modelId = "local-model-only"
+                    modelId = effectiveModel
                 )
 
                 withContext(Dispatchers.Main) {

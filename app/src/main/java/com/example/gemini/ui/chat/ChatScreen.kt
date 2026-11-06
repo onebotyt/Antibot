@@ -72,6 +72,8 @@ import com.example.gemini.domain.model.AiModel
 import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.MessageRole
 import com.example.gemini.domain.model.ToolType
+import com.example.gemini.domain.model.LocalCodingDomain
+import com.example.gemini.domain.model.LocalCodingModel
 import com.example.gemini.theme.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -136,7 +138,8 @@ fun ChatScreen(
     onMinimizeWindow: () -> Unit = {},
     onNavigateToIde: () -> Unit = {},
     onNavigateToTerminal: () -> Unit = {},
-    onNavigateToBrowser: () -> Unit = {}
+    onNavigateToBrowser: () -> Unit = {},
+    onNavigateToNotes: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -688,13 +691,14 @@ fun ChatScreen(
     val waitingForUser = lastToolCalls.any { it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE" }
     val showWorkingRow = workingAnimationEnabled && (isRunningOrStreaming || holdingTail) && !waitingForUser && !footerShown
 
-    val isLocalChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.LOCAL || selectedModelId == "local-model-only"
+    val isLocalChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
     val currentModel = if (isLocalChat) {
+        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModelId)
         AiModel(
-            id = "local-model-only",
-            displayName = "Local Model (0 Tokens)",
-            description = "Offline on-device local intelligence engine",
-            family = com.example.gemini.domain.model.ModelFamily.OTHER
+            id = domain.modelId,
+            displayName = domain.displayName,
+            description = domain.description,
+            family = com.example.gemini.domain.model.ModelFamily.LOCAL
         )
     } else AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
     val currentQuota = quotas.find { it.modelId == selectedModelId }
@@ -1171,7 +1175,7 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        if (!systemConnectionState.isAuth) {
+                        if (!isLocalChat && !systemConnectionState.isAuth) {
                             Surface(
                                 onClick = { viewModel.loginToAgyHub(force = true) },
                                 shape = RoundedCornerShape(12.dp),
@@ -1221,34 +1225,11 @@ fun ChatScreen(
                             onOpenServerLogs = { showLocalServerOutputDialog = true },
                             onOpenDaemonLogs = { showDaemonLogsDialog = true }
                         )
-                        IconButton(onClick = onNavigateToBrowser) {
+                        IconButton(onClick = onNewChat) {
                             Icon(
-                                imageVector = Icons.Outlined.Language,
-                                contentDescription = "Web Browser Preview",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                            )
-                        }
-                        IconButton(onClick = {
-                            if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) {
-                                onNavigateToTerminal()
-                            } else if (isLocalToolsInstalled) {
-                                viewModel.setLocalToolsEnabled(true)
-                                onNavigateToTerminal()
-                            } else {
-                                showLocalToolsInstallDialog = true
-                            }
-                        }) {
-                            Icon(
-                                imageVector = Icons.Outlined.Terminal,
-                                contentDescription = "Terminal",
-                                tint = if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) AntiBotCyan else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                            )
-                        }
-                        IconButton(onClick = onNavigateToIde) {
-                            Icon(
-                                imageVector = Icons.Default.Code,
-                                contentDescription = "Code Editor IDE",
-                                tint = MaterialTheme.colorScheme.primary
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "New Chat",
+                                tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         if (isDevModeEnabled) {
@@ -1288,7 +1269,7 @@ fun ChatScreen(
                     val isExistingConversation = currentConv != null && currentConv?.title != "New Chat" && conversations.any { it.id == currentConv?.id }
                     val isExistingChat = messages.isEmpty() && isExistingConversation && isLoadingConversation
                     val effectiveAgent = currentConv?.agent ?: newChatAgent
-                    val isLocalChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || selectedModelId == "local-model-only"
+                    val isLocalChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
 
                     if (!isLocalChat && isServerStopped && messages.isEmpty()) {
                         BoxWithConstraints(
@@ -1403,170 +1384,52 @@ fun ChatScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                if (isFreshNewChat) {
+                                if (isFreshNewChat && enabledAgents.size > 1) {
                                     com.example.gemini.ui.components.AgentPicker(
                                         selected = currentConv?.agent ?: newChatAgent,
                                         onSelect = { agent ->
                                             viewModel.setNewChatAgent(agent)
                                             viewModel.startNewChat(agent)
                                             if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                                                viewModel.selectModel("local-model-only")
+                                                viewModel.selectModel("local-backend")
                                             }
                                         },
-                                        modifier = Modifier.padding(bottom = 20.dp),
+                                        modifier = Modifier.padding(bottom = 16.dp),
                                         agents = enabledAgents,
                                         statusColors = agentEntries.associate { it.agent to it.color }
                                     )
                                 }
 
-                                if (!isNetworkConnected) {
+                                if (!isNetworkConnected && !isLocalChat) {
                                     com.example.gemini.ui.components.NewChatOfflinePromptCard(
-                                        modifier = Modifier.padding(bottom = 20.dp)
+                                        modifier = Modifier.padding(bottom = 16.dp)
                                     )
                                 }
 
-                                when (systemConnectionState.status) {
-                                    com.example.gemini.data.remote.SystemStatus.CHECKING_AUTH -> {
-                                        com.example.gemini.ui.components.NewChatCheckingAuthPromptCard()
-                                    }
-                                    com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED -> {
-                                        if (isNetworkConnected) {
-                                            com.example.gemini.ui.components.NewChatSignInPromptCard(
-                                                onSignInClick = { viewModel.loginToAgyHub(force = true) }
-                                            )
+                                AntiBotStudioHero(
+                                    selectedModel = currentModel,
+                                    selectedModelId = selectedModelId,
+                                    onOpenModelSelector = {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        showModelSelector = true
+                                    },
+                                    onSelectPrompt = { prompt, targetModelId ->
+                                        if (targetModelId != null) {
+                                            viewModel.selectModel(targetModelId)
                                         }
-                                    }
-                                    else -> {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_antibot_logo),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(56.dp),
-                                            tint = Color.Unspecified
+                                        textFieldValue = androidx.compose.ui.text.input.TextFieldValue(
+                                            text = prompt,
+                                            selection = androidx.compose.ui.text.TextRange(prompt.length)
                                         )
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text(
-                                            text = "Welcome to AntiBot v${com.example.gemini.BuildConfig.VERSION_NAME}",
-                                            fontSize = 21.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = "High-Performance AI Coding & Autonomous Workspace",
-                                            fontSize = 13.5.sp,
-                                            lineHeight = 19.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = Color(0xFF10B981).copy(alpha = 0.12f),
-                                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f))
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(7.dp)
-                                                        .background(Color(0xFF10B981), CircleShape)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = "Local Model Active · 0 Tokens (100% Offline)",
-                                                    fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = Color(0xFF10B981)
-                                                )
-                                            }
-                                        }
-
-                                        if (!systemConnectionState.isAuth) {
-                                            Spacer(modifier = Modifier.height(20.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                                border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.3f)),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp)
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(16.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Icon(
-                                                            imageVector = Icons.Outlined.CloudQueue,
-                                                            contentDescription = null,
-                                                            tint = AntiBotCyan,
-                                                            modifier = Modifier.size(20.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(8.dp))
-                                                        Text(
-                                                            text = "Google / Antigravity Cloud",
-                                                            fontSize = 14.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = MaterialTheme.colorScheme.onSurface
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text(
-                                                        text = "Sign in to access Gemini 2.5 Pro, Flash, and cloud AI tools.",
-                                                        fontSize = 12.sp,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Spacer(modifier = Modifier.height(14.dp))
-                                                    Button(
-                                                        onClick = { viewModel.loginToAgyHub(force = true) },
-                                                        shape = RoundedCornerShape(12.dp),
-                                                        colors = ButtonDefaults.buttonColors(
-                                                            containerColor = AntiBotCyan,
-                                                            contentColor = Color.Black
-                                                        ),
-                                                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.AutoMirrored.Outlined.Login,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Text(
-                                                            text = "Sign In with Google",
-                                                            fontSize = 12.5.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(20.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            SuggestionChip(
-                                                onClick = {
-                                                    textFieldValue = androidx.compose.ui.text.input.TextFieldValue("Explain the current workspace and project files")
-                                                },
-                                                label = { Text("⚡ Explain Project", fontSize = 11.sp) }
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            SuggestionChip(
-                                                onClick = {
-                                                    textFieldValue = androidx.compose.ui.text.input.TextFieldValue("Create a simple Python hello world script")
-                                                },
-                                                label = { Text("🐍 Python Script", fontSize = 11.sp) }
-                                            )
-                                        }
-                                    }
-                                }
+                                        try {
+                                            chatInputFocusRequester.requestFocus()
+                                        } catch (_: Exception) {}
+                                    },
+                                    isLocalChat = isLocalChat,
+                                    isAuth = systemConnectionState.isAuth,
+                                    onSignIn = { viewModel.loginToAgyHub(force = true) }
+                                )
                             }
                         }
                     } else {
@@ -2180,6 +2043,33 @@ fun ChatScreen(
                     cascadeId = activeConversationKey,
                     focusRequester = chatInputFocusRequester
                 )
+
+                // Studio Bottom Navigation Dock (Chat, IDE, Terminal, Browser, Notes)
+                val isKeyboardOpen = imeInsets.getBottom(density) > 0
+                AnimatedVisibility(
+                    visible = !isKeyboardOpen,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    StudioNavigationDock(
+                        currentTab = "CHAT",
+                        onNavigateToChat = { /* Already on chat */ },
+                        onNavigateToIde = onNavigateToIde,
+                        onNavigateToTerminal = {
+                            if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) {
+                                onNavigateToTerminal()
+                            } else if (isLocalToolsInstalled) {
+                                viewModel.setLocalToolsEnabled(true)
+                                onNavigateToTerminal()
+                            } else {
+                                showLocalToolsInstallDialog = true
+                            }
+                        },
+                        onNavigateToBrowser = onNavigateToBrowser,
+                        onNavigateToNotes = onNavigateToNotes,
+                        isTerminalActive = useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)
+                    )
+                }
             }
         }
     }
@@ -3020,4 +2910,387 @@ private fun flattenFileNodes(nodes: List<com.example.gemini.data.daemon.FileNode
     }
     return result
 }
+
+@Composable
+fun AntiBotStudioHero(
+    selectedModel: AiModel?,
+    selectedModelId: String,
+    onOpenModelSelector: () -> Unit,
+    onSelectPrompt: (prompt: String, targetModelId: String?) -> Unit,
+    isLocalChat: Boolean,
+    isAuth: Boolean,
+    onSignIn: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val domain = LocalCodingDomain.fromModelId(selectedModelId)
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // App Logo & Badging
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            modifier = Modifier.size(64.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_antibot_logo),
+                    contentDescription = "AntiBot",
+                    modifier = Modifier.size(42.dp),
+                    tint = Color.Unspecified
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "AntiBot Studio",
+                fontSize = 21.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                letterSpacing = (-0.5).sp
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            ) {
+                Text(
+                    text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = "High-Performance Autonomous AI Coding Environment",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Active Model Pill (Clickable -> Opens Model Selector)
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = if (isLocalChat) Color(0xFF10B981).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            border = BorderStroke(
+                1.dp,
+                if (isLocalChat) Color(0xFF10B981).copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onOpenModelSelector)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isLocalChat) domain.iconEmoji else "🤖",
+                    fontSize = 15.sp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isLocalChat) domain.displayName else (selectedModel?.displayName ?: "AI Model"),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.UnfoldMore,
+                            contentDescription = "Switch Model",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Text(
+                        text = if (isLocalChat) "${domain.badge} · 0 Tokens (100% Offline)" else "Cloud Model · Online",
+                        fontSize = 11.sp,
+                        color = if (isLocalChat) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+
+        // Unauthenticated Cloud Banner if cloud agent active
+        if (!isLocalChat && !isAuth) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Sign in to access Gemini 2.5 Pro & Cloud Tools",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onSignIn,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Icon(imageVector = Icons.AutoMirrored.Outlined.Login, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Sign In with Google", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Specialized Domain Quick Action Cards
+        Text(
+            text = "Specialized AI Coding Assistants",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.align(Alignment.Start)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StudioDomainCard(
+                title = "Backend API",
+                subtitle = "REST, SQL & Auth",
+                emoji = "🛠️",
+                accentColor = Color(0xFF3B82F6),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    onSelectPrompt(
+                        "Design a high-performance REST API with database schema and auth for: ",
+                        "local-backend"
+                    )
+                }
+            )
+            StudioDomainCard(
+                title = "UI/UX & Frontend",
+                subtitle = "Compose & React",
+                emoji = "🎨",
+                accentColor = Color(0xFFEC4899),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    onSelectPrompt(
+                        "Create a modern Jetpack Compose Material 3 UI component for: ",
+                        "local-frontend"
+                    )
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StudioDomainCard(
+                title = "Security Audit",
+                subtitle = "OWASP & Leaks",
+                emoji = "🛡️",
+                accentColor = Color(0xFFEF4444),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    onSelectPrompt(
+                        "Audit this code for security vulnerabilities, injection risks, and safe handling: ",
+                        "local-security"
+                    )
+                }
+            )
+            StudioDomainCard(
+                title = "Fullstack Code",
+                subtitle = "Qwen 0.5B / Project",
+                emoji = "⚡",
+                accentColor = Color(0xFF10B981),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    onSelectPrompt(
+                        "Explain the project structure and create an implementation plan for: ",
+                        "local-model-only"
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun StudioDomainCard(
+    title: String,
+    subtitle: String,
+    emoji: String,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = emoji, fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = subtitle,
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun StudioNavigationDock(
+    currentTab: String = "CHAT",
+    onNavigateToChat: () -> Unit = {},
+    onNavigateToIde: () -> Unit = {},
+    onNavigateToTerminal: () -> Unit = {},
+    onNavigateToBrowser: () -> Unit = {},
+    onNavigateToNotes: () -> Unit = {},
+    isTerminalActive: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StudioDockItem(
+                label = "Chat",
+                icon = Icons.Outlined.ChatBubbleOutline,
+                isSelected = currentTab == "CHAT",
+                onClick = onNavigateToChat
+            )
+            StudioDockItem(
+                label = "IDE",
+                icon = Icons.Default.Code,
+                isSelected = currentTab == "IDE",
+                onClick = onNavigateToIde
+            )
+            StudioDockItem(
+                label = "Terminal",
+                icon = Icons.Outlined.Terminal,
+                isSelected = currentTab == "TERMINAL",
+                accentTint = if (isTerminalActive) AntiBotCyan else null,
+                onClick = onNavigateToTerminal
+            )
+            StudioDockItem(
+                label = "Browser",
+                icon = Icons.Outlined.Language,
+                isSelected = currentTab == "BROWSER",
+                onClick = onNavigateToBrowser
+            )
+            StudioDockItem(
+                label = "Notes",
+                icon = Icons.Outlined.Description,
+                isSelected = currentTab == "NOTES",
+                onClick = onNavigateToNotes
+            )
+        }
+    }
+}
+
+@Composable
+private fun StudioDockItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    accentTint: Color? = null,
+    onClick: () -> Unit
+) {
+    val tint = when {
+        isSelected -> MaterialTheme.colorScheme.primary
+        accentTint != null -> accentTint
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+    }
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(16.dp)
+            )
+            if (isSelected) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = label,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = tint
+                )
+            }
+        }
+    }
+}
+
 

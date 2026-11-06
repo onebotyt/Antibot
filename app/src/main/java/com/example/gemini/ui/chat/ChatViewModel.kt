@@ -141,7 +141,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val enabledModelIds = agyBackend.enabledModelIds
     val enabledModels = agyBackend.enabledModels
     val isRefreshingModels = agyBackend.isRefreshingModels
-    val selectedModelId = agyBackend.selectedModelId
+    val selectedModelId: StateFlow<String> = kotlinx.coroutines.flow.combine(
+        store.currentConversation,
+        localBackend.selectedModelId,
+        agyBackend.selectedModelId
+    ) { conv, localModel, agyModel ->
+        if (conv?.agent == AgentKind.LOCAL || isLocalActive) {
+            localModel
+        } else {
+            agyModel
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, "local-backend")
     val preferredModelName = agyBackend.preferredModelName
     val quotas = agyBackend.quotas
     val quotaSummary = agyBackend.quotaSummary
@@ -232,8 +242,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun selectModel(modelId: String) {
-        if (modelId == "local-model-only") {
-            startNewChat(AgentKind.LOCAL)
+        if (com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(modelId)) {
+            if (!isLocalActive) {
+                startNewChat(AgentKind.LOCAL)
+            }
+            localBackend.selectModel(modelId)
             return
         }
         if (isLocalActive) {

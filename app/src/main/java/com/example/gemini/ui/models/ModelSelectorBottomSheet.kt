@@ -288,88 +288,107 @@ private fun MainCategoryListView(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // AntiBot Local Model Tile (Always available on-device, 0 Tokens, Offline)
-        val isLocalActive = activeModel?.id == "local-model-only"
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .clickable {
-                    onSelectModel("local-model-only")
-                },
-            shape = RoundedCornerShape(16.dp),
-            color = if (isLocalActive) Color(0xFF10B981).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
-            border = BorderStroke(
-                if (isLocalActive) 1.5.dp else 1.dp,
-                if (isLocalActive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-            )
-        ) {
-            Row(
+        // Local Offline Coding Models Header (< 500MB, 0 Tokens, 100% Offline)
+        Text(
+            text = "Local Coding Models (< 500MB · 0 Tokens · Offline)",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 6.dp)
+        )
+
+        // Specialized Local Coding Domain Models
+        com.example.gemini.domain.model.LocalCodingDomain.entries.forEach { domain ->
+            val isDomainActive = selectedModelId == domain.modelId
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 3.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable {
+                        onSelectModel(domain.modelId)
+                    },
+                shape = RoundedCornerShape(14.dp),
+                color = if (isDomainActive) Color(0xFF10B981).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    if (isDomainActive) 1.5.dp else 1.dp,
+                    if (isDomainActive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                )
             ) {
-                Box(
+                Row(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF10B981).copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color(0xFF10B981),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981).copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = "AntiBot Local Model",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = domain.iconEmoji,
+                            fontSize = 17.sp
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF10B981).copy(alpha = 0.18f))
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "0 Tokens · Offline",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF10B981)
-                            )
-                        }
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "100% on-device conversational AI: coding, debugging, workspace analysis, and terminal execution",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                        lineHeight = 16.sp
-                    )
-                }
 
-                if (isLocalActive) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Selected",
-                        tint = Color(0xFF10B981),
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Spacer(modifier = Modifier.width(11.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = domain.displayName,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF10B981).copy(alpha = 0.18f))
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = domain.sizeText,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = domain.description,
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            lineHeight = 15.sp
+                        )
+                    }
+
+                    if (isDomainActive) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = "Cloud Models (Antigravity)",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp)
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
 

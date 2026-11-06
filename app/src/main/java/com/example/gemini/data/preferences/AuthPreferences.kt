@@ -567,9 +567,9 @@ class AuthPreferences(private val context: Context) {
     }
 
     val isFloatingSwitcherEnabled: Flow<Boolean> = context.dataStore.data
-        .map { it[IS_FLOATING_SWITCHER_ENABLED] ?: true }
+        .map { it[IS_FLOATING_SWITCHER_ENABLED] ?: false }
 
-    fun getFloatingSwitcherEnabledSync(): Boolean = syncPrefs.getBoolean("is_floating_switcher_enabled", true)
+    fun getFloatingSwitcherEnabledSync(): Boolean = syncPrefs.getBoolean("is_floating_switcher_enabled", false)
 
     suspend fun saveFloatingSwitcherEnabled(enabled: Boolean) {
         syncPrefs.edit().putBoolean("is_floating_switcher_enabled", enabled).apply()
