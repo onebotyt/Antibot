@@ -647,7 +647,7 @@ object LocalIntelligenceEngine {
         )
     }
 
-    private fun handlePortAndProcessInspector(trimmed: String, lower: String, projectDir: File, context: Context, startTime: Long): LocalEngineResult? {
+    private suspend fun handlePortAndProcessInspector(trimmed: String, lower: String, projectDir: File, context: Context, startTime: Long): LocalEngineResult? {
         val isPortRequest = lower.contains("check port") || lower.contains("open port") ||
                 lower.contains("what port") || lower.contains("ports open") ||
                 lower.startsWith("kill port") || lower.contains("running port")
