@@ -1,6 +1,6 @@
 {
-  "version_code": 153,
-  "version_name": "1.0.33",
+  "version_code": 154,
+  "version_name": "1.0.34",
   "min_supported_version_code": 1,
   "changelog": [
     "Cleaned Up Model Selector: Removed non-existent models and expander buttons; all real cloud models from server directly listed alongside Qwen 2.5 Coder with clear [Local] and [Cloud] badges",
