@@ -68,11 +68,6 @@ object LocalIntelligenceEngine {
             )
         }
 
-        // 1.6. Natural Task & Reminder Creation (Smart-To-Do integration)
-        if (lower.startsWith("remind me ") || lower.startsWith("create task ") || lower.startsWith("add task ") || lower.startsWith("todo ")) {
-            return@withContext handleNaturalTaskCreation(context, trimmed, lower, startTime)
-        }
-
         // 2. Dev Server Start / Launch requests
         if (isDevServerRequest(lower)) {
             return@withContext handleDevServerRequest(projectDir, context, startTime)
@@ -401,14 +396,15 @@ object LocalIntelligenceEngine {
                 )
             }
 
-            val maxBytes = 65536L // 64 KB limit
-            val isTruncated = file.length() > maxBytes
+            val maxChars = 32768 // 32K chars limit (~64KB)
+            val isTruncated = file.length() > (maxChars * 2)
             val textContent = try {
-                if (isTruncated) {
-                    file.inputStream().use { it.bufferedReader().readText().take(maxBytes.toInt()) } + "\n... [Truncated at 64 KB]"
-                } else {
-                    file.readText()
-                }
+                val chars = CharArray(maxChars)
+                val read = file.reader().use { it.read(chars, 0, maxChars) }
+                if (read > 0) {
+                    val s = String(chars, 0, read)
+                    if (isTruncated) s + "\n... [Truncated at 32 KB for performance]" else s
+                } else ""
             } catch (e: Exception) {
                 "Error reading file: ${e.message}"
             }
@@ -2704,40 +2700,6 @@ object LocalIntelligenceEngine {
         if (kb < 1024) return "%.1f KB".format(kb)
         val mb = kb / 1024.0
         return "%.1f MB".format(mb)
-    }
-
-    private suspend fun handleNaturalTaskCreation(context: Context, trimmed: String, lower: String, startTime: Long): LocalEngineResult {
-        val repo = com.example.gemini.assistant.tasks.SmartTaskRepository(context)
-        val taskBody = trimmed.removePrefix("remind me to ")
-            .removePrefix("remind me ")
-            .removePrefix("create task: ")
-            .removePrefix("create task ")
-            .removePrefix("add task: ")
-            .removePrefix("add task ")
-            .removePrefix("todo: ")
-            .removePrefix("todo ")
-            .trim()
-
-        val dueAt = if (lower.contains("tomorrow")) System.currentTimeMillis() + 86400000L else null
-        val task = repo.createTask(
-            title = taskBody.ifBlank { "Untitled Task" },
-            notes = "Created via AntiBot Assistant",
-            dueAt = dueAt
-        )
-
-        return LocalEngineResult(
-            thoughtText = "Created Smart Task in local SQLite repository with offline sync tracking.",
-            content = """
-            ### 📋 Smart Task Created
-
-            - **Task:** ${task.displayHeadline}
-            - **Status:** Pending · Saved to local database
-            - **Sync:** Revisions tracked for cross-device sync
-
-            *You can view, edit, or check off your tasks in the **Smart Tasks** panel.*
-            """.trimIndent(),
-            durationMs = System.currentTimeMillis() - startTime
-        )
     }
 
     private fun getLanguageForExtension(ext: String): String {

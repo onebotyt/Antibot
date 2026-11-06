@@ -42,7 +42,6 @@ import com.example.gemini.assistant.overlay.AssistantToolType
 import com.example.gemini.assistant.overlay.MultiToolBubblePalette
 import com.example.gemini.assistant.overlay.ScreenDrawCanvasOverlay
 import com.example.gemini.assistant.share.UniversalShareDialog
-import com.example.gemini.assistant.tasks.SmartTaskPanel
 import com.example.gemini.assistant.vision.AntiBotAccessibilityService
 import com.example.gemini.assistant.voice.FloatingCaptionOverlay
 import com.example.gemini.assistant.voice.HumanVoiceEngine
@@ -60,7 +59,6 @@ enum class AssistantWindowMode {
     PALETTE,
     WORKSPACE,
     DRAW_SCREEN,
-    SMART_TASKS,
     SHARE,
     DEVICE_ACTIONS
 }
@@ -173,9 +171,6 @@ fun FloatingAssistantHost(
                                         assistantMode = AssistantWindowMode.WORKSPACE
                                     }
                                 }
-                                AssistantToolType.SMART_TASKS -> {
-                                    assistantMode = AssistantWindowMode.SMART_TASKS
-                                }
                                 AssistantToolType.DEVICE_ACTIONS -> {
                                     assistantMode = AssistantWindowMode.DEVICE_ACTIONS
                                 }
@@ -205,40 +200,6 @@ fun FloatingAssistantHost(
                         assistantMode = AssistantWindowMode.WORKSPACE
                     }
                 )
-            }
-
-            AssistantWindowMode.SMART_TASKS -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { assistantMode = AssistantWindowMode.PALETTE }
-                        )
-                        .padding(12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.background,
-                        tonalElevation = 8.dp,
-                        shadowElevation = 20.dp,
-                        modifier = Modifier
-                            .fillMaxWidth(0.96f)
-                            .fillMaxHeight(0.88f)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {}
-                            )
-                    ) {
-                        SmartTaskPanel(
-                            onClose = { assistantMode = AssistantWindowMode.PALETTE }
-                        )
-                    }
-                }
             }
 
             AssistantWindowMode.SHARE -> {

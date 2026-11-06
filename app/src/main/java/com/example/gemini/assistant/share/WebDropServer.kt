@@ -208,7 +208,7 @@ class WebDropServer private constructor(private val appContext: Context) {
     private fun serveWebPortal(output: OutputStream) {
         val itemsHtml = StringBuilder()
         if (sharedItems.isEmpty()) {
-            itemsHtml.append("<div class='empty'>No shared files yet. Select files or tasks in AntiBot to share them here.</div>")
+            itemsHtml.append("<div class='empty'>No shared files yet. Select files in AntiBot to share them here.</div>")
         } else {
             for (item in sharedItems.values) {
                 val sizeFormatted = formatFileSize(item.sizeBytes)

@@ -28,7 +28,6 @@ import com.example.gemini.theme.ClaudeTerracotta
 enum class AssistantToolType {
     DRAW_SCREEN,
     READ_SCREEN,
-    SMART_TASKS,
     DEVICE_ACTIONS,
     UNIVERSAL_SHARE,
     CHAT_WINDOW,
@@ -66,13 +65,6 @@ fun MultiToolBubblePalette(
                 subtitle = "Extract text & summarize",
                 icon = Icons.Default.Visibility,
                 iconColor = Color(0xFF10B981)
-            ),
-            PaletteToolItem(
-                type = AssistantToolType.SMART_TASKS,
-                title = "Smart Tasks & Notes",
-                subtitle = "To-Do list & alarm reminders",
-                icon = Icons.Default.Checklist,
-                iconColor = ClaudeTerracotta
             ),
             PaletteToolItem(
                 type = AssistantToolType.DEVICE_ACTIONS,

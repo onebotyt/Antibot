@@ -21,7 +21,6 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
@@ -318,10 +317,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Smart Tasks Reminder Receiver -->
-        <receiver
-            android:name="com.example.gemini.assistant.tasks.SmartTaskReminderReceiver"
-            android:exported="false" />
 
         <!-- AntiBot Smart Assistant Accessibility Service -->
         <service
