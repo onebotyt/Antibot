@@ -1,9 +1,10 @@
 {
-  "version_code": 140,
-  "version_name": "1.0.20",
+  "version_code": 141,
+  "version_name": "1.0.21",
   "min_supported_version_code": 1,
   "changelog": [
-    "Restored full-screen 350MB Linux environment & rootfs installer screen on initial setup with skip support",
+    "Permanent release signing keystore committed to fix package conflicts on future updates",
+    "Restored full-screen 350MB Linux environment & rootfs installer screen on setup",
     "Added live server supervisor PTY terminal output logs dialog",
     "Added WebSocket monitor & Termux Go daemon streaming logs dialog",
     "Added direct diagnostics & installer triggers in Standby prompt card, Chat Drawer, Top-Bar indicator, and Settings"

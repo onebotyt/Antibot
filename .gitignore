@@ -13,9 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
-*.jks
 *.keystore
-release.jks
+!app/release.jks
 
 # Go Daemon & Bridge Build Outputs
 server/bin/
