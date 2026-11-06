@@ -1,6 +1,6 @@
 {
-  "version_code": 142,
-  "version_name": "1.0.22",
+  "version_code": 143,
+  "version_name": "1.0.23",
   "min_supported_version_code": 1,
   "changelog": [
     "Fixed dynamic linker LD_LIBRARY_PATH for bash and shell verification test",
