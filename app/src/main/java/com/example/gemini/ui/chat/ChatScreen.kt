@@ -885,6 +885,19 @@ fun ChatScreen(
                     viewModel.startNewChat()
                     scope.launch { drawerState.close() }
                 },
+                onNewChatWithAgent = { agent ->
+                    val currentId = currentConv?.id
+                    if (!currentId.isNullOrBlank() && feedItems.isNotEmpty()) {
+                        ConversationScrollCache.save(currentId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, isAtBottom)
+                    }
+                    conversationBackStack.clear()
+                    viewModel.setNewChatAgent(agent)
+                    viewModel.startNewChat(agent)
+                    if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                        viewModel.selectModel("local-model-only")
+                    }
+                    scope.launch { drawerState.close() }
+                },
                 onDeleteConversation = { id ->
                     ConversationScrollCache.clear(id)
                     conversationBackStack.removeAll { it.equals(id, ignoreCase = true) }
@@ -1281,7 +1294,13 @@ fun ChatScreen(
                                 if (isFreshNewChat) {
                                     com.example.gemini.ui.components.AgentPicker(
                                         selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = { viewModel.setNewChatAgent(it) },
+                                        onSelect = { agent ->
+                                            viewModel.setNewChatAgent(agent)
+                                            viewModel.startNewChat(agent)
+                                            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                                                viewModel.selectModel("local-model-only")
+                                            }
+                                        },
                                         modifier = Modifier.padding(bottom = 20.dp),
                                         agents = enabledAgents,
                                         statusColors = agentEntries.associate { it.agent to it.color }
@@ -1289,7 +1308,11 @@ fun ChatScreen(
                                 }
                                 com.example.gemini.ui.components.ServerStoppedPromptCard(
                                     onStartServer = { com.example.gemini.data.local.LocalServerManager.startServer(context, forceRestart = true) },
-                                    onSwitchToLocal = { viewModel.setNewChatAgent(com.example.gemini.domain.model.AgentKind.LOCAL) }
+                                    onSwitchToLocal = {
+                                        viewModel.setNewChatAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
+                                        viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.LOCAL)
+                                        viewModel.selectModel("local-model-only")
+                                    }
                                 )
                             }
                         }
@@ -1366,7 +1389,13 @@ fun ChatScreen(
                                 if (isFreshNewChat) {
                                     com.example.gemini.ui.components.AgentPicker(
                                         selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = { viewModel.setNewChatAgent(it) },
+                                        onSelect = { agent ->
+                                            viewModel.setNewChatAgent(agent)
+                                            viewModel.startNewChat(agent)
+                                            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                                                viewModel.selectModel("local-model-only")
+                                            }
+                                        },
                                         modifier = Modifier.padding(bottom = 20.dp),
                                         agents = enabledAgents,
                                         statusColors = agentEntries.associate { it.agent to it.color }

@@ -97,6 +97,7 @@ fun ChatHistoryDrawer(
     onRetry: () -> Unit = {},
     onSelectConversation: (String) -> Unit,
     onNewChat: () -> Unit,
+    onNewChatWithAgent: ((com.example.gemini.domain.model.AgentKind) -> Unit)? = null,
     onDeleteConversation: (String) -> Unit,
     onForkConversation: (String) -> Unit = {},
     onTerminateInstance: (String) -> Unit = {},
@@ -602,7 +603,7 @@ fun ChatHistoryDrawer(
                     color = AntiBotCyan.copy(alpha = 0.15f)
                 ) {
                     Text(
-                        text = "v1.0.21",
+                        text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = AntiBotCyan,
@@ -948,7 +949,11 @@ fun ChatHistoryDrawer(
                                 OutlinedButton(
                                     onClick = {
                                         agentFilter = com.example.gemini.domain.model.AgentKind.LOCAL
-                                        onNewChat()
+                                        if (onNewChatWithAgent != null) {
+                                            onNewChatWithAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
+                                        } else {
+                                            onNewChat()
+                                        }
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)

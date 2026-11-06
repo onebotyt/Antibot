@@ -305,10 +305,11 @@ class AgyChatBackend(
                     status = com.example.gemini.data.remote.AgyHubClient.AgyAuthStatus.OFFLINE,
                     isOffline = true
                 )
-                // Retain current auth state; only clear the isChecking flag on network/RPC failure
+                // Retain current auth state; clear the isChecking flag on network/RPC failure
                 agyBridgeService.updateAuthChecking(false)
+                _isAuthBusy.value = false
                 if (userInitiated) {
-                    _authFeedbackMessage.tryEmit("Unable to reach server.")
+                    _authFeedbackMessage.tryEmit("Unable to reach Antigravity server.")
                 }
             }
         }
@@ -320,12 +321,25 @@ class AgyChatBackend(
             _authFeedbackMessage.tryEmit("Cannot sign in: no internet connection.")
             return
         }
+        val isHubOnline = agyBridgeService.isHubOnline || agyBridgeService.hubStatus.value.status == "online"
+
         _isAuthBusy.value = true
         agyBridgeService.updateAuthChecking(true)
         loginPollJob?.cancel()
 
         backendScope.launch {
             val hubUrl = AuthPreferences.currentHubUrl
+
+            // If hub is not yet ready, wait briefly or abort cleanly instead of hanging
+            if (!isHubOnline) {
+                val ready = agyBridgeService.awaitHubReady(timeoutMs = 4000L)
+                if (!ready) {
+                    _isAuthBusy.value = false
+                    agyBridgeService.updateAuthChecking(false)
+                    _authFeedbackMessage.tryEmit("Antigravity Hub is not running. Please start the engine or use the offline Local Model.")
+                    return@launch
+                }
+            }
 
             // Pre-check: if user is already authenticated, finish immediately!
             val preCheck = agyHubClient.fetchDetailedAuthInfo(hubUrl)
@@ -345,7 +359,8 @@ class AgyChatBackend(
             // 1. Poll for successful auth completion concurrently every 800ms
             loginPollJob = launch {
                 val startTime = System.currentTimeMillis()
-                while (isActive && System.currentTimeMillis() - startTime < 120_000) {
+                var consecutiveFailures = 0
+                while (isActive && System.currentTimeMillis() - startTime < 45_000) {
                     delay(800)
 
                     if (isNetworkConnected()) {
@@ -360,6 +375,11 @@ class AgyChatBackend(
                             _authFeedbackMessage.tryEmit("Signed in successfully!")
                             refreshQuotas(force = true)
                             break
+                        } else if (res.isFailure) {
+                            consecutiveFailures++
+                            if (consecutiveFailures >= 8 && !agyBridgeService.isHubOnline) {
+                                break
+                            }
                         }
                     }
                 }
@@ -370,7 +390,17 @@ class AgyChatBackend(
             // 2. Kick off login RPC on daemon (Login RPC opens browser / triggers auth flow)
             launch {
                 try {
-                    val authResult = agyHubClient.login(hubUrl).getOrNull()
+                    val loginRes = agyHubClient.login(hubUrl)
+                    if (loginRes.isFailure) {
+                        val err = loginRes.exceptionOrNull()?.message ?: "Login request failed"
+                        android.util.Log.e("ChatViewModel", "Login RPC failed: $err")
+                        loginPollJob?.cancel()
+                        _isAuthBusy.value = false
+                        agyBridgeService.updateAuthChecking(false)
+                        _authFeedbackMessage.tryEmit("Sign in error: $err")
+                        return@launch
+                    }
+                    val authResult = loginRes.getOrNull()
                     if (authResult != null && !authResult.has_valid_auth) {
                         val verificationUrl = authResult.ineligible?.verification_url?.takeIf { it.isNotBlank() }
                             ?: authResult.verification_required?.verification_url?.takeIf { it.isNotBlank() }
@@ -388,6 +418,10 @@ class AgyChatBackend(
                     }
                 } catch (e: Exception) {
                     android.util.Log.d("ChatViewModel", "Hub login RPC finished/interrupted: ${e.message}")
+                    loginPollJob?.cancel()
+                    _isAuthBusy.value = false
+                    agyBridgeService.updateAuthChecking(false)
+                    _authFeedbackMessage.tryEmit("Sign in error: ${e.message}")
                 }
             }
         }
