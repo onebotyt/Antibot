@@ -175,6 +175,12 @@ class AgyBridgeService(
     private val _loginUrlEvents = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 5)
     val loginUrlEvents: SharedFlow<String> = _loginUrlEvents.asSharedFlow()
 
+    val isHubOnline: Boolean
+        get() = _systemConnectionState.value.isHubOnline
+
+    val isBridgeOnline: Boolean
+        get() = _systemConnectionState.value.isBridgeOnline
+
     /**
      * Suspends until the IDE Bridge (:1234) is connected and online, or returns false on timeout.
      */
