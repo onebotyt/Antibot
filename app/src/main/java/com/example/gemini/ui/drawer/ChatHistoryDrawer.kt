@@ -32,8 +32,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Public
@@ -107,6 +110,10 @@ fun ChatHistoryDrawer(
     onLogout: () -> Unit = {},
     onCheckAuth: () -> Unit = {},
     onCancelLogin: () -> Unit = {},
+    onOpenServerLogs: () -> Unit = {},
+    onOpenDaemonLogs: () -> Unit = {},
+    onOpenInstaller: () -> Unit = {},
+    isEnvironmentInstalled: Boolean = true,
     isOpen: Boolean = false,
     /** Accounts of the enabled agents; replaces the Antigravity-only profile / sign-in button when set. */
     accountsButton: (@Composable () -> Unit)? = null,
@@ -924,20 +931,36 @@ fun ChatHistoryDrawer(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Text(
-                                text = "Antigravity Hub Offline",
+                                text = if (!isEnvironmentInstalled) "Linux Environment Missing" else "Antigravity Hub Offline",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = errorMessage ?: "Start the local server or switch to AntiBot Local Model.",
+                                text = if (!isEnvironmentInstalled)
+                                    "Install the 350MB Linux rootfs & tools to start the local server engine."
+                                else
+                                    errorMessage ?: "Start the local server or switch to AntiBot Local Model.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(12.dp))
+                            if (!isEnvironmentInstalled) {
+                                Button(
+                                    onClick = onOpenInstaller,
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Install Rootfs (350MB)", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
                                     onClick = onRetry,
@@ -959,6 +982,25 @@ fun ChatHistoryDrawer(
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text("Use Local Model", fontSize = 12.5.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(
+                                    onClick = onOpenServerLogs,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Server Logs", fontSize = 11.5.sp)
+                                }
+                                TextButton(
+                                    onClick = onOpenDaemonLogs,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Dns, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Socket Monitor", fontSize = 11.5.sp)
                                 }
                             }
                         }

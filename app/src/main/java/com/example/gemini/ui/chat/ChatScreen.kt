@@ -263,6 +263,7 @@ fun ChatScreen(
     var showLocalTerminalDialog by rememberSaveable { mutableStateOf(false) }
     var showLocalToolsInstallDialog by remember { mutableStateOf(false) }
     var showLocalServerOutputDialog by remember { mutableStateOf(false) }
+    var showDaemonLogsDialog by remember { mutableStateOf(false) }
     val serverStatus by com.example.gemini.data.local.LocalServerManager.status.collectAsState()
     val isLocalRunning = serverStatus is com.example.gemini.data.local.LocalServerStatus.Running
     val isLocalStarting = serverStatus is com.example.gemini.data.local.LocalServerStatus.Starting
@@ -928,6 +929,19 @@ fun ChatScreen(
                 onCancelLogin = {
                     viewModel.cancelAgyLogin()
                 },
+                onOpenServerLogs = {
+                    showLocalServerOutputDialog = true
+                    scope.launch { drawerState.close() }
+                },
+                onOpenDaemonLogs = {
+                    showDaemonLogsDialog = true
+                    scope.launch { drawerState.close() }
+                },
+                onOpenInstaller = {
+                    showLocalToolsInstallDialog = true
+                    scope.launch { drawerState.close() }
+                },
+                isEnvironmentInstalled = isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context),
                 onOpenSettings = {
                     showSettingsDialog = true
                     scope.launch { drawerState.close() }
@@ -1201,13 +1215,12 @@ fun ChatScreen(
                                 )
                             }
                         }
-                        if (isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context) || systemConnectionState.status != com.example.gemini.data.remote.SystemStatus.OFFLINE) {
-                            // Agent status indicators
-                            com.example.gemini.ui.agents.AgentStatusIndicator(
-                                entries = agentEntries,
-                                onOpenServerLogs = { showLocalServerOutputDialog = true }
-                            )
-                        }
+                        // Agent status indicators (always accessible for diagnostics and server logs)
+                        com.example.gemini.ui.agents.AgentStatusIndicator(
+                            entries = agentEntries,
+                            onOpenServerLogs = { showLocalServerOutputDialog = true },
+                            onOpenDaemonLogs = { showDaemonLogsDialog = true }
+                        )
                         IconButton(onClick = onNavigateToBrowser) {
                             Icon(
                                 imageVector = Icons.Outlined.Language,
@@ -1312,7 +1325,11 @@ fun ChatScreen(
                                         viewModel.setNewChatAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
                                         viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.LOCAL)
                                         viewModel.selectModel("local-model-only")
-                                    }
+                                    },
+                                    onOpenServerLogs = { showLocalServerOutputDialog = true },
+                                    onOpenDaemonLogs = { showDaemonLogsDialog = true },
+                                    onOpenInstaller = { showLocalToolsInstallDialog = true },
+                                    isEnvironmentInstalled = isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context)
                                 )
                             }
                         }
@@ -2612,6 +2629,13 @@ fun ChatScreen(
     if (showLocalServerOutputDialog) {
         com.example.gemini.ui.components.LocalServerOutputDialog(
             onDismiss = { showLocalServerOutputDialog = false }
+        )
+    }
+
+    // Termux Daemon WebSocket & Logs Dialog
+    if (showDaemonLogsDialog) {
+        com.example.gemini.ui.ide.DaemonLogsDialog(
+            onDismiss = { showDaemonLogsDialog = false }
         )
     }
 

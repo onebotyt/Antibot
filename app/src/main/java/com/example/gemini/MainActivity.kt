@@ -201,9 +201,9 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
-            var hasSkippedInstaller by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+            var hasSkippedInstaller by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
-            val showFullScreenInstaller = false
+            val showFullScreenInstaller = !isInstalledState && !hasSkippedInstaller
 
             GeminiTheme(themeMode = themeMode, darkTheme = useDarkTheme) {
                 Surface(

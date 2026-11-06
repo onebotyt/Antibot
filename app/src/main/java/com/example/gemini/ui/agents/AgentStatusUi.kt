@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.RocketLaunch
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.DropdownMenu
@@ -226,6 +227,7 @@ fun AgentActionPill(text: String, color: Color, onClick: () -> Unit) {
 fun AgentStatusIndicator(
     entries: List<AgentStatusEntry>,
     onOpenServerLogs: () -> Unit,
+    onOpenDaemonLogs: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var open by remember { mutableStateOf(false) }
@@ -279,6 +281,23 @@ fun AgentStatusIndicator(
                 Spacer(Modifier.width(10.dp))
                 Text("Server logs", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+            }
+            if (onOpenDaemonLogs != null) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            open = false
+                            onOpenDaemonLogs()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.Dns, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Socket & daemon monitor", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+                }
             }
         }
     }

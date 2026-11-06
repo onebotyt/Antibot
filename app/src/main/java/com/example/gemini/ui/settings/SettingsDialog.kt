@@ -1899,6 +1899,9 @@ private fun ServersSubScreen(
 
     var showRestartDialog by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
+    var showServerLogsDialog by remember { mutableStateOf(false) }
+    var showDaemonLogsDialog by remember { mutableStateOf(false) }
+    var showInstallerDialog by remember { mutableStateOf(false) }
 
     val hasUnsavedChanges = remember(sharedHost, hubPort, bridgePort, bridgeBinPath, agyBinPath, securityToken) {
         sharedHost.trim() != initialSharedHost.trim() ||
@@ -2026,6 +2029,25 @@ private fun ServersSubScreen(
         )
     }
 
+    if (showServerLogsDialog) {
+        com.example.gemini.ui.components.LocalServerOutputDialog(
+            onDismiss = { showServerLogsDialog = false }
+        )
+    }
+
+    if (showDaemonLogsDialog) {
+        com.example.gemini.ui.ide.DaemonLogsDialog(
+            onDismiss = { showDaemonLogsDialog = false }
+        )
+    }
+
+    if (showInstallerDialog) {
+        com.example.gemini.ui.settings.LocalToolsInstallDialog(
+            authPreferences = authPrefs,
+            onDismiss = { showInstallerDialog = false }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2033,6 +2055,137 @@ private fun ServersSubScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Server Supervisor & Live Diagnostics Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = cardBg),
+            border = cardBorder
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Outlined.Terminal, contentDescription = null, tint = AntiBotCyan, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Server Supervisor & Diagnostics", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(text = "Live supervisor output logs, WebSocket monitor & rootfs setup", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                val isInstalled = remember { com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context) }
+                val supervisorStatus by com.example.gemini.data.local.LocalServerManager.status.collectAsState()
+                val daemonStatus by com.example.gemini.data.daemon.TermuxDaemonManager.status.collectAsState()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Supervisor chip
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ) {
+                        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (supervisorStatus is com.example.gemini.data.local.LocalServerStatus.Running) QuotaGreen else if (supervisorStatus is com.example.gemini.data.local.LocalServerStatus.Starting) ClaudeTerracotta else Color.Red)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Supervisor: ${if (supervisorStatus is com.example.gemini.data.local.LocalServerStatus.Running) "Running" else if (supervisorStatus is com.example.gemini.data.local.LocalServerStatus.Starting) "Starting" else "Stopped"}",
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // Daemon chip
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ) {
+                        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (daemonStatus == com.example.gemini.data.daemon.DaemonStatus.RUNNING) QuotaGreen else Color.Red)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Socket: ${daemonStatus.name}",
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Actions: Terminal Logs & Socket Monitor
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { showServerLogsDialog = true },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ) {
+                        Icon(imageVector = Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Server Logs", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = { showDaemonLogsDialog = true },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ) {
+                        Icon(imageVector = Icons.Outlined.Dns, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Socket Monitor", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            com.example.gemini.data.local.LocalServerManager.startServer(context, forceRestart = true)
+                            saveFeedback = "Restarting local server supervisor..."
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(imageVector = Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Restart Server", fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = { showInstallerDialog = true },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isInstalled) AntiBotCyan else ClaudeTerracotta),
+                        border = BorderStroke(1.dp, if (isInstalled) AntiBotCyan.copy(alpha = 0.5f) else ClaudeTerracotta)
+                    ) {
+                        Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isInstalled) "Manage Rootfs" else "Install (350MB)", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
         // Unified Server Endpoints (Shared Host & Individual Ports)
         Card(
             modifier = Modifier.fillMaxWidth(),

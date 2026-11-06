@@ -1,13 +1,12 @@
 {
-  "version_code": 139,
-  "version_name": "1.0.19",
+  "version_code": 140,
+  "version_name": "1.0.20",
   "min_supported_version_code": 1,
   "changelog": [
-    "Rebranded to AntiBot v1.0.21 with Cyber Cyan AI UI and versioned app label",
-    "Isolated all ports (2234/2235/9765) and intents to completely avoid collision with AntiGem",
-    "Bypassed blocking first-launch rootfs download for immediate offline chat",
-    "AntiBot Local Model (Offline \u00b7 0 Tokens) ready out of the box",
-    "New AntiBot Studio header and modern standby controls"
+    "Restored full-screen 350MB Linux environment & rootfs installer screen on initial setup with skip support",
+    "Added live server supervisor PTY terminal output logs dialog",
+    "Added WebSocket monitor & Termux Go daemon streaming logs dialog",
+    "Added direct diagnostics & installer triggers in Standby prompt card, Chat Drawer, Top-Bar indicator, and Settings"
   ],
   "is_critical": false
 }

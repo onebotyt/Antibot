@@ -27,7 +27,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.outlined.Dns
 import com.example.gemini.theme.AntiBotCyan
+import com.example.gemini.theme.ClaudeTerracotta
 
 @Composable
 fun EngineWarmingUpView(
@@ -537,7 +540,11 @@ fun NewChatCheckingAuthPromptCard(
 fun ServerStoppedPromptCard(
     modifier: Modifier = Modifier,
     onStartServer: () -> Unit = {},
-    onSwitchToLocal: () -> Unit = {}
+    onSwitchToLocal: () -> Unit = {},
+    onOpenServerLogs: () -> Unit = {},
+    onOpenDaemonLogs: () -> Unit = {},
+    onOpenInstaller: () -> Unit = {},
+    isEnvironmentInstalled: Boolean = true
 ) {
     Column(
         modifier = modifier
@@ -550,13 +557,13 @@ fun ServerStoppedPromptCard(
             modifier = Modifier
                 .size(68.dp)
                 .clip(CircleShape)
-                .background(AntiBotCyan.copy(alpha = 0.12f)),
+                .background(if (!isEnvironmentInstalled) ClaudeTerracotta.copy(alpha = 0.12f) else AntiBotCyan.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Outlined.PowerSettingsNew,
+                imageVector = if (!isEnvironmentInstalled) Icons.Default.Download else Icons.Outlined.PowerSettingsNew,
                 contentDescription = null,
-                tint = AntiBotCyan,
+                tint = if (!isEnvironmentInstalled) ClaudeTerracotta else AntiBotCyan,
                 modifier = Modifier.size(32.dp)
             )
         }
@@ -564,7 +571,7 @@ fun ServerStoppedPromptCard(
         Spacer(modifier = Modifier.height(18.dp))
 
         Text(
-            text = "AntiBot Engine Standby",
+            text = if (!isEnvironmentInstalled) "Linux Environment Required" else "AntiBot Engine Standby",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -574,7 +581,10 @@ fun ServerStoppedPromptCard(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "The background engine is paused. You can start the engine for full tools, or chat immediately using AntiBot Local Model (Offline · 0 Tokens).",
+            text = if (!isEnvironmentInstalled)
+                "The 350MB Linux environment has not been installed yet. Install it to start the local engine, or chat immediately using AntiBot Local Model (Offline · 0 Tokens)."
+            else
+                "The background engine is paused. You can start the engine for full tools, or chat immediately using AntiBot Local Model (Offline · 0 Tokens).",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             textAlign = TextAlign.Center,
@@ -583,18 +593,34 @@ fun ServerStoppedPromptCard(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Button(
-            onClick = onStartServer,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AntiBotCyan,
-                contentColor = Color.Black
-            ),
-            modifier = Modifier.fillMaxWidth(0.85f)
-        ) {
-            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Start AntiBot Engine", fontWeight = FontWeight.SemiBold)
+        if (!isEnvironmentInstalled) {
+            Button(
+                onClick = onOpenInstaller,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AntiBotCyan,
+                    contentColor = Color.Black
+                ),
+                modifier = Modifier.fillMaxWidth(0.85f)
+            ) {
+                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Install Linux Tools (350MB)", fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Button(
+                onClick = onStartServer,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AntiBotCyan,
+                    contentColor = Color.Black
+                ),
+                modifier = Modifier.fillMaxWidth(0.85f)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Start AntiBot Engine", fontWeight = FontWeight.SemiBold)
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -611,6 +637,43 @@ fun ServerStoppedPromptCard(
             Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("Use Offline Local Model (0 Tokens)", fontWeight = FontWeight.Medium)
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Diagnostic action row: Server Logs & Socket Monitor
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onOpenServerLogs,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Server Logs", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            TextButton(
+                onClick = onOpenDaemonLogs,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Outlined.Dns, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Socket Monitor", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            if (isEnvironmentInstalled) {
+                TextButton(
+                    onClick = onOpenInstaller,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Reinstall Tools", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }
