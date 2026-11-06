@@ -1537,8 +1537,8 @@ object LocalEnvironmentManager {
                     if (symlinksFromTxt.isNotEmpty()) {
                         log("Creating ${symlinksFromTxt.size} symlinks from SYMLINKS.txt...")
                         for ((rawTarget, linkRelPath) in symlinksFromTxt) {
+                            var target = rawTarget
                             try {
-                                var target = rawTarget
                                 if (target.contains("/com.antigem/files/") || target.contains("/com.termux/files/")) {
                                     target = target
                                         .replace("/data/data/com.antigem/files/", "${appContext.filesDir.absolutePath}/")
