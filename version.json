@@ -1,6 +1,6 @@
 {
-  "version_code": 145,
-  "version_name": "1.0.25",
+  "version_code": 146,
+  "version_name": "1.0.26",
   "min_supported_version_code": 1,
   "changelog": [
     "Redesigned UI/UX with Modern Minimal Studio layout, clean top bar, and bottom Studio Navigation Dock (Chat, IDE, Terminal, Browser, Notes)",
