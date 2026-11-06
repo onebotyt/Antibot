@@ -595,6 +595,18 @@ object LocalIntelligenceEngine {
         }
 
         val content = when (domain) {
+            com.example.gemini.domain.model.LocalCodingDomain.DEV_TEAM -> """
+            ### 👥 Hello! I'm AntiBot Autonomous Dev Team
+            **3 Specialized AI Models in One Pipeline · 100% On-Device · 0 Tokens**
+            
+            I orchestrate a collaborative multi-model development pipeline right on your phone:
+            - **Backend Architect:** Generates REST APIs, database schemas, and server configurations.
+            - **Frontend UI/UX Expert:** Crafts responsive layouts, modern web storefronts, or Jetpack Compose screens.
+            - **Cybersecurity Specialist:** Audits all code for vulnerabilities (XSS, Injection, Auth flaws) and applies hardening fixes.
+            
+            *Execution Mode can be configured between Sequential (Memory-efficient, <500MB) and Parallel (Ultra-fast concurrent execution).*
+            """.trimIndent()
+
             com.example.gemini.domain.model.LocalCodingDomain.BACKEND -> """
             ### 🛠️ Hello! I'm AntiBot Backend Architect
             **100% On-Device · 0 Tokens · Specialized for Server & Data Engineering**
@@ -1302,8 +1314,9 @@ object LocalIntelligenceEngine {
         val toolCall = ToolCall(
             id = UUID.randomUUID().toString(),
             name = "inbuilt_browser_search",
-            type = ToolType.WEB_SEARCH,
-            arguments = mapOf("query" to query),
+            toolType = ToolType.SEARCH_WEB,
+            command = "search: $query",
+            status = "SUCCESS",
             output = "Found ${searchResult.size} web search results from Inbuilt Browser."
         )
 
