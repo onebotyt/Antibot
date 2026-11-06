@@ -356,8 +356,10 @@ fun DeviceQuickActionsDialog(
                     icon = Icons.Default.Sms,
                     title = "Send SMS Message",
                     onClick = {
-                        DeviceActionDispatcher.sendSms(context, "", "")
-                        onDismiss()
+                        scope.launch {
+                            DeviceActionDispatcher.sendSms(context, "", "")
+                            onDismiss()
+                        }
                     }
                 )
             }
