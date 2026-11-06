@@ -1,13 +1,12 @@
 {
-  "version_code": 143,
-  "version_name": "1.0.23",
+  "version_code": 144,
+  "version_name": "1.0.24",
   "min_supported_version_code": 1,
   "changelog": [
-    "Fixed dynamic linker LD_LIBRARY_PATH for bash and shell verification test",
-    "Resolved library linking for AntiBot package namespace and native Termux ELF binaries",
-    "Added automatic path rewrites for legacy symlinks and script shebangs",
-    "Applied recursive execute and read permissions to usr/bin and usr/lib shared libraries",
-    "Added resilient verification fallback and preserved rootfs on verification retries"
+    "Resolved port 2234 'address already in use' with SO_REUSEADDR, SO_REUSEPORT, and stale process cleanup",
+    "Configured server runner PTY with execShellAfterCommand=false to prevent false running state on server exit",
+    "Enhanced Retry button in Chat drawer to automatically start local server when stopped",
+    "Injected PREFIX and LD_LIBRARY_PATH into Hub manager environment for Termux binary compatibility"
   ],
   "is_critical": false
 }

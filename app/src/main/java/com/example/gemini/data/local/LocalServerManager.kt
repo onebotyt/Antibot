@@ -279,6 +279,11 @@ object LocalServerManager {
             }
         }
 
+        try {
+            Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '")).waitFor()
+        } catch (_: Exception) {
+        }
+
         _serverSession.value = null
         _status.value = LocalServerStatus.Stopped(exitCode = 0)
     }
@@ -354,10 +359,18 @@ object LocalServerManager {
         if (existingSession != null && !existingSession.isExited.value) {
             Log.d(TAG, "[ServerManager] Reusing active persistent terminal session to launch: $command")
             existingSession.write("\u0003")
-            delay(150)
+            delay(200)
+            existingSession.write("pkill -9 -f agy_ide_bridge; pkill -9 -f 'agy '\n")
+            delay(300)
             existingSession.write("cd \$HOME && $command\n")
             _status.value = LocalServerStatus.Running()
             return
+        }
+
+        withContext(Dispatchers.IO) {
+            try {
+                Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f 'agy '")).waitFor()
+            } catch (_: Exception) {}
         }
 
         Log.d(
@@ -372,6 +385,8 @@ object LocalServerManager {
                 context = appContext,
                 isSsh = false,
                 initialCommand = command,
+                execShellAfterCommand = false,
+                forceShell = "bash",
                 initialCols = 80,
                 initialRows = 24
             )
@@ -423,12 +438,17 @@ object LocalServerManager {
             }
         }
 
-        // 3. Send pkill to terminate any child tree processes (agy daemon, child node processes)
+        // 3. Send pkill to terminate any child tree processes (agy daemon, child node processes, bridge)
         if (session != null && !session.isExited.value) {
             try {
-                session.write("pkill -f gemini-server; pkill -f 'server -f'; pkill -f 'agy '\n")
+                session.write("pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '\n")
             } catch (_: Exception) {
             }
+        }
+        withContext(Dispatchers.IO) {
+            try {
+                Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '")).waitFor()
+            } catch (_: Exception) {}
         }
 
         // 4. Wait for SystemConnectionState to transition to Offline

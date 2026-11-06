@@ -782,6 +782,12 @@ class AgyChatBackend(
             _isLoadingConversation.value = true
         }
         _isReconnecting.value = true
+        if (com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(application)) {
+            val s = com.example.gemini.data.local.LocalServerManager.status.value
+            if (s !is com.example.gemini.data.local.LocalServerStatus.Running) {
+                com.example.gemini.data.local.LocalServerManager.startServer(application, forceRestart = false)
+            }
+        }
         syncAgyConversations(force = true)
         val convId = conv?.id
         if (!convId.isNullOrBlank() && isExistingConv) {

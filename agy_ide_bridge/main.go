@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"runtime/debug"
 	"strconv"
@@ -494,8 +496,44 @@ func main() {
 		}
 	}
 
+	var listener net.Listener
+	var listenErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		lc := net.ListenConfig{
+			Control: func(network, address string, c syscall.RawConn) error {
+				var opErr error
+				err := c.Control(func(fd uintptr) {
+					opErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+					if opErr == nil {
+						_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, 0xf /* SO_REUSEPORT */, 1)
+					}
+				})
+				if err != nil {
+					return err
+				}
+				return opErr
+			},
+		}
+		listener, listenErr = lc.Listen(context.Background(), "tcp", "0.0.0.0:"+cfg.Port)
+		if listenErr == nil {
+			break
+		}
+		if strings.Contains(listenErr.Error(), "address already in use") {
+			log.Printf("\033[1;33m[!] Port %s in use (attempt %d/5), clearing stale processes...\033[0m", cfg.Port, attempt)
+			myPid := os.Getpid()
+			cleanCmd := fmt.Sprintf("for pid in $(pgrep -f agy_ide_bridge 2>/dev/null); do if [ \"$pid\" != \"%d\" ]; then kill -9 \"$pid\" 2>/dev/null; fi; done; fuser -k %s/tcp 2>/dev/null", myPid, cfg.Port)
+			_ = exec.Command("sh", "-c", cleanCmd).Run()
+			time.Sleep(600 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	if listenErr != nil {
+		log.Fatalf("Server error: failed to bind 0.0.0.0:%s: %v", cfg.Port, listenErr)
+	}
+
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()

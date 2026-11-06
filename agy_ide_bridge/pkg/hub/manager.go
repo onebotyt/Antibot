@@ -470,13 +470,28 @@ func (m *HubManager) Start() error {
 	geminiBin := filepath.Join(home, ".gemini", "bin")
 	localBin := filepath.Join(home, ".local", "bin")
 	usrBin := filepath.Join(home, "..", "usr", "bin")
-	if prefix := os.Getenv("PREFIX"); prefix != "" {
+	prefix := os.Getenv("PREFIX")
+	if prefix != "" {
 		usrBin = filepath.Join(prefix, "bin")
+	} else if fi, err := os.Stat(filepath.Join(home, "..", "usr")); err == nil && fi.IsDir() {
+		prefix = filepath.Join(home, "..", "usr")
+	}
+
+	ldLib := os.Getenv("LD_LIBRARY_PATH")
+	if prefix != "" {
+		libDir := filepath.Join(prefix, "lib")
+		if ldLib == "" {
+			ldLib = libDir
+		} else if !strings.Contains(ldLib, libDir) {
+			ldLib = libDir + ":" + ldLib
+		}
 	}
 
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"USERPROFILE="+home,
+		"PREFIX="+prefix,
+		"LD_LIBRARY_PATH="+ldLib,
 		"PATH="+geminiBin+":"+localBin+":"+usrBin+":/usr/local/bin:/usr/bin:/bin:/system/bin:/system/xbin:"+os.Getenv("PATH"),
 		"AGY_ENABLE_HUB=1",
 		"ANTIGRAVITY_VSCODE_HOST=1",
