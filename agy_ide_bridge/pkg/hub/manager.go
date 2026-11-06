@@ -84,6 +84,22 @@ func FindAllAgyBinaries() []string {
 		rawCandidates = append(rawCandidates, p)
 	}
 
+	// Common Termux / Android application and SDCard locations
+	rawCandidates = append(rawCandidates,
+		"/data/data/com.termux/files/home/.local/bin/agy",
+		"/data/user/0/com.termux/files/home/.local/bin/agy",
+		"/data/data/com.termux/files/usr/bin/agy",
+		"/data/user/0/com.termux/files/usr/bin/agy",
+		"/data/data/com.antibot/files/home/.local/bin/agy",
+		"/data/user/0/com.antibot/files/home/.local/bin/agy",
+		"/data/data/com.antibot/files/usr/bin/agy",
+		"/data/user/0/com.antibot/files/usr/bin/agy",
+		"/sdcard/Download/agy",
+		"/sdcard/Download/Antibot/bin/agy",
+		"/sdcard/Download/Antigem/bin/agy",
+		"/data/local/tmp/agy",
+	)
+
 	seen := make(map[string]bool)
 	var results []string
 

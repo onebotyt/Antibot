@@ -199,15 +199,27 @@ object LocalServerManager {
         }
     }
 
+    private fun isBinaryAvailable(context: Context, path: String): Boolean {
+        if (path.isBlank()) return false
+        val homeDir = LocalEnvironmentManager.getHomeDir(context)
+        val candidate = when {
+            path.startsWith("~/") -> File(homeDir, path.removePrefix("~/"))
+            path.startsWith("~") -> File(homeDir, path.removePrefix("~"))
+            path.startsWith("/") -> File(path)
+            else -> File(homeDir, path)
+        }
+        return candidate.exists() && candidate.isFile
+    }
+
     private fun resolveServerCommand(context: Context): String? {
         val authPrefs = AuthPreferences(context)
         val binBridge = File(LocalEnvironmentManager.getBinDir(context), "agy_ide_bridge")
         val bridgeCmd = if (binBridge.exists()) {
             binBridge.absolutePath
         } else {
-            authPrefs.getAgyBridgeBinaryPathSync().trim().ifBlank { AuthPreferences.DEFAULT_BRIDGE_BINARY_PATH }
+            authPrefs.getAgyBridgeBinaryPathSync().trim().ifBlank { authPrefs.getDefaultBridgeBinaryPath() }
         }
-        val agyCmd = authPrefs.getAgyBinaryPathSync().trim().ifBlank { AuthPreferences.DEFAULT_AGY_BINARY_PATH }
+        val agyCmd = authPrefs.getAgyBinaryPathSync().trim()
 
         val token = authPrefs.getSecurityTokenSync()
         val bridgePort = try {
@@ -222,7 +234,10 @@ object LocalServerManager {
         }
         val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000
 
-        val binParam = if (agyCmd.isNotBlank()) {
+        // Only pass --bin if the binary actually exists on disk.
+        // If it doesn't exist yet, omit --bin so agy_ide_bridge can use auto-discovery
+        // and run gracefully without crashing.
+        val binParam = if (agyCmd.isNotBlank() && isBinaryAvailable(context, agyCmd)) {
             " --bin \"$agyCmd\""
         } else {
             ""
