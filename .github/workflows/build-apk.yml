@@ -59,6 +59,20 @@ jobs:
               out.write(f"tag_name=v{new_version_name}\n")
           EOF
 
+      - name: Ensure Project Keystore and Sync Repo
+        run: |
+          if [ ! -f app/release.jks ]; then
+            keytool -genkeypair -v -keystore app/release.jks -alias antibot -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=AntiBot, OU=Mobile, O=OneBot, L=Global, S=Global, C=US"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json app/release.jks || true
+          if ! git diff-index --quiet HEAD --; then
+            git commit -m "ci: sync version.json and keystore for v${{ steps.version.outputs.version_name }} [skip ci]" || true
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git push origin HEAD:${{ github.ref_name }} || true
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -102,6 +116,9 @@ jobs:
             - 📋 **Image Clipboard Paste**: Direct image pasting in chat bar.
             - 🚀 **Self-Learning Dev Server Runner**: Detects Node.js, Python, SQL, Rust, Go recipes with 0-token caching.
             - 🛡️ **Crash & OOM Fixes**: Chunked file streaming, Task Flight Recorder state recovery, and Claude Code stripped.
-          files: output/*.apk
+          files: |
+            output/*.apk
+            output/agy_ide_bridge*
+            version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

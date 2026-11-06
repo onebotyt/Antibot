@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +45,10 @@ fun AppUpdateDialog(
     val updateManager = remember { AppUpdateManager(context) }
 
     var downloadState by remember { mutableStateOf<DownloadState>(DownloadState.Idle) }
+    var isSyncingBridge by remember { mutableStateOf(false) }
+    var bridgeSyncProgress by remember { mutableStateOf(0f) }
+    var bridgeSyncResultText by remember { mutableStateOf<String?>(null) }
+    var isBridgeSyncError by remember { mutableStateOf(false) }
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -223,6 +228,118 @@ fun AppUpdateDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // In-App Daemon Sync (Update without installing new app)
+                val bridgeDownloadUrl = updateInfo.bridgeBinaryUrl ?: "https://github.com/onebotyt/Antibot/releases/download/v${updateInfo.versionName}/agy_ide_bridge"
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = surfaceVariantColor.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, onSurfaceColor.copy(alpha = 0.08f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00ACC1),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "In-App Daemon Sync",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFF00ACC1).copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "NO APK INSTALL",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00ACC1),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "Updates internal backend daemon, dev tools, and terminal/hub handlers directly in-place without reinstalling the app.",
+                            fontSize = 11.5.sp,
+                            color = onSurfaceVariantColor,
+                            lineHeight = 15.sp
+                        )
+
+                        if (bridgeSyncResultText != null) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isBridgeSyncError) QuotaRed.copy(alpha = 0.12f) else QuotaGreen.copy(alpha = 0.12f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = bridgeSyncResultText!!,
+                                    color = if (isBridgeSyncError) QuotaRed else QuotaGreen,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                isSyncingBridge = true
+                                isBridgeSyncError = false
+                                bridgeSyncResultText = null
+                                coroutineScope.launch {
+                                    val result = updateManager.updateBridgeBinary(bridgeDownloadUrl) { progress, _, _ ->
+                                        bridgeSyncProgress = progress
+                                    }
+                                    isSyncingBridge = false
+                                    result.onSuccess {
+                                        isBridgeSyncError = false
+                                        bridgeSyncResultText = "✅ Daemon updated to v${updateInfo.versionName} & restarted in-place!"
+                                    }.onFailure { err ->
+                                        isBridgeSyncError = true
+                                        bridgeSyncResultText = "⚠️ Sync failed: ${err.localizedMessage ?: err.message}"
+                                    }
+                                }
+                            },
+                            enabled = !isSyncingBridge && downloadState !is DownloadState.Downloading,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00ACC1))
+                        ) {
+                            if (isSyncingBridge) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Updating Daemon (${(bridgeSyncProgress * 100).toInt()}%)...", fontSize = 12.sp)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("⚡ Sync Daemon (No APK Install)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
                 // Download Progress & States
                 when (val state = downloadState) {
                     is DownloadState.Downloading -> {
@@ -393,7 +510,7 @@ fun AppUpdateDialog(
                                 is DownloadState.Downloading -> "Downloading..."
                                 is DownloadState.Completed -> "Install"
                                 is DownloadState.Error -> "Retry"
-                                else -> "Update"
+                                else -> "Update APK (In-Place)"
                             }
                             Icon(
                                 imageVector = if (downloadState is DownloadState.Completed) Icons.Rounded.InstallMobile else Icons.Rounded.Download,

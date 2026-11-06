@@ -44,10 +44,11 @@ else
     APKS_SRC="${ROOT_DIR}/app/build/outputs/apk"
     find "${APKS_SRC}/termux/debug" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" \;
     cp "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" "${OUTPUT_DIR}/antibot.apk" 2>/dev/null || true
+fi
 
-    if [[ -f "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" ]]; then
-        cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
-    fi
+if [[ -f "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" ]]; then
+    cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
+    cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge"
 fi
 
 echo ""

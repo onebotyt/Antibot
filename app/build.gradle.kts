@@ -34,7 +34,7 @@ android {
         create("release") {
             storeFile = file("release.jks")
             storePassword = "123456"
-            keyAlias = "antigem"
+            keyAlias = "antibot"
             keyPassword = "123456"
         }
     }
@@ -59,11 +59,16 @@ android {
 
     buildTypes {
         debug {
+            if (file("release.jks").exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (file("release.jks").exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

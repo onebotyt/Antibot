@@ -8342,6 +8342,7 @@ private fun AboutSubScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var isCheckingUpdate by remember { mutableStateOf(false) }
+    var isQuickSyncingDaemon by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var updateCheckResultText by remember { mutableStateOf<String?>(null) }
     var isUpdateCheckError by remember { mutableStateOf(false) }
@@ -8545,7 +8546,7 @@ private fun AboutSubScreen(
                 }
 
                 Text(
-                    text = "Checks GitHub releases for new versions and downloads the matching APK directly.",
+                    text = "Checks GitHub releases directly for new commits and updates. Supports in-app daemon sync (no APK install required) and in-place APK updates.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 16.sp
@@ -8578,55 +8579,115 @@ private fun AboutSubScreen(
                     }
                 }
 
-                Button(
-                    onClick = {
-                        if (!isCheckingUpdate) {
-                            isCheckingUpdate = true
-                            updateCheckResultText = null
-                            isUpdateCheckError = false
-                            coroutineScope.launch {
-                                val updateManager = AppUpdateManager(context)
-                                val checkResult = updateManager.checkForUpdates(forceCheck = true)
-                                isCheckingUpdate = false
-                                checkResult.onSuccess { info ->
-                                    if (info != null) {
-                                        updateInfo = info
-                                        updateCheckResultText = null
-                                    } else {
-                                        isUpdateCheckError = false
-                                        updateCheckResultText = "AntiBot is up to date (v${BuildConfig.VERSION_NAME})."
-                                        Toast.makeText(context, "AntiBot is up to date!", Toast.LENGTH_SHORT).show()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (!isCheckingUpdate && !isQuickSyncingDaemon) {
+                                isCheckingUpdate = true
+                                updateCheckResultText = null
+                                isUpdateCheckError = false
+                                coroutineScope.launch {
+                                    val updateManager = AppUpdateManager(context)
+                                    val checkResult = updateManager.checkForUpdates(forceCheck = true)
+                                    isCheckingUpdate = false
+                                    checkResult.onSuccess { info ->
+                                        if (info != null) {
+                                            updateInfo = info
+                                            updateCheckResultText = null
+                                        } else {
+                                            isUpdateCheckError = false
+                                            updateCheckResultText = "AntiBot is up to date (v${BuildConfig.VERSION_NAME})."
+                                            Toast.makeText(context, "AntiBot is up to date!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }.onFailure { err ->
+                                        isUpdateCheckError = true
+                                        val msg = err.localizedMessage ?: "Could not connect to GitHub"
+                                        updateCheckResultText = msg
+                                        Toast.makeText(context, "Update check failed: $msg", Toast.LENGTH_LONG).show()
                                     }
-                                }.onFailure { err ->
-                                    isUpdateCheckError = true
-                                    val msg = err.localizedMessage ?: "Could not connect to GitHub"
-                                    updateCheckResultText = msg
-                                    Toast.makeText(context, "Update check failed: $msg", Toast.LENGTH_LONG).show()
                                 }
                             }
+                        },
+                        enabled = !isCheckingUpdate && !isQuickSyncingDaemon,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Checking...", fontSize = 12.sp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Check Updates", fontSize = 12.sp)
                         }
-                    },
-                    enabled = !isCheckingUpdate,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
-                ) {
-                    if (isCheckingUpdate) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Checking GitHub...")
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Check for Updates")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (!isCheckingUpdate && !isQuickSyncingDaemon) {
+                                isQuickSyncingDaemon = true
+                                isUpdateCheckError = false
+                                updateCheckResultText = null
+                                coroutineScope.launch {
+                                    val updateManager = AppUpdateManager(context)
+                                    val checkResult = updateManager.checkForUpdates(forceCheck = true)
+                                    val info = checkResult.getOrNull()
+                                    val latestVer = info?.versionName ?: BuildConfig.VERSION_NAME
+                                    val bridgeUrl = info?.bridgeBinaryUrl
+                                        ?: "https://github.com/onebotyt/Antibot/releases/download/v$latestVer/agy_ide_bridge"
+
+                                    val syncResult = updateManager.updateBridgeBinary(bridgeUrl) { _, _, _ -> }
+                                    isQuickSyncingDaemon = false
+                                    syncResult.onSuccess {
+                                        refreshBridgeStatus()
+                                        isUpdateCheckError = false
+                                        updateCheckResultText = "✅ Daemon updated in-place from GitHub (v$latestVer) & restarted!"
+                                        Toast.makeText(context, "Daemon updated without APK install!", Toast.LENGTH_SHORT).show()
+                                    }.onFailure { err ->
+                                        isUpdateCheckError = true
+                                        val msg = err.localizedMessage ?: "Daemon sync failed"
+                                        updateCheckResultText = "⚠️ Daemon sync failed: $msg"
+                                        Toast.makeText(context, "Daemon sync failed", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isCheckingUpdate && !isQuickSyncingDaemon,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFF00ACC1).copy(alpha = 0.6f))
+                    ) {
+                        if (isQuickSyncingDaemon) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color(0xFF00ACC1),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Syncing...", fontSize = 12.sp, color = Color(0xFF00ACC1))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Color(0xFF00ACC1),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Sync Daemon", fontSize = 12.sp, color = Color(0xFF00ACC1))
+                        }
                     }
                 }
             }
