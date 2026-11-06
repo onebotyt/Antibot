@@ -698,6 +698,7 @@ private fun MainSettingsMenu(
             cardBorder = cardBorder,
             onClick = { onNavigate(SettingsSection.COMMANDS) }
         )
+        }
 
         SettingsGroupHeader("App", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), "General app settings")
         // Section 1: Appearance & Display
