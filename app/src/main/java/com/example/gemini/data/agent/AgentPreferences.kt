@@ -16,6 +16,7 @@ class AgentPreferences(context: Context) {
     val enabled: StateFlow<Set<AgentKind>> = _enabled.asStateFlow()
 
     private val _hasChosen = MutableStateFlow(prefs.getBoolean(KEY_CHOSEN, false))
+    val hasChosen: StateFlow<Boolean> = _hasChosen.asStateFlow()
     private val _newChatAgent = MutableStateFlow(
         runCatching { AgentKind.valueOf(prefs.getString(KEY_NEW_CHAT_AGENT, AgentKind.AGY.name)!!) }.getOrDefault(AgentKind.AGY)
     )
@@ -40,6 +41,7 @@ class AgentPreferences(context: Context) {
     companion object {
         private const val PREFS = "agent_prefs"
         private const val KEY_CHOSEN = "agents_chosen"
+        private const val KEY_NEW_CHAT_AGENT = "new_chat_agent"
 
         private fun key(agent: AgentKind) = "enabled_" + agent.name.lowercase()
 

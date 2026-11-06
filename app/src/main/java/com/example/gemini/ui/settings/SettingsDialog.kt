@@ -234,6 +234,7 @@ fun SettingsDialog(
     onToggleNetworkInspector: (Boolean) -> Unit = {},
     isFloatingNetworkInspectorEnabled: Boolean = false,
     onToggleFloatingNetworkInspector: (Boolean) -> Unit = {},
+    onOpenNetworkInspector: () -> Unit = {},
     enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
     isApplyingAgents: Boolean = false,
     onApplyAgents: (Set<com.example.gemini.domain.model.AgentKind>) -> Unit = {},
