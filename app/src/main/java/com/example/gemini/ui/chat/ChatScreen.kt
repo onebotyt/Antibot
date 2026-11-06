@@ -73,7 +73,6 @@ import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.MessageRole
 import com.example.gemini.domain.model.ToolType
 import com.example.gemini.domain.model.LocalCodingDomain
-import com.example.gemini.domain.model.LocalCodingModel
 import com.example.gemini.theme.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1225,7 +1224,7 @@ fun ChatScreen(
                             onOpenServerLogs = { showLocalServerOutputDialog = true },
                             onOpenDaemonLogs = { showDaemonLogsDialog = true }
                         )
-                        IconButton(onClick = onNewChat) {
+                        IconButton(onClick = { viewModel.startNewChat() }) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "New Chat",
@@ -3021,7 +3020,7 @@ fun AntiBotStudioHero(
                         )
                     }
                     Text(
-                        text = if (isLocalChat) "${domain.badge} · 0 Tokens (100% Offline)" else "Cloud Model · Online",
+                        text = if (isLocalChat) "${domain.tag} · 0 Tokens (100% Offline)" else "Cloud Model · Online",
                         fontSize = 11.sp,
                         color = if (isLocalChat) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )

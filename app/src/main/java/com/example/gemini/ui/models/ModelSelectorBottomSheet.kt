@@ -299,7 +299,7 @@ private fun MainCategoryListView(
 
         // Specialized Local Coding Domain Models
         com.example.gemini.domain.model.LocalCodingDomain.entries.forEach { domain ->
-            val isDomainActive = selectedModelId == domain.modelId
+            val isDomainActive = activeModel?.id == domain.modelId
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -664,6 +664,7 @@ private fun TieredModelGroupCard(
     val brandColor = when (group.family) {
         ModelFamily.CLAUDE -> ClaudeTerracotta
         ModelFamily.GEMINI -> GeminiBlue
+        ModelFamily.LOCAL -> Color(0xFF10B981)
         ModelFamily.OTHER -> MaterialTheme.colorScheme.primary
     }
 

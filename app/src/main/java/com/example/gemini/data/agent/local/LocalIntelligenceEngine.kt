@@ -1073,12 +1073,8 @@ object LocalIntelligenceEngine {
                           </div>
                         </div>
 
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          status === 'running' 
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                            : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${status === 'running' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                        <span className={"inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium " + (status === "running" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-800 text-slate-400")}>
+                          <span className={"h-1.5 w-1.5 rounded-full " + (status === "running" ? "bg-emerald-400 animate-pulse" : "bg-slate-500")} />
                           {status}
                         </span>
                       </div>
@@ -1137,14 +1133,14 @@ object LocalIntelligenceEngine {
                 ❌ **Vulnerable to SQL Injection:**
                 ```javascript
                 // DANGEROUS: String concatenation allows ' OR 1=1 --
-                const query = `SELECT * FROM users WHERE email = '${req.body.email}'`;
+                const query = "SELECT * FROM users WHERE email = '" + req.body.email + "'";
                 await db.query(query);
                 ```
 
                 ✅ **Secured with Parameterized Query:**
                 ```javascript
                 // SECURE: Database engine treats input purely as literal data
-                const query = `SELECT id, email, password_hash, role FROM users WHERE email = $1`;
+                const query = "SELECT id, email, password_hash, role FROM users WHERE email = $1";
                 const result = await db.query(query, [req.body.email]);
                 ```
                 """.trimIndent(),
