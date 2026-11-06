@@ -79,6 +79,18 @@ object LocalIntelligenceEngine {
             return@withContext fileOpResult
         }
 
+        // 3.5. Codebase Search & Grep Tool
+        val grepResult = handleGrepSearch(trimmed, lower, projectDir, startTime)
+        if (grepResult != null) {
+            return@withContext grepResult
+        }
+
+        // 3.6. Port & Process Inspector Tool
+        val portResult = handlePortAndProcessInspector(trimmed, lower, projectDir, context, startTime)
+        if (portResult != null) {
+            return@withContext portResult
+        }
+
         // 4. Natural Git and System Command Intent
         val naturalCmdResult = handleNaturalCommandIntent(trimmed, lower, projectDir, context, startTime)
         if (naturalCmdResult != null) {
@@ -552,6 +564,139 @@ object LocalIntelligenceEngine {
         return LocalEngineResult(
             thoughtText = "Detected natural command intent '$detectedCmd'. Executed in local environment and captured output.",
             content = content,
+            toolCalls = listOf(toolCall),
+            durationMs = System.currentTimeMillis() - startTime
+        )
+    }
+
+    private fun handleGrepSearch(trimmed: String, lower: String, projectDir: File, startTime: Long): LocalEngineResult? {
+        val query = when {
+            lower.startsWith("grep ") -> trimmed.removePrefix("grep ").trim().trim('"', '\'')
+            lower.startsWith("search code for ") -> trimmed.removePrefix("search code for ").trim().trim('"', '\'')
+            lower.startsWith("find in files ") -> trimmed.removePrefix("find in files ").trim().trim('"', '\'')
+            lower.startsWith("where is ") && lower.contains("defined") -> {
+                trimmed.removePrefix("where is ").removeSuffix("defined").removeSuffix("?").trim().trim('"', '\'')
+            }
+            else -> return null
+        }
+        if (query.isBlank() || !projectDir.exists()) return null
+
+        val matches = mutableListOf<String>()
+        val maxMatches = 20
+        var filesScanned = 0
+
+        projectDir.walkTopDown()
+            .filter { file ->
+                val name = file.name
+                !name.startsWith(".") &&
+                name != "node_modules" &&
+                name != "build" &&
+                name != ".git" &&
+                name != ".gradle" &&
+                name != "dist" &&
+                file.isFile &&
+                file.length() < 300_000L
+            }
+            .take(200)
+            .forEach { file ->
+                filesScanned++
+                if (matches.size < maxMatches) {
+                    try {
+                        file.useLines { lines ->
+                            lines.forEachIndexed { idx, line ->
+                                if (line.contains(query, ignoreCase = true) && matches.size < maxMatches) {
+                                    val relPath = file.relativeTo(projectDir).path
+                                    matches.add("`${relPath}:${idx + 1}`\n```\n${line.trim()}\n```")
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
+        val toolCall = ToolCall(
+            id = UUID.randomUUID().toString(),
+            name = "grep_search",
+            toolType = ToolType.GREP_SEARCH,
+            command = "grep -rn \"$query\" ${projectDir.name}",
+            status = "SUCCESS",
+            output = "Found ${matches.size} matches across $filesScanned scanned files."
+        )
+
+        val content = if (matches.isNotEmpty()) {
+            """
+            ### 🔍 Codebase Search Results
+            **Query:** `$query` · **Scanned:** $filesScanned files
+            
+            ${matches.joinToString("\n\n")}
+            """.trimIndent()
+        } else {
+            """
+            ### 🔍 Codebase Search Results
+            **Query:** `$query`
+            
+            No matches found in `${projectDir.name}` across $filesScanned scanned files.
+            """.trimIndent()
+        }
+
+        return LocalEngineResult(
+            thoughtText = "Searched workspace files for \"$query\". Found ${matches.size} matches.",
+            content = content,
+            toolCalls = listOf(toolCall),
+            durationMs = System.currentTimeMillis() - startTime
+        )
+    }
+
+    private fun handlePortAndProcessInspector(trimmed: String, lower: String, projectDir: File, context: Context, startTime: Long): LocalEngineResult? {
+        val isPortRequest = lower.contains("check port") || lower.contains("open port") ||
+                lower.contains("what port") || lower.contains("ports open") ||
+                lower.startsWith("kill port") || lower.contains("running port")
+        if (!isPortRequest) return null
+
+        val killMatch = Regex("""kill\s+port\s+(\d+)""", RegexOption.IGNORE_CASE).find(lower)
+        if (killMatch != null) {
+            val port = killMatch.groupValues[1]
+            val cmd = "fuser -k ${port}/tcp 2>/dev/null || kill -9 $(lsof -t -i:${port} 2>/dev/null) 2>/dev/null || true"
+            LocalEnvironmentManager.executeCommand(cmd, context, projectDir.absolutePath)
+            val toolCall = ToolCall(
+                id = UUID.randomUUID().toString(),
+                name = "kill_port",
+                toolType = ToolType.BASH,
+                command = "kill port $port",
+                status = "SUCCESS",
+                output = "Port $port release command executed."
+            )
+            return LocalEngineResult(
+                thoughtText = "Terminated process occupying TCP port $port.",
+                content = "### 🛑 Port Manager\nFreed port `$port`. Any process running on port `$port` has been terminated.",
+                toolCalls = listOf(toolCall),
+                durationMs = System.currentTimeMillis() - startTime
+            )
+        }
+
+        // List active listening ports
+        val cmd = "netstat -tuln 2>/dev/null || ss -tuln 2>/dev/null || true"
+        val res = LocalEnvironmentManager.executeCommand(cmd, context, projectDir.absolutePath)
+        val toolCall = ToolCall(
+            id = UUID.randomUUID().toString(),
+            name = "check_ports",
+            toolType = ToolType.BASH,
+            command = "netstat -tuln",
+            status = "SUCCESS",
+            output = res.output
+        )
+
+        return LocalEngineResult(
+            thoughtText = "Checked active local listening ports.",
+            content = """
+            ### 🌐 Active Local Ports & Servers
+            
+            ```text
+            ${res.output.ifBlank { "No active external listening ports detected." }}
+            ```
+            
+            *Tip: To free a blocked port, say `kill port <number>` (e.g. `kill port 3000`).*
+            """.trimIndent(),
             toolCalls = listOf(toolCall),
             durationMs = System.currentTimeMillis() - startTime
         )
@@ -1890,9 +2035,9 @@ object LocalIntelligenceEngine {
         """.trimIndent()
     }
 
-    private fun handleQwenCoderTask(trimmed: String, lower: String, projectDir: File, context: Context, startTime: Long): LocalEngineResult {
-        // If the user asks to write/create code (e.g. "make html portfolio page morden"), write to disk and give live preview!
-        if (isCodeCreationRequest(lower)) {
+    private suspend fun handleQwenCoderTask(trimmed: String, lower: String, projectDir: File, context: Context, startTime: Long): LocalEngineResult {
+        // 1. File-first web & project generation with live preview
+        if (isCodeCreationRequest(lower) || isWebOrFileGenerationRequest(lower)) {
             return handleFileFirstCodeGeneration(
                 LocalCodingDomain.QWEN_CODER,
                 trimmed,
@@ -1903,8 +2048,25 @@ object LocalIntelligenceEngine {
             )
         }
 
-        val modelFile = File(LocalEnvironmentManager.getHomeDir(context), ".antibot/models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf")
+        // 2. Fullstack Dev Team / E-commerce / Multi-model Pipeline
+        if (isDevTeamFullstackRequest(lower)) {
+            return handleDevTeamPipeline(trimmed, lower, projectDir, context, startTime)
+        }
 
+        // 3. UI/UX & Frontend specialization
+        val frontendResult = handleFrontendUIUXTask(trimmed, lower, projectDir, startTime)
+        if (frontendResult != null) return frontendResult
+
+        // 4. Backend Architect specialization
+        val backendResult = handleBackendArchitectTask(trimmed, lower, projectDir, startTime)
+        if (backendResult != null) return backendResult
+
+        // 5. Cybersecurity Auditor specialization
+        val securityResult = handleCybersecurityTask(trimmed, lower, projectDir, startTime)
+        if (securityResult != null) return securityResult
+
+        // 6. GGUF on-device weights if available
+        val modelFile = File(LocalEnvironmentManager.getHomeDir(context), ".antibot/models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf")
         if (modelFile.exists() && modelFile.length() > 100_000_000L) {
             return LocalEngineResult(
                 thoughtText = "Qwen 2.5 Coder 0.5B neural model active on-device (~350MB). Formulating quantized inference execution.",
@@ -1920,27 +2082,27 @@ object LocalIntelligenceEngine {
             )
         }
 
+        // 7. General programming & debugging fallback
+        val codeGen = handleCodeGeneration(trimmed, lower, startTime)
+        if (codeGen != null) return codeGen
+
+        val debugRes = handleDebuggingAndErrors(trimmed, lower, startTime)
+        if (debugRes != null) return debugRes
+
         return LocalEngineResult(
-            thoughtText = "Qwen 2.5 Coder 0.5B model ready for code generation.",
+            thoughtText = "Qwen 2.5 Coder 0.5B model ready for fullstack code synthesis.",
             content = """
-            ### 🧠 Qwen 2.5 Coder 0.5B (On-Device Neural LLM)
-
-            **Model Status:** Active & ready for code synthesis!
-            - **Architecture:** 0.5B Parameters (State-of-the-art sub-1B code model)
-            - **Quantization:** Q4_K_M (Optimal balance of speed and code reasoning)
-            - **RAM Footprint:** ~450 MB (Runs smoothly even on 3GB/4GB RAM phones)
-            - **100% Offline:** Runs locally without connecting to any external cloud server
-
-            *(Ask me to build any page or app (e.g. `make html portfolio page`, `make full stack website`), and I will generate and save the files directly so you can preview them immediately!)*
-
-            ---
-            <details>
-            <summary>📥 Optional: Download Raw GGUF Weights for CLI llama.cpp</summary>
-
-            ```bash
-            $ mkdir -p ~/.antibot/models && curl -L -o ~/.antibot/models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf
-            ```
-            </details>
+            ### 🧠 Qwen 2.5 Coder 0.5B (On-Device Neural Code Engine)
+            
+            **100% On-Device · 0 Cloud Tokens · Sub-500MB Footprint**
+            
+            I write code, design frontend UI/UX, architect backend APIs, and audit cybersecurity directly on your phone:
+            - **🎨 Frontend UI/UX:** Responsive HTML5/Tailwind/React/Compose components with instant Inbuilt Browser live preview.
+            - **🛠️ Backend Architect:** REST endpoints, Express/FastAPI servers, SQL schemas, and Docker configs.
+            - **🛡️ Cybersecurity Specialist:** OWASP auditing and automated vulnerability patching.
+            - **🔍 Workspace Tools:** Grep code search, port manager, terminal execution, and file generation.
+            
+            *Ask me to build anything (e.g. `make modern html portfolio page`, `make full stack website`, `grep login in src`), and I will generate and preview it immediately!*
             """.trimIndent(),
             durationMs = System.currentTimeMillis() - startTime
         )

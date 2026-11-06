@@ -563,9 +563,9 @@ class AuthPreferences(private val context: Context) {
     }
 
     val isFloatingBubbleEnabled: Flow<Boolean> = context.dataStore.data
-        .map { it[IS_FLOATING_BUBBLE_ENABLED] ?: true }
+        .map { it[IS_FLOATING_BUBBLE_ENABLED] ?: false }
 
-    fun getFloatingBubbleEnabledSync(): Boolean = syncPrefs.getBoolean("is_floating_bubble_enabled", true)
+    fun getFloatingBubbleEnabledSync(): Boolean = syncPrefs.getBoolean("is_floating_bubble_enabled", false)
 
     suspend fun saveFloatingBubbleEnabled(enabled: Boolean) {
         syncPrefs.edit().putBoolean("is_floating_bubble_enabled", enabled).apply()
@@ -573,9 +573,9 @@ class AuthPreferences(private val context: Context) {
     }
 
     val autoShowFloatingBubbleOnMinimize: Flow<Boolean> = context.dataStore.data
-        .map { it[AUTO_SHOW_FLOATING_BUBBLE_ON_MINIMIZE] ?: true }
+        .map { it[AUTO_SHOW_FLOATING_BUBBLE_ON_MINIMIZE] ?: false }
 
-    fun getAutoShowFloatingBubbleOnMinimizeSync(): Boolean = syncPrefs.getBoolean("auto_show_floating_bubble_on_minimize", true)
+    fun getAutoShowFloatingBubbleOnMinimizeSync(): Boolean = syncPrefs.getBoolean("auto_show_floating_bubble_on_minimize", false)
 
     suspend fun saveAutoShowFloatingBubbleOnMinimize(enabled: Boolean) {
         syncPrefs.edit().putBoolean("auto_show_floating_bubble_on_minimize", enabled).apply()

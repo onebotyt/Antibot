@@ -1,12 +1,12 @@
 {
-  "version_code": 152,
-  "version_name": "1.0.32",
+  "version_code": 153,
+  "version_name": "1.0.33",
   "min_supported_version_code": 1,
   "changelog": [
-    "Removed To-Do App Engine: Deleted SQLite task database, background alarm scheduler, and reminder receivers to make AntiBot lean, fast, and light",
-    "Restored Clean Notes & Docs: Returned Notes screen to direct, lightweight view with instant search and zero tab switching overhead",
-    "Streamlined AI Assistant Bubble: Refocused palette to 5 essential tools (Point & Draw screen, Screen reader, Quick actions, Cross-device share, Chat workspace)",
-    "Bounded File Streaming: Optimized local file reading with streaming buffer to prevent memory exhaustion on large project files"
+    "Cleaned Up Model Selector: Removed non-existent models and expander buttons; all real cloud models from server directly listed alongside Qwen 2.5 Coder with clear [Local] and [Cloud] badges",
+    "Unified Fullstack Qwen: Merged Frontend UI/UX, Backend APIs, Cybersecurity auditing, and multi-model dev team pipeline directly into Qwen 2.5 Coder",
+    "Removed Floating Bubble Overlay: Eliminated screen-obscuring floating bubble from main activity",
+    "New Agentic Coding Tools: Added Codebase Grep Search (`grep <query>`) and TCP Port / Process Manager (`check ports`, `kill port <port>`)"
   ],
   "is_critical": false
 }

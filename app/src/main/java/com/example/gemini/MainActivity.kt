@@ -446,32 +446,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                // Floating AI Assistant Multi-Tool Bubble
-                                if (isFloatingBubbleEnabled) {
-                                    var bubbleOffsetX by remember { mutableStateOf(24f) }
-                                    var bubbleOffsetY by remember { mutableStateOf(450f) }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .offset { androidx.compose.ui.unit.IntOffset(bubbleOffsetX.toInt(), bubbleOffsetY.toInt()) }
-                                    ) {
-                                        com.example.gemini.ui.bubble.FloatingBubbleContent(
-                                            isVisible = true,
-                                            onClick = {
-                                                val intent = Intent(this@MainActivity, com.example.gemini.ui.bubble.FloatingChatActivity::class.java).apply {
-                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                                }
-                                                startActivity(intent)
-                                            },
-                                            onDrag = { dx, dy ->
-                                                bubbleOffsetX += dx
-                                                bubbleOffsetY += dy
-                                            },
-                                            onSnap = {},
-                                            onDismissToDropZone = {}
-                                        )
-                                    }
-                                }
 
                                 // Global Network Inspector Dialog
                                 if (showNetworkInspectorDialog) {
