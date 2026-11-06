@@ -1,12 +1,12 @@
 {
-  "version_code": 121,
-  "version_name": "1.0.21",
+  "version_code": 137,
+  "version_name": "1.0.17",
   "min_supported_version_code": 1,
   "changelog": [
     "Rebranded to AntiBot v1.0.21 with Cyber Cyan AI UI and versioned app label",
     "Isolated all ports (2234/2235/9765) and intents to completely avoid collision with AntiGem",
     "Bypassed blocking first-launch rootfs download for immediate offline chat",
-    "AntiBot Local Model (Offline · 0 Tokens) ready out of the box",
+    "AntiBot Local Model (Offline \u00b7 0 Tokens) ready out of the box",
     "New AntiBot Studio header and modern standby controls"
   ],
   "is_critical": false
