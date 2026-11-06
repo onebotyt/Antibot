@@ -14,6 +14,16 @@ enum class LocalCodingDomain(
     val iconEmoji: String,
     val sizeText: String
 ) {
+    DEV_TEAM(
+        modelId = "local-dev-team",
+        displayName = "AntiBot Autonomous Dev Team",
+        shortName = "Dev Team",
+        tag = "3 Models · Full Stack",
+        description = "Autonomous team: Backend Architect + Frontend UI/UX + Cybersecurity Specialist working in sync",
+        placeholderPrompt = "Ask Dev Team (Full Stack Web/App)...",
+        iconEmoji = "👥",
+        sizeText = "3 Models Sync"
+    ),
     BACKEND(
         modelId = "local-backend",
         displayName = "AntiBot Backend Architect",

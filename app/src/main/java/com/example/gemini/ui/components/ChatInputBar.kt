@@ -1248,8 +1248,13 @@ fun ChatInputBar(
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(4.dp))
+                                    val pillLabel = if (isLocal) {
+                                        com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id).shortName
+                                    } else {
+                                        selectedModel.displayName
+                                    }
                                     Text(
-                                        text = selectedModel.displayName,
+                                        text = pillLabel,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface,
@@ -1259,18 +1264,29 @@ fun ChatInputBar(
                                     )
 
                                     if (isLocal) {
+                                        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
                                         Spacer(modifier = Modifier.width(4.dp))
+                                        val badgeText = when (domain) {
+                                            com.example.gemini.domain.model.LocalCodingDomain.DEV_TEAM -> "3 Models"
+                                            com.example.gemini.domain.model.LocalCodingDomain.QWEN_CODER -> "0.5B"
+                                            else -> "0 Tokens"
+                                        }
+                                        val badgeColor = when (domain) {
+                                            com.example.gemini.domain.model.LocalCodingDomain.DEV_TEAM -> Color(0xFF8B5CF6)
+                                            com.example.gemini.domain.model.LocalCodingDomain.QWEN_CODER -> Color(0xFF3B82F6)
+                                            else -> Color(0xFF10B981)
+                                        }
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(Color(0xFF10B981).copy(alpha = 0.15f))
+                                                .background(badgeColor.copy(alpha = 0.15f))
                                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
                                             Text(
-                                                text = "0 Tokens",
+                                                text = badgeText,
                                                 fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF10B981)
+                                                color = badgeColor
                                             )
                                         }
                                     } else {

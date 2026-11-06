@@ -31,17 +31,11 @@ import kotlinx.coroutines.delay
 private val GLYPHS = listOf("·", "✢", "*", "✶", "✻", "✽").let { it + it.reversed() }
 
 private val VERBS = listOf(
-    "Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing", "Calculating", "Cerebrating",
-    "Channeling", "Churning", "Clauding", "Coalescing", "Cogitating", "Computing", "Combobulating", "Concocting",
-    "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Deciphering", "Deliberating",
-    "Determining", "Discombobulating", "Doing", "Effecting", "Elucidating", "Enchanting", "Envisioning", "Finagling",
-    "Flibbertigibbeting", "Forging", "Forming", "Frolicking", "Generating", "Germinating", "Hatching", "Herding",
-    "Honking", "Ideating", "Imagining", "Incubating", "Inferring", "Manifesting", "Marinating", "Meandering",
-    "Moseying", "Mulling", "Mustering", "Musing", "Noodling", "Percolating", "Perusing", "Philosophizing",
-    "Pontificating", "Pondering", "Processing", "Puttering", "Puzzling", "Reticulating", "Ruminating", "Schlepping",
-    "Shimmying", "Simmering", "Smooshing", "Spelunking", "Spinning", "Stewing", "Sussing", "Synthesizing", "Thinking",
-    "Tinkering", "Transmuting", "Unfurling", "Unraveling", "Vibing", "Wandering", "Whirring", "Wibbling", "Working",
-    "Wrangling"
+    "Meandering", "Pondering", "Synthesizing", "Reasoning", "Architecting",
+    "Designing", "Deliberating", "Analyzing", "Formulating", "Brainstorming",
+    "Composing", "Verifying", "Auditing code", "Refining", "Structuring",
+    "Generating code", "Inspecting", "Optimizing", "Validating", "Organizing",
+    "Calculating", "Processing", "Crafting", "Connecting", "Resolving"
 )
 
 /** Room for the longest verb plus "...": the row never changes width. */
@@ -122,29 +116,24 @@ private fun WordDecoder(shown: androidx.compose.runtime.MutableState<String>, co
             verb = VERBS.random()
         }
     }
-    // A cursor runs over the old text; the three characters behind it flicker through '.' and '_' before settling.
+    // Clean typing animation revealing proper English words
     LaunchedEffect(verb, compacting) {
         val target = ((if (compacting) "Compacting" else verb) + "...").padEnd(TEXT_WIDTH)
+        val wordLen = target.trimEnd().length
         var cursor = 0
-        while (cursor - 3 < target.length) {
-            val next = StringBuilder(shown.value)
-            for (behind in 0..3) {
-                val k = cursor - behind
-                if (k < 0 || k >= target.length) continue
-                val want = target[k]
-                next.setCharAt(
-                    k,
-                    when {
-                        want == ' ' -> ' '
-                        behind == 3 -> want
-                        behind == 0 -> '▌'
-                        else -> charArrayOf('.', '_', want).random()
-                    }
-                )
+        while (cursor <= wordLen) {
+            val next = StringBuilder()
+            for (i in 0 until TEXT_WIDTH) {
+                when {
+                    i < cursor -> next.append(target[i])
+                    i == cursor && cursor < wordLen -> next.append('▌')
+                    else -> next.append(' ')
+                }
             }
             shown.value = next.toString()
             cursor++
             delay(DECODE_FRAME_MS)
         }
+        shown.value = target
     }
 }

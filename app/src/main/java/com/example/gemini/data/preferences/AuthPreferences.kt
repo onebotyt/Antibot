@@ -55,6 +55,7 @@ class AuthPreferences(private val context: Context) {
         val TERMINAL_CURSOR_STYLE = stringPreferencesKey("terminal_cursor_style")
         val TERMINAL_BUFFER_SIZE = androidx.datastore.preferences.core.intPreferencesKey("terminal_buffer_size")
         val TERMINAL_THEME = stringPreferencesKey("terminal_theme")
+        val DEV_TEAM_EXECUTION_MODE = stringPreferencesKey("dev_team_execution_mode") // "SEQUENTIAL" or "PARALLEL"
         val COMMAND_AUTO_EXECUTION_POLICY = stringPreferencesKey("command_auto_execution_policy")
         val COMMAND_SANDBOX_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("command_sandbox_enabled")
         val REQUIRE_APPROVAL_FOR_FILE_EDITS = androidx.datastore.preferences.core.booleanPreferencesKey("require_approval_for_file_edits")
@@ -231,6 +232,21 @@ class AuthPreferences(private val context: Context) {
         mode
     }
     fun getTerminalFontSizeSync(): Int = syncPrefs.getInt("terminal_font_size", 14)
+    fun getDevTeamExecutionModeSync(): String = syncPrefs.getString("dev_team_execution_mode", "SEQUENTIAL") ?: "SEQUENTIAL"
+
+    val devTeamExecutionMode: Flow<String> = context.dataStore.data.map { prefs ->
+        val mode = prefs[DEV_TEAM_EXECUTION_MODE] ?: "SEQUENTIAL"
+        if (syncPrefs.getString("dev_team_execution_mode", null) != mode) {
+            syncPrefs.edit().putString("dev_team_execution_mode", mode).apply()
+        }
+        mode
+    }
+
+    suspend fun setDevTeamExecutionMode(mode: String) {
+        syncPrefs.edit().putString("dev_team_execution_mode", mode).apply()
+        context.dataStore.edit { it[DEV_TEAM_EXECUTION_MODE] = mode }
+    }
+
     fun getTerminalCursorStyleSync(): String = syncPrefs.getString("terminal_cursor_style", "BAR") ?: "BAR"
     fun getTerminalBufferSizeSync(): Int = syncPrefs.getInt("terminal_buffer_size", 20000)
     fun getTerminalThemeSync(): String = syncPrefs.getString("terminal_theme", "DEFAULT") ?: "DEFAULT"

@@ -33,9 +33,13 @@ private val DarkColorScheme = darkColorScheme(
     surface = AntiBotSurfaceSlate,
     surfaceTint = Color.Transparent,
     onPrimary = Color.Black,
+    onSecondary = Color.White,
     onBackground = AntiBotTextWhite,
     onSurface = AntiBotTextWhite,
-    surfaceVariant = AntiBotCardSurface
+    surfaceVariant = AntiBotCardSurface,
+    onSurfaceVariant = AntiBotTextMuted,
+    outline = Color(0xFF334155),
+    outlineVariant = Color(0xFF1E293B)
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -45,9 +49,13 @@ private val LightColorScheme = lightColorScheme(
     surface = Color(0xFFFFFFFF),
     surfaceTint = Color.Transparent,
     onPrimary = Color.White,
+    onSecondary = Color.Black,
     onBackground = Color(0xFF0F172A),
     onSurface = Color(0xFF0F172A),
-    surfaceVariant = Color(0xFFE2E8F0)
+    surfaceVariant = Color(0xFFF1F5F9),
+    onSurfaceVariant = Color(0xFF64748B),
+    outline = Color(0xFFCBD5E1),
+    outlineVariant = Color(0xFFE2E8F0)
 )
 
 private val NeonColorScheme = darkColorScheme(
@@ -57,9 +65,13 @@ private val NeonColorScheme = darkColorScheme(
     surface = NeonCarbonSurface,
     surfaceTint = Color.Transparent,
     onPrimary = Color.Black,
+    onSecondary = Color.White,
     onBackground = Color(0xFFF0F6FC),
     onSurface = Color(0xFFF0F6FC),
-    surfaceVariant = NeonBubbleDark
+    surfaceVariant = NeonBubbleDark,
+    onSurfaceVariant = Color(0xFF8B949E),
+    outline = Color(0xFF30363D),
+    outlineVariant = Color(0xFF21262D)
 )
 
 private val SapphireColorScheme = darkColorScheme(
@@ -69,9 +81,13 @@ private val SapphireColorScheme = darkColorScheme(
     surface = SapphireNavySurface,
     surfaceTint = Color.Transparent,
     onPrimary = Color.White,
+    onSecondary = Color.White,
     onBackground = Color(0xFFF8FAFC),
     onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = SapphireBubbleDark
+    surfaceVariant = SapphireBubbleDark,
+    onSurfaceVariant = Color(0xFF94A3B8),
+    outline = Color(0xFF1E293B),
+    outlineVariant = Color(0xFF0F172A)
 )
 
 private val EmeraldColorScheme = darkColorScheme(
@@ -81,9 +97,13 @@ private val EmeraldColorScheme = darkColorScheme(
     surface = EmeraldMatrixSurface,
     surfaceTint = Color.Transparent,
     onPrimary = Color.Black,
+    onSecondary = Color.White,
     onBackground = Color(0xFFECFDF5),
     onSurface = Color(0xFFECFDF5),
-    surfaceVariant = EmeraldBubbleDark
+    surfaceVariant = EmeraldBubbleDark,
+    onSurfaceVariant = Color(0xFF6EE7B7).copy(alpha = 0.7f),
+    outline = Color(0xFF064E3B),
+    outlineVariant = Color(0xFF022C22)
 )
 
 private val AmethystColorScheme = darkColorScheme(
@@ -93,9 +113,13 @@ private val AmethystColorScheme = darkColorScheme(
     surface = AmethystCosmicSurface,
     surfaceTint = Color.Transparent,
     onPrimary = Color.White,
+    onSecondary = Color.White,
     onBackground = Color(0xFFFAF5FF),
     onSurface = Color(0xFFFAF5FF),
-    surfaceVariant = AmethystBubbleDark
+    surfaceVariant = AmethystBubbleDark,
+    onSurfaceVariant = Color(0xFFC084FC).copy(alpha = 0.7f),
+    outline = Color(0xFF581C87),
+    outlineVariant = Color(0xFF3B0764)
 )
 
 private val OledColorScheme = darkColorScheme(
@@ -105,9 +129,13 @@ private val OledColorScheme = darkColorScheme(
     surface = OledBlackSurface,
     surfaceTint = Color.Transparent,
     onPrimary = Color.Black,
+    onSecondary = Color.Black,
     onBackground = Color(0xFFFFFFFF),
     onSurface = Color(0xFFFFFFFF),
-    surfaceVariant = OledBubbleDark
+    surfaceVariant = OledBubbleDark,
+    onSurfaceVariant = Color(0xFFA3A3A3),
+    outline = Color(0xFF262626),
+    outlineVariant = Color(0xFF171717)
 )
 
 val LocalIsDarkTheme = staticCompositionLocalOf { false }

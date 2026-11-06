@@ -199,7 +199,9 @@ class BrowserExtensionManager private constructor() {
                 "LD_LIBRARY_PATH" to LocalEnvironmentManager.getLdLibraryPath(context),
                 "PATH" to "${LocalEnvironmentManager.getHomeDir(context).absolutePath}/.local/bin:${LocalEnvironmentManager.getBinDir(context).absolutePath}:/system/bin",
                 "TMPDIR" to LocalEnvironmentManager.getTmpDir(context).absolutePath,
-                "AGY_PARENT_PID" to android.os.Process.myPid().toString()
+                "AGY_PARENT_PID" to android.os.Process.myPid().toString(),
+                "OPENSSL_CONF" to LocalEnvironmentManager.getOpenSslConf(context),
+                "SSL_CERT_FILE" to LocalEnvironmentManager.getSslCertFile(context)
             ))
             // Everything the host prints, plus its exit code, goes to ~/extension-host.log so a failing phone can be diagnosed.
             val logFile = File(LocalEnvironmentManager.getHomeDir(context), "extension-host.log")

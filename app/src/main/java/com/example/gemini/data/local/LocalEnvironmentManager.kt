@@ -188,6 +188,41 @@ object LocalEnvironmentManager {
         }
         return paths.distinct().joinToString(":")
     }
+
+    fun getOpenSslConf(context: Context): String {
+        val etcTls = File(getPrefixDir(context), "etc/tls")
+        if (!etcTls.exists()) {
+            runCatching { etcTls.mkdirs() }
+        }
+        val cnfFile = File(etcTls, "openssl.cnf")
+        if (!cnfFile.exists() || cnfFile.length() == 0L) {
+            runCatching {
+                cnfFile.writeText(
+                    """
+                    # Minimal OpenSSL configuration for AntiBot
+                    openssl_conf = default_conf
+
+                    [default_conf]
+                    ssl_conf = ssl_sect
+
+                    [ssl_sect]
+                    system_default = system_default_sect
+
+                    [system_default_sect]
+                    MinProtocol = TLSv1.2
+                    CipherString = DEFAULT@SECLEVEL=2
+                    """.trimIndent() + "\n"
+                )
+            }
+        }
+        return cnfFile.absolutePath
+    }
+
+    fun getSslCertFile(context: Context): String {
+        val certFile = File(getPrefixDir(context), "etc/tls/cert.pem")
+        return if (certFile.exists()) certFile.absolutePath else "/system/etc/security/cacerts"
+    }
+
     fun isTermuxPackage(context: Context): Boolean =
         context.packageName == "com.antibot" ||
         context.packageName == "com.termux" ||
@@ -2444,6 +2479,8 @@ All files created here persist inside the application.
             env["HOME"] = home.absolutePath
             env["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
             env["TMPDIR"] = tmp.absolutePath
+            env["OPENSSL_CONF"] = getOpenSslConf(context)
+            env["SSL_CERT_FILE"] = getSslCertFile(context)
             env["TERM"] = "xterm-256color"
             env["COLORTERM"] = "truecolor"
             env["TERMUX_VERSION"] = "0.118.0"
@@ -2657,6 +2694,8 @@ All files created here persist inside the application.
         env["HOME"] = homeDir.absolutePath
         env["TMPDIR"] = tmpDir.absolutePath
         env["PATH"] = "${homeDir.absolutePath}/.local/bin:${binDir.absolutePath}:${prefixDir.absolutePath}/bin:/system/bin:/system/xbin"
+        env["OPENSSL_CONF"] = getOpenSslConf(context)
+        env["SSL_CERT_FILE"] = getSslCertFile(context)
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         env["LANG"] = "en_US.UTF-8"

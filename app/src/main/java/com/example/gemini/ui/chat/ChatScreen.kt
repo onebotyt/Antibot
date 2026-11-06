@@ -768,8 +768,22 @@ fun ChatScreen(
                 try {
                     val decoded = try { java.net.URLDecoder.decode(rawUrl, "UTF-8") } catch (_: Exception) { rawUrl }
                     val cleanPath = decoded.removePrefix("file://").substringBefore("#")
+                    val isHtml = cleanPath.endsWith(".html", ignoreCase = true) || cleanPath.endsWith(".htm", ignoreCase = true)
                     val isMd = cleanPath.endsWith(".md", ignoreCase = true) || cleanPath.endsWith(".markdown", ignoreCase = true)
-                    if (isMd) {
+                    if (isHtml) {
+                        scope.launch {
+                            runCatching {
+                                com.example.gemini.ui.browser.BrowserSessionManager.instance.openUrl("file://$cleanPath", newTab = true)
+                            }
+                            val content = try {
+                                val f = File(cleanPath)
+                                if (f.exists()) f.readText() else (IdeApiClient.readFile(cleanPath) ?: "")
+                            } catch (_: Exception) { "" }
+                            val fileName = File(cleanPath).name.ifBlank { "index.html" }
+                            TermuxDaemonManager.openOrSelectTab(cleanPath, fileName, content)
+                            onNavigateToBrowser()
+                        }
+                    } else if (isMd) {
                         scope.launch {
                             val content = try {
                                 val f = File(cleanPath)

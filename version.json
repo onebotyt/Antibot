@@ -1,15 +1,15 @@
 {
-  "version_code": 149,
-  "version_name": "1.0.29",
+  "version_code": 150,
+  "version_name": "1.0.30",
   "min_supported_version_code": 1,
   "changelog": [
-    "Combined Smart-To-Do with AntiBot to create an autonomous Personal AI Assistant",
-    "Screen Vision & Control: Point & Draw over screen (Circle-to-Search) to ask AI about any region, full screen reading, and autonomous gestures via Accessibility",
-    "Multi-Tool Floating Palette: Replaced single panel with expandable 6-in-1 tool palette (Draw Screen, Read Screen, Smart Tasks, Quick Actions, Share, Chat)",
-    "Device Automation Dispatcher: Voice and text commands to set alarms, timers, make phone calls, send SMS messages, and toggle flashlight",
-    "Smart Tasks & Notes Fusion: Offline SQLite task manager with priority badges, recurring schedules, exact reminder alarms, and NotesScreen tab integration",
-    "Universal Cross-Device Share: UDP LAN discovery on port 43884 (SyncTask compatible) + Zero-Install Local Web Drop (HTTP port 5234) for PC/iPhone/Android file exchange without installing apps + Bluetooth beam",
-    "Human-Like Conversational Voice & Live Subtitles: Natural TTS cadence with markdown filtering and floating on-screen live subtitle captions"
+    "Compact Claude-Style Model Selector: Replaced oversized sheet with minimalist Claude Android app layout, model pill in input bar, and clean item cards",
+    "Autonomous Multi-Model Dev Team: Backend Architect + Frontend UI/UX + Cybersecurity Specialist orchestrated directly on-device using Qwen with Sequential (low-RAM) or Parallel (high-end hardware) execution modes",
+    "File-First Code Generation & Instant Preview: AI generates code directly into project files with 1-tap live preview in AntiBot Inbuilt Browser and IDE editor",
+    "Inbuilt Browser Search Tool for Local Models: Equips small local models (<500MB) with live web search & documentation lookup via DuckDuckGo",
+    "Polished English Thinking Status Words: Fixed thinking indicator with rotating natural English verbs (Meandering, Pondering, Synthesizing, Architecting) and clean typewriter reveal",
+    "Fixed OpenSSL Permission Denied Error: Injected OPENSSL_CONF and SSL_CERT_FILE into environment for Extension Host and Terminal Node processes",
+    "Enhanced Theme Contrasts: Provided complete contrast tokens across all dark/neon/sapphire/oled color schemes"
   ],
   "is_critical": false
 }
