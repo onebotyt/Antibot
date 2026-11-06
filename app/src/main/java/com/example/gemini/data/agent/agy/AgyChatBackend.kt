@@ -18,6 +18,7 @@ import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.ChatAttachment
 import com.example.gemini.domain.model.Conversation
 import com.example.gemini.domain.model.MessageRole
+import com.example.gemini.domain.model.ModelFamily
 import com.example.gemini.domain.model.ModelQuota
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
