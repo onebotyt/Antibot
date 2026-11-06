@@ -222,6 +222,21 @@ val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
   val binDir = layout.projectDirectory.dir("src/main/assets/bin")
   val bridgeSourceDir = layout.projectDirectory.dir("../agy_ide_bridge")
 
+  onlyIf {
+    try {
+      val process = ProcessBuilder("go", "version").start()
+      process.waitFor() == 0
+    } catch (_: Exception) {
+      val target = binDir.file("agy_ide_bridge").asFile
+      if (target.exists()) {
+        logger.warn("Go compiler not found, using existing pre-built agy_ide_bridge binary.")
+      } else {
+        logger.warn("Go compiler not found and agy_ide_bridge not present in assets.")
+      }
+      false
+    }
+  }
+
   doFirst {
     binDir.asFile.mkdirs()
   }

@@ -115,7 +115,11 @@ object LocalServerManager {
                 if (!binDir.exists()) {
                     binDir.mkdirs()
                 }
-                extractAssetToBin(context, binDir, "agy_ide_bridge")
+                try {
+                    extractAssetToBin(context, binDir, "agy_ide_bridge")
+                } catch (e: Exception) {
+                    Log.w(TAG, "agy_ide_bridge asset not extracted", e)
+                }
                 try {
                     extractAssetToBin(context, binDir, "backup_bootstrap")
                 } catch (e: Exception) {
@@ -224,8 +228,8 @@ object LocalServerManager {
             ""
         }
 
-        // Run bridge purely for Antigravity with Claude Code disabled for optimal performance
-        return "$bridgeCmd -f --token $token -p $bridgePort --hub-port $hubPort --tz-offset $tzOffset$binParam --no-claude"
+        // Run bridge for Antigravity language server supervisor
+        return "$bridgeCmd -f --token $token -p $bridgePort --hub-port $hubPort --tz-offset $tzOffset$binParam"
     }
 
     /**
@@ -442,7 +446,7 @@ object LocalServerManager {
         hasInitialAutoStarted = true
         activeJob?.cancel()
         stopServerInternal()
-        // let the bridge finish stopping its children (Claude processes, the AGY hub) before the session is closed
+        // let the bridge finish stopping its children (the AGY hub) before the session is closed
         withTimeoutOrNull(5_000L) {
             while (AgyBridgeService.instance.systemConnectionState.value !is com.example.gemini.data.remote.SystemConnectionState.Offline) {
                 delay(150)

@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.gemini.domain.model.AgentKind
 
-val ClaudeAccent = Color(0xFFD97757)
 val LocalAccent = Color(0xFF10B981)
 
 /** Antigravity's color across the app (same blue as its settings group). */
@@ -33,13 +32,11 @@ val AgyAccent = Color(0xFF3B82F6)
 fun AgentKind.label(): String = when (this) {
     AgentKind.LOCAL -> "AntiBot Local Model (0 Tokens)"
     AgentKind.AGY -> "Antigravity"
-    AgentKind.CLAUDE -> "Claude Code"
 }
 
 fun AgentKind.accent(): Color = when (this) {
     AgentKind.AGY -> AgyAccent
     AgentKind.LOCAL -> LocalAccent
-    AgentKind.CLAUDE -> ClaudeAccent
 }
 
 /**
@@ -90,18 +87,7 @@ fun AgentPicker(
     }
 }
 
-/** Small badge marking a Claude Code conversation in lists. */
-@Composable
-fun ClaudeBadge(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(ClaudeAccent.copy(alpha = 0.16f))
-            .padding(horizontal = 5.dp, vertical = 1.dp)
-    ) {
-        Text(text = "Claude", fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, color = ClaudeAccent)
-    }
-}
+
 
 /** Small badge marking a Local 0-token conversation in lists. */
 @Composable

@@ -7,8 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Which agents the app runs. Antigravity is on and Claude Code off until the user picks on first launch; at least
- * one always stays on. The bridge is started with the matching flags (see [bridgeFlags]).
+ * Which agents the app runs (Antigravity and Local Offline Model).
  */
 class AgentPreferences(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -17,8 +16,15 @@ class AgentPreferences(context: Context) {
     val enabled: StateFlow<Set<AgentKind>> = _enabled.asStateFlow()
 
     private val _hasChosen = MutableStateFlow(prefs.getBoolean(KEY_CHOSEN, false))
-    /** The first-launch agent choice was made. */
-    val hasChosen: StateFlow<Boolean> = _hasChosen.asStateFlow()
+    private val _newChatAgent = MutableStateFlow(
+        runCatching { AgentKind.valueOf(prefs.getString(KEY_NEW_CHAT_AGENT, AgentKind.AGY.name)!!) }.getOrDefault(AgentKind.AGY)
+    )
+    val newChatAgent: StateFlow<AgentKind> = _newChatAgent.asStateFlow()
+
+    fun setNewChatAgent(agent: AgentKind) {
+        prefs.edit().putString(KEY_NEW_CHAT_AGENT, agent.name).apply()
+        _newChatAgent.value = agent
+    }
 
     /** Saves the agent selection (ignored when empty). */
     fun setEnabled(agents: Set<AgentKind>) {
@@ -48,7 +54,7 @@ class AgentPreferences(context: Context) {
         /** Enabled agents, read synchronously (bridge launch). */
         fun enabledSync(context: Context): Set<AgentKind> = setOf(AgentKind.AGY, AgentKind.LOCAL)
 
-        /** Bridge flags that keep a disabled agent from running at all. */
-        fun bridgeFlags(context: Context): String = " --no-claude"
+        /** Bridge flags for launcher. */
+        fun bridgeFlags(context: Context): String = ""
     }
 }

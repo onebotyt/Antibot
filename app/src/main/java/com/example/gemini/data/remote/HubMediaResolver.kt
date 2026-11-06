@@ -40,9 +40,8 @@ object HubMediaResolver {
         return imageBytesCache[key]
     }
 
-    /** A file served by the IDE bridge (Claude chat attachments): needs the bridge's auth header, so Coil cannot load it. */
-    fun isBridgeFileUrl(uri: String): Boolean =
-        uri.startsWith(com.example.gemini.data.preferences.AuthPreferences.currentBridgeHttpUrl.trimEnd('/') + "/api/claude/attachments/")
+    /** A file served by the IDE bridge: needs the bridge's auth header, so Coil cannot load it. */
+    fun isBridgeFileUrl(uri: String): Boolean = false
 
     /** Downloads a bridge file with the authenticated client (null when it is gone or the bridge is offline). */
     suspend fun fetchBridgeFile(url: String): ByteArray? = withContext(Dispatchers.IO) {
@@ -58,7 +57,7 @@ object HubMediaResolver {
         val bytes = fetchBridgeFile(url) ?: return null
         return withContext(Dispatchers.IO) {
             runCatching {
-                val dir = File(context.cacheDir, "claude-attachments").apply { mkdirs() }
+                val dir = File(context.cacheDir, "bridge-attachments").apply { mkdirs() }
                 File(dir, name.substringAfterLast('/').ifBlank { "attachment" }).apply { writeBytes(bytes) }
             }.getOrNull()
         }

@@ -5,7 +5,7 @@ import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.Conversation
 import kotlinx.coroutines.flow.StateFlow
 
-/** Chat lifecycle every agent backend (Antigravity, Claude Code) implements. */
+/** Chat lifecycle every agent backend (Antigravity, Local) implements. */
 interface AgentChatBackend {
     val kind: AgentKind
     val conversations: StateFlow<List<Conversation>>

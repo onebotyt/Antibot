@@ -59,6 +59,17 @@ jobs:
               out.write(f"tag_name=v{new_version_name}\n")
           EOF
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build agy_ide_bridge Android ARM64 Daemon
+        run: |
+          mkdir -p app/src/main/assets/bin
+          cd agy_ide_bridge
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../app/src/main/assets/bin/agy_ide_bridge .
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 

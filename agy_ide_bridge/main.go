@@ -19,7 +19,6 @@ import (
 
 	// DNS for Android (no /etc/resolv.conf there); a package so `go build main.go` includes it too
 	_ "gemini-server/pkg/androiddns"
-	"gemini-server/pkg/claude"
 	"gemini-server/pkg/config"
 	"gemini-server/pkg/handlers"
 	"gemini-server/pkg/hub"
@@ -37,7 +36,6 @@ Usage:
 Flags:
   -u, --unpatch             Unpatch AGY binary back to standard header and exit (do not start server)
   --bin <path>              Custom path to AGY binary (for --unpatch or custom setups)
-  --claude-bin <path>       Custom path to the Claude Code CLI (default: claude on PATH)
   -t, --token <token>       12-character security token for API & AGY CSRF obfuscation
   -f, --force, --f          Force start AGY Hub automatically without prompting
   -p, --port <port>         Port for the Go IDE Server (default: 1234)
@@ -45,7 +43,6 @@ Flags:
   --tz-offset <seconds>     Timezone offset in seconds (e.g. 20700 for UTC+05:45)
   --tz <location>           Timezone location name (e.g. Asia/Kathmandu)
   --no-hub                  Skip launching AGY Hub (run IDE server only)
-  --no-claude               Disable Claude Code (no /api/claude endpoints, never runs the claude CLI)
   -d, --dir <path>          Custom workspace directory
   -h, --help                Show help documentation`)
 }
@@ -116,8 +113,6 @@ func main() {
 
 	var unpatchOnly bool
 	var customAgyBin string
-	var customClaudeBin string
-	var noClaude bool
 	var forceStart bool
 	var skipHub bool
 	var cliToken string
@@ -138,13 +133,6 @@ func main() {
 				customAgyBin = os.Args[i+1]
 				i++
 			}
-		case strings.HasPrefix(arg, "--claude-bin="):
-			customClaudeBin = strings.TrimPrefix(arg, "--claude-bin=")
-		case arg == "--claude-bin":
-			if i+1 < len(os.Args) {
-				customClaudeBin = os.Args[i+1]
-				i++
-			}
 		case strings.HasPrefix(arg, "--token="):
 			cliToken = strings.TrimPrefix(arg, "--token=")
 		case arg == "-t" || arg == "--token":
@@ -156,8 +144,6 @@ func main() {
 			forceStart = true
 		case arg == "--no-hub" || arg == "-n" || arg == "--skip-hub":
 			skipHub = true
-		case arg == "--no-claude":
-			noClaude = true
 		case strings.HasPrefix(arg, "--port="):
 			cfg.Port = strings.TrimPrefix(arg, "--port=")
 		case arg == "-p" || arg == "--port":
@@ -275,19 +261,6 @@ func main() {
 	h.SetHub(wsHub)
 
 	mux := http.NewServeMux()
-
-	// Claude Code CLI sessions (process manager + NDJSON WebSocket relay); off with --no-claude
-	var claudeMgr *claude.Manager
-	if noClaude {
-		mux.HandleFunc("/api/claude/", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"success":false,"disabled":true,"error":"Claude Code is turned off in the app"}`))
-		})
-	} else {
-		claudeMgr = claude.NewManager(cfg.HomeDir, cfg.WorkspaceDir, customClaudeBin)
-		mux.Handle("/api/claude/", claudeMgr)
-	}
 
 	// Custom AntiGem plugins on disk: list, install (ZIP or GitHub repository), update, remove, export
 	mux.Handle("/api/custom-plugins/", plugins.NewManager(cfg.HomeDir))
@@ -583,10 +556,7 @@ func main() {
 	// 1. Close all active WebSocket client connections immediately
 	wsHub.Close()
 
-	// 2. Stop Claude Code sessions, then the AGY Hub process group and continuous background monitor
-	if claudeMgr != nil {
-		claudeMgr.StopAll()
-	}
+	// 2. Stop the AGY Hub process group and continuous background monitor
 	if hubMgr != nil {
 		hubMgr.Stop()
 	}

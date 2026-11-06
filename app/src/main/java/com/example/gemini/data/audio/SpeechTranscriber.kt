@@ -3,7 +3,7 @@ package com.example.gemini.data.audio
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 
-/** Live dictation: microphone in, text out. Implemented per agent (Antigravity hub, Claude voice relay). */
+/** Live dictation: microphone in, text out. Implemented for Antigravity hub. */
 interface SpeechTranscriber {
     /** 0.08..1 microphone level for the waveform. */
     val latestAmplitude: StateFlow<Float>

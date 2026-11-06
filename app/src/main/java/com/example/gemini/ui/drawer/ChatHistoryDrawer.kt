@@ -111,7 +111,6 @@ fun ChatHistoryDrawer(
     accountsButton: (@Composable () -> Unit)? = null,
     /** Antigravity runs: its hub start-up and first sync drive the list's loading states. */
     agyEnabled: Boolean = true,
-    claudeActions: ClaudeDrawerActions? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -987,7 +986,7 @@ fun ChatHistoryDrawer(
                                     val conv = item.conv
                                     val isSelected = conv.id == currentConversationId
                                     val activeInst = activeInstances.find { it.conversationId == conv.id }
-                                    val isActivelyRunning = conv.isRunning && (systemConnectionState.isHubOnline || conv.agent == com.example.gemini.domain.model.AgentKind.CLAUDE)
+                                    val isActivelyRunning = conv.isRunning && systemConnectionState.isHubOnline
                                     val isScheduledOrBackground =
                                         systemConnectionState.isHubOnline && !isActivelyRunning && (conv.notFullyIdle || conv.hasActivity || activeInst != null)
 
@@ -1020,7 +1019,6 @@ fun ChatHistoryDrawer(
                                         },
                                         onForkConversation = onForkConversation,
                                         onRequestDelete = { conversationToDelete = it },
-                                        claudeActions = claudeActions,
                                         onTerminateInstance = { inst, title ->
                                             instanceToTerminate = inst to title
                                         }
@@ -1096,7 +1094,7 @@ fun ChatHistoryDrawer(
                                         val conv = item.conv
                                         val isSelected = conv.id == currentConversationId
                                         val activeInst = activeInstances.find { it.conversationId == conv.id }
-                                        val isActivelyRunning = conv.isRunning && (systemConnectionState.isHubOnline || conv.agent == com.example.gemini.domain.model.AgentKind.CLAUDE)
+                                        val isActivelyRunning = conv.isRunning && systemConnectionState.isHubOnline
                                         val isScheduledOrBackground =
                                             systemConnectionState.isHubOnline && !isActivelyRunning && (conv.notFullyIdle || conv.hasActivity || activeInst != null)
 
@@ -1129,7 +1127,6 @@ fun ChatHistoryDrawer(
                                             },
                                             onForkConversation = onForkConversation,
                                             onRequestDelete = { conversationToDelete = it },
-                                            claudeActions = claudeActions,
                                             onTerminateInstance = { inst, title ->
                                                 instanceToTerminate = inst to title
                                             }
@@ -1471,8 +1468,7 @@ private fun ChatHistoryItemRow(
     onSelectConversation: (String) -> Unit,
     onForkConversation: (String) -> Unit,
     onRequestDelete: (Conversation) -> Unit,
-    onTerminateInstance: (com.example.gemini.data.remote.AgyActiveInstance, String) -> Unit,
-    claudeActions: ClaudeDrawerActions? = null
+    onTerminateInstance: (com.example.gemini.data.remote.AgyActiveInstance, String) -> Unit
 ) {
     val isSubagent = depth > 0
     val startPadding = if (isSubagent) (12 + (depth * 14)).dp else 0.dp
@@ -1564,9 +1560,6 @@ private fun ChatHistoryItemRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (conv.agent == com.example.gemini.domain.model.AgentKind.CLAUDE) {
-                    com.example.gemini.ui.components.ClaudeBadge(modifier = Modifier.padding(start = 6.dp))
-                }
                 if (subagents.isNotEmpty()) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -1656,31 +1649,11 @@ private fun ChatHistoryItemRow(
         }
 
         var menuExpanded by remember { mutableStateOf(false) }
-        var showRename by remember { mutableStateOf(false) }
-        val isClaudeConv = conv.agent == com.example.gemini.domain.model.AgentKind.CLAUDE
         val clipboardManager = LocalClipboardManager.current
         val context = LocalContext.current
 
         val scope = rememberCoroutineScope()
         val snackbarHostState = com.example.gemini.ui.components.LocalSnackbarHostState.current
-
-        if (showRename && claudeActions != null) {
-            var newTitle by remember { mutableStateOf(conv.title) }
-            AlertDialog(
-                onDismissRequest = { showRename = false },
-                title = { Text("Rename chat", fontWeight = FontWeight.Bold) },
-                text = {
-                    OutlinedTextField(value = newTitle, onValueChange = { newTitle = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        claudeActions.rename(conv.id, newTitle)
-                        showRename = false
-                    }, enabled = newTitle.isNotBlank()) { Text("Save") }
-                },
-                dismissButton = { TextButton(onClick = { showRename = false }) { Text("Cancel") } }
-            )
-        }
 
         Box {
             IconButton(
@@ -1734,23 +1707,6 @@ private fun ChatHistoryItemRow(
                         onForkConversation(conv.id)
                     }
                 )
-                if (isClaudeConv && claudeActions != null) {
-                    DropdownMenuItem(
-                        text = { Text("Rename", fontSize = 13.5.sp) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            showRename = true
-                        }
-                    )
-                }
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
                     modifier = Modifier.padding(vertical = 4.dp)
@@ -1773,7 +1729,7 @@ private fun ChatHistoryItemRow(
                                 context = context,
                                 conversationId = conv.id,
                                 title = conv.title,
-                                activeMessages = if (isClaudeConv) claudeActions?.loadMessages?.invoke(conv.id) else null,
+                                activeMessages = null,
                                 format = ConversationExportHelper.ExportFormat.MARKDOWN,
                                 snackbarHostState = snackbarHostState
                             )
@@ -1798,7 +1754,7 @@ private fun ChatHistoryItemRow(
                                 context = context,
                                 conversationId = conv.id,
                                 title = conv.title,
-                                activeMessages = if (isClaudeConv) claudeActions?.loadMessages?.invoke(conv.id) else null,
+                                activeMessages = null,
                                 format = ConversationExportHelper.ExportFormat.HTML,
                                 snackbarHostState = snackbarHostState
                             )
@@ -1823,7 +1779,7 @@ private fun ChatHistoryItemRow(
                                 context = context,
                                 conversationId = conv.id,
                                 title = conv.title,
-                                activeMessages = if (isClaudeConv) claudeActions?.loadMessages?.invoke(conv.id) else null,
+                                activeMessages = null,
                                 snackbarHostState = snackbarHostState
                             )
                         }
@@ -2321,9 +2277,3 @@ fun SearchChatsDialog(
         }
     }
 }
-
-/** Claude-specific chat actions for the sidebar (Claude chats are loaded and renamed through the bridge). */
-class ClaudeDrawerActions(
-    val loadMessages: suspend (String) -> List<com.example.gemini.domain.model.ChatMessage>,
-    val rename: (String, String) -> Unit
-)

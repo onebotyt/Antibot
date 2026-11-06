@@ -149,7 +149,7 @@ fun AndroidAutomationScreen(cardBg: Color, cardBorder: BorderStroke, onOpenAdbCo
         Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = cardBg), border = cardBorder) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Then add the MCP", fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
-                Hint("In Settings → MCP Servers (Antigravity) or Claude Code → MCP servers, tap the \"Android Automation\" preset. " +
+                Hint("In Settings → MCP Servers, tap the \"Android Automation\" preset. " +
                     "Until the accessibility service is allowed here, the server refuses to connect and the agent is told what's missing.")
                 Text(AndroidAutomation.tools().let { t -> (0 until t.length()).joinToString(" · ") { t.getJSONObject(it).getString("name").removePrefix("android_") } },
                     fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))

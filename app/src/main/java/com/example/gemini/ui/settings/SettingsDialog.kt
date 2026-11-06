@@ -1,7 +1,7 @@
 package com.example.gemini.ui.settings
 
-import com.example.gemini.ui.claude.SettingsGroupHeader
-import com.example.gemini.ui.components.ClaudeAccent
+import com.example.gemini.ui.components.SettingsGroupHeader
+import com.example.gemini.ui.components.AgyAccent
 import android.Manifest
 import android.content.ComponentName
 import android.content.Context
@@ -96,8 +96,7 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     BACKUPS("Backups & Restore", "Backup rootfs environment and AGY chat histories"),
     DATA_PROTECTION("Data Loss Protection", "Uninstall shield & App Info clear data protection"),
     COMMANDS("Commands & Permissions", "Auto-run policy, sandbox mode, and tool approvals"),
-    CLAUDE("Claude Code", "Account, models, permissions, MCP, plugins & memory"),
-    AGENTS("Agents", "Run Antigravity, Claude Code or both"),
+    AGENTS("Agents", "Configure active intelligence engine"),
     DIAGNOSTICS("Diagnostics & Performance", "Live network connections, active streams & thread HUD"),
     UTILITIES("Utilities", "Handy device tools"),
     ADB_CONNECT("ADB Connect", "Connect the terminal's adb to this phone over Wireless debugging"),
@@ -235,9 +234,6 @@ fun SettingsDialog(
     onToggleNetworkInspector: (Boolean) -> Unit = {},
     isFloatingNetworkInspectorEnabled: Boolean = false,
     onToggleFloatingNetworkInspector: (Boolean) -> Unit = {},
-    onOpenNetworkInspector: () -> Unit = {},
-    claude: com.example.gemini.ui.claude.ClaudeSettingsDeps? = null,
-    initialClaudePage: com.example.gemini.ui.claude.ClaudeSettingsPage? = null,
     enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
     isApplyingAgents: Boolean = false,
     onApplyAgents: (Set<com.example.gemini.domain.model.AgentKind>) -> Unit = {},
@@ -245,8 +241,7 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var currentSection by remember { mutableStateOf(if (initialClaudePage != null && claude != null) SettingsSection.CLAUDE else SettingsSection.MAIN) }
-    var claudePage by remember { mutableStateOf(initialClaudePage ?: com.example.gemini.ui.claude.ClaudeSettingsPage.ACCOUNT) }
+    var currentSection by remember { mutableStateOf(SettingsSection.MAIN) }
     // Hoisted so the main list keeps its position while a sub-section is open
     val mainMenuScrollState = rememberScrollState()
 
@@ -277,11 +272,9 @@ fun SettingsDialog(
             // Top App Bar
             TopAppBar(
                 title = {
-                    // a Claude Code page names itself here (it has no header of its own)
-                    val isClaudePage = currentSection == SettingsSection.CLAUDE && claude != null
                     Column {
                         Text(
-                            text = if (isClaudePage) "Claude Code · ${claudePage.title}" else currentSection.title,
+                            text = currentSection.title,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -290,7 +283,7 @@ fun SettingsDialog(
                         )
                         if (currentSection != SettingsSection.MAIN) {
                             Text(
-                                text = if (isClaudePage) claudePage.subtitle else currentSection.subtitle,
+                                text = currentSection.subtitle,
                                 fontSize = 11.5.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 maxLines = 1,
@@ -369,7 +362,6 @@ fun SettingsDialog(
                         cardBorder = cardBorder,
                         scrollState = mainMenuScrollState,
                         enabledAgents = enabledAgents,
-                        claudeGroup = null,
                         onNavigate = { currentSection = it }
                     )
 
@@ -538,9 +530,6 @@ fun SettingsDialog(
                         isApplying = isApplyingAgents,
                         onApply = onApplyAgents
                     )
-                    SettingsSection.CLAUDE -> if (claude != null) {
-                        com.example.gemini.ui.claude.ClaudeSettingsScreen(claude, claudePage) { currentSection = SettingsSection.MAIN }
-                    }
                     SettingsSection.UTILITIES -> UtilitiesSubScreen(
                         cardBg = cardBg,
                         cardBorder = cardBorder,
@@ -582,12 +571,11 @@ private fun MainSettingsMenu(
     cardBg: Color,
     cardBorder: BorderStroke,
     scrollState: androidx.compose.foundation.ScrollState,
-    claudeGroup: (@Composable () -> Unit)? = null,
     enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
     onNavigate: (SettingsSection) -> Unit
 ) {
     val agyOn = com.example.gemini.domain.model.AgentKind.AGY in enabledAgents
-    val claudeOn = com.example.gemini.domain.model.AgentKind.CLAUDE in enabledAgents
+    val localOn = com.example.gemini.domain.model.AgentKind.LOCAL in enabledAgents
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -601,8 +589,8 @@ private fun MainSettingsMenu(
             iconTint = MaterialTheme.colorScheme.primary,
             title = "Agents",
             subtitle = when {
-                agyOn && claudeOn -> "Antigravity and Claude Code"
-                claudeOn -> "Claude Code only"
+                agyOn && localOn -> "Antigravity and Local Engine"
+                localOn -> "Local Engine only"
                 else -> "Antigravity only"
             },
             badgeText = "${enabledAgents.size} on",
@@ -711,14 +699,7 @@ private fun MainSettingsMenu(
             onClick = { onNavigate(SettingsSection.COMMANDS) }
         )
 
-        }
-
-        if (claudeGroup != null && claudeOn) {
-            SettingsGroupHeader("Claude Code", ClaudeAccent, "Anthropic Claude Code CLI")
-            claudeGroup()
-        }
-
-        SettingsGroupHeader("App", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), "Shared by both agents")
+        SettingsGroupHeader("App", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), "General app settings")
         // Section 1: Appearance & Display
         val themeLabel = when (themeMode) {
             "DARK" -> "Dark Mode"
@@ -1260,7 +1241,7 @@ private fun AppearanceSubScreen(
             }
         }
 
-        // Working animation (Claude Code style) switch
+        // Working animation switch
         val appearanceContext = LocalContext.current
         val appearancePrefs = remember { AuthPreferences(appearanceContext.applicationContext) }
         val workingAnimation by appearancePrefs.workingAnimationEnabled.collectAsState(initial = true)
@@ -1287,7 +1268,7 @@ private fun AppearanceSubScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Claude Code-style animated star and status word under the reply for as long as the agent works. Off: only the \"…\" indicator before the first output.",
+                        text = "Animated star and status word under the reply for as long as the agent works. Off: only the \"…\" indicator before the first output.",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -1903,10 +1884,8 @@ private fun ServersSubScreen(
 
     val initialBridgeBinPath = remember { authPrefs.getAgyBridgeBinaryPathSync() }
     val initialAgyBinPath = remember { authPrefs.getAgyBinaryPathSync() }
-    val initialClaudeBinPath = remember { authPrefs.getClaudeBinaryPathSync() }
     var bridgeBinPath by remember { mutableStateOf(initialBridgeBinPath) }
     var agyBinPath by remember { mutableStateOf(initialAgyBinPath) }
-    var claudeBinPath by remember { mutableStateOf(initialClaudeBinPath) }
 
     var hubTestStatus by remember { mutableStateOf<String?>(null) }
     var isTestingHub by remember { mutableStateOf(false) }
@@ -1919,13 +1898,12 @@ private fun ServersSubScreen(
     var showRestartDialog by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
 
-    val hasUnsavedChanges = remember(sharedHost, hubPort, bridgePort, bridgeBinPath, agyBinPath, claudeBinPath, securityToken) {
+    val hasUnsavedChanges = remember(sharedHost, hubPort, bridgePort, bridgeBinPath, agyBinPath, securityToken) {
         sharedHost.trim() != initialSharedHost.trim() ||
             hubPort.trim() != initHubPort.trim() ||
             bridgePort.trim() != initBridgePort.trim() ||
             bridgeBinPath.trim() != initialBridgeBinPath.trim() ||
             agyBinPath.trim() != initialAgyBinPath.trim() ||
-            claudeBinPath.trim() != initialClaudeBinPath.trim() ||
             securityToken.trim() != initSecurityToken.trim()
     }
 
@@ -1977,7 +1955,6 @@ private fun ServersSubScreen(
                         bridgePort = initBridgePort.ifBlank { com.example.gemini.BuildConfig.BRIDGE_PORT.toString() }
                         bridgeBinPath = initialBridgeBinPath
                         agyBinPath = initialAgyBinPath
-                        claudeBinPath = initialClaudeBinPath
                         securityToken = initSecurityToken
                     },
                     shape = RoundedCornerShape(8.dp)
@@ -2237,7 +2214,7 @@ private fun ServersSubScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = "Binary Executable Paths", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text(text = "Custom paths used when auto-starting IDE Bridge, AGY Hub and Claude Code", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text(text = "Custom paths used when auto-starting IDE Bridge and AGY Hub", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                 }
 
@@ -2265,18 +2242,6 @@ private fun ServersSubScreen(
                     shape = RoundedCornerShape(10.dp)
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                OutlinedTextField(
-                    value = claudeBinPath,
-                    onValueChange = { claudeBinPath = it; saveFeedback = null },
-                    label = { Text("Claude Code Binary Path") },
-                    placeholder = { Text(authPrefs.getDefaultClaudeBinaryPath()) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp)
-                )
-
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
@@ -2294,7 +2259,6 @@ private fun ServersSubScreen(
                         bridgePort = com.example.gemini.BuildConfig.BRIDGE_PORT.toString()
                         bridgeBinPath = authPrefs.getDefaultBridgeBinaryPath()
                         agyBinPath = authPrefs.getDefaultAgyBinaryPath()
-                        claudeBinPath = authPrefs.getDefaultClaudeBinaryPath()
                         saveFeedback = "Settings reset to defaults (click Save to apply)."
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -2420,7 +2384,6 @@ private fun ServersSubScreen(
                     authPrefs.saveSecurityToken(tokenToSave)
                     authPrefs.saveAgyBridgeBinaryPath(bridgeBinPath.trim().ifBlank { authPrefs.getDefaultBridgeBinaryPath() })
                     authPrefs.saveAgyBinaryPath(agyBinPath.trim().ifBlank { authPrefs.getDefaultAgyBinaryPath() })
-                    authPrefs.saveClaudeBinaryPath(claudeBinPath.trim().ifBlank { authPrefs.getDefaultClaudeBinaryPath() })
                 }
                 saveFeedback = "✓ Server, Binaries and Security settings saved!"
                 showRestartDialog = true
@@ -2447,7 +2410,7 @@ private data class McpPreset(
     val spec: com.example.gemini.domain.model.McpServerSpec?
 )
 
-/** One preset in the MCP screens' grid (also used by the Claude CLI MCP settings). */
+/** One preset in the MCP screens' grid. */
 @Composable
 internal fun McpPresetTile(
     name: String,

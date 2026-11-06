@@ -1003,7 +1003,7 @@ private fun UserMessageImageItem(
             .clickable {
                 when {
                     finalUri.isNotBlank() -> onImageClick(finalUri)
-                    // image kept only as data (e.g. a reopened Claude chat)
+                    // image kept only as data
                     !attachment.base64.isNullOrBlank() -> onImageClick("data:${attachment.mimeType ?: "image/jpeg"};base64,${attachment.base64}")
                 }
             }
@@ -1116,7 +1116,7 @@ private fun UserMessageDocumentItem(
             .clickable {
                 val bridgeUrl = attachment.url?.takeIf { HubMediaResolver.isBridgeFileUrl(it) }
                 if (bridgeUrl != null && attachment.localUri.isNullOrBlank()) {
-                    // saved on the bridge (Claude chat): fetch it, then open like a local file
+                    // saved on the bridge: fetch it, then open like a local file
                     scope.launch {
                         val file = HubMediaResolver.downloadBridgeFile(context, bridgeUrl, attachment.name)
                         if (file == null) {

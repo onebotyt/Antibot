@@ -80,10 +80,10 @@ import java.io.File
 import java.util.UUID
 
 /**
- * Elegant 4-bar audio waveform icon matching Claude's signature voice mode button.
+ * Elegant 4-bar audio waveform icon.
  */
 @Composable
-fun ClaudeWaveformIcon(
+fun AudioWaveformIcon(
     modifier: Modifier = Modifier,
     color: Color = Color.Black
 ) {
@@ -177,7 +177,7 @@ fun ChatInputBar(
     isAuth: Boolean = true,
     /** Shown when sending is blocked because [isOnline] is false. */
     offlineMessage: String = "Server is offline. Start the server to send messages.",
-    /** The agent cannot read audio (Claude): the mic records and transcribes to text instead of attaching a file. */
+    /** The mic records and transcribes to text instead of attaching an audio file. */
     voiceNotesAsText: Boolean = false,
     focusRequester: FocusRequester = remember { FocusRequester() },
     modifier: Modifier = Modifier

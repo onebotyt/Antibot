@@ -47,8 +47,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.gemini.data.agent.claude.ClaudeCliStatus
-import com.example.gemini.data.agent.claude.ClaudeStatus
 import com.example.gemini.data.remote.AgyHubClient
 import com.example.gemini.data.remote.SystemConnectionState
 import com.example.gemini.data.remote.SystemStatus
@@ -120,52 +118,9 @@ fun agyStatusEntry(
     }
 }
 
-fun claudeStatusEntry(
-    state: ClaudeStatus,
-    status: ClaudeCliStatus?,
-    error: String?,
-    serverRestarting: Boolean,
-    onSignIn: () -> Unit,
-    onSetup: () -> Unit,
-    onRestartServer: () -> Unit,
-    onRetry: () -> Unit
-): AgentStatusEntry {
-    if (serverRestarting) {
-        return AgentStatusEntry(AgentKind.CLAUDE, "Restarting…", ClaudeStatus.CHECKING.dotColor, "The local server is restarting.", pending = true)
-    }
-    val auth = status?.auth
-    fun entry(detail: String? = null, action: AgentStatusAction? = null) = AgentStatusEntry(
-        AgentKind.CLAUDE, state.label, state.dotColor, detail, action,
-        pending = state == ClaudeStatus.CHECKING || state == ClaudeStatus.SIGNING_IN,
-        isReady = state == ClaudeStatus.READY,
-        isSignedOut = state == ClaudeStatus.SIGNED_OUT
-    )
-    return when (state) {
-        ClaudeStatus.CHECKING -> entry("Looking for the Claude Code CLI and its sign-in.")
-        ClaudeStatus.BRIDGE_OFFLINE -> entry(error ?: "The local server is not running.", AgentStatusAction("Start", onRestartServer))
-        ClaudeStatus.BRIDGE_OUTDATED -> entry(error, AgentStatusAction("Restart", onRestartServer))
-        ClaudeStatus.NOT_INSTALLED -> entry("The claude CLI is not installed on this device.", AgentStatusAction("Set up", onSetup))
-        ClaudeStatus.SIGNED_OUT -> entry("Sign in with your Claude subscription or an Anthropic Console account.", AgentStatusAction("Sign in", onSignIn))
-        ClaudeStatus.SIGNING_IN -> entry("Finish signing in in your browser.", AgentStatusAction("Open", onSignIn))
-        ClaudeStatus.READY -> entry(
-            listOfNotNull(auth?.email, auth?.subscriptionType?.let { claudePlanLabel(it) }, status?.version?.substringBefore(" "))
-                .joinToString(" · ").ifBlank { null }
-        )
-        ClaudeStatus.ERROR -> entry(error, AgentStatusAction("Retry", onRetry))
-    }
-}
-
-fun claudePlanLabel(raw: String): String = when (raw.lowercase()) {
-    "pro" -> "Pro"
-    "max" -> "Max"
-    "team" -> "Team"
-    "enterprise" -> "Enterprise"
-    else -> raw.replaceFirstChar { it.uppercase() }
-}
 
 /**
- * Connection dot for one or two agents. With two different states the upper half is [top] (Antigravity) and the
- * lower half [bottom] (Claude Code); the same state (or one agent) draws one solid dot.
+ * Connection dot for an agent.
  */
 @Composable
 fun AgentStatusDot(top: Color, bottom: Color?, modifier: Modifier = Modifier, size: Dp = 11.dp, pulsing: Boolean = false) {
@@ -194,7 +149,6 @@ fun AgentMark(agent: AgentKind, modifier: Modifier = Modifier, size: Dp = 32.dp,
         ) {
             when (agent) {
                 AgentKind.AGY -> Icon(Icons.Outlined.RocketLaunch, null, tint = accent, modifier = Modifier.size(size * 0.52f))
-                AgentKind.CLAUDE -> Text("✻", color = accent, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.5f).sp)
                 AgentKind.LOCAL -> Icon(Icons.Outlined.Terminal, null, tint = accent, modifier = Modifier.size(size * 0.52f))
             }
         }
@@ -265,7 +219,7 @@ fun AgentActionPill(text: String, color: Color, onClick: () -> Unit) {
 }
 
 /**
- * Top-bar status: the (split) dot; tapping opens each agent's state with its fix (sign in, set up, restart)
+ * Top-bar status: the dot; tapping opens each agent's state with its fix (sign in, set up, restart)
  * and the server logs.
  */
 @Composable
@@ -276,17 +230,15 @@ fun AgentStatusIndicator(
 ) {
     var open by remember { mutableStateOf(false) }
     val agy = entries.find { it.agent == AgentKind.AGY }
-    val claude = entries.find { it.agent == AgentKind.CLAUDE }
-    val top = agy?.color ?: claude?.color ?: SystemStatus.OFFLINE.dotColor
-    val bottom = if (agy != null) claude?.color else null
+    val top = agy?.color ?: SystemStatus.OFFLINE.dotColor
     Box(
         modifier = modifier.size(36.dp).clip(CircleShape).clickable { open = true },
         contentAlignment = Alignment.Center
     ) {
         AgentStatusDot(
             top = top,
-            bottom = bottom,
-            size = if (bottom != null && bottom != top) 12.dp else 11.dp,
+            bottom = null,
+            size = 11.dp,
             pulsing = entries.any { it.pending }
         )
         DropdownMenu(

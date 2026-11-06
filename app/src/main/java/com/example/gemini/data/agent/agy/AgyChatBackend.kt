@@ -551,8 +551,7 @@ class AgyChatBackend(
             if (initial.isNotBlank() && _selectedModelId.value.isBlank()) {
                 _selectedModelId.value = initial
             }
-            // the start-up chat: only when nothing is open yet or it is still an empty Antigravity chat (a Claude
-            // chat opened meanwhile must not be replaced)
+            // the start-up chat: only when nothing is open yet or it is still an empty Antigravity chat
             val cur = _currentConversation.value
             if (cur == null || (cur.agent == AgentKind.AGY && cur.title == "New Chat" && _messages.value.isEmpty())) {
                 startNewChat()
