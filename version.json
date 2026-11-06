@@ -1,12 +1,11 @@
 {
-  "version_code": 154,
-  "version_name": "1.0.34",
+  "version_code": 155,
+  "version_name": "1.0.35",
   "min_supported_version_code": 1,
   "changelog": [
-    "Cleaned Up Model Selector: Removed non-existent models and expander buttons; all real cloud models from server directly listed alongside Qwen 2.5 Coder with clear [Local] and [Cloud] badges",
-    "Unified Fullstack Qwen: Merged Frontend UI/UX, Backend APIs, Cybersecurity auditing, and multi-model dev team pipeline directly into Qwen 2.5 Coder",
-    "Removed Floating Bubble Overlay: Eliminated screen-obscuring floating bubble from main activity",
-    "New Agentic Coding Tools: Added Codebase Grep Search (`grep <query>`) and TCP Port / Process Manager (`check ports`, `kill port <port>`)"
+    "Smart LLM Manager: Added automatic, balanced dynamic model routing across Local Qwen 2.5 Coder (<500MB, 0 tokens), Fast Cloud (Gemini 3.8 Flash), and Deep Reasoning (Claude Sonnet 4.6 Thinking)",
+    "Real-Time Dynamic Model Pill: Header and input bar dynamically reflect chosen model and execution rationale ([Local Shell], [Port/Process], [Deep Logic], [Fast Q&A], [Offline Fallback])",
+    "Seamless Auto-Fallback: Automatically routes to offline on-device Qwen when disconnected, and downgrades gracefully (Claude ➔ Flash ➔ Local Qwen) if cloud quotas hit 429 rate limits or depletion"
   ],
   "is_critical": false
 }

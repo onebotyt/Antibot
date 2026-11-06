@@ -141,17 +141,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val enabledModelIds = agyBackend.enabledModelIds
     val enabledModels = agyBackend.enabledModels
     val isRefreshingModels = agyBackend.isRefreshingModels
+    private val _isAutoRouting = MutableStateFlow(true)
+    val isAutoRouting: StateFlow<Boolean> = _isAutoRouting.asStateFlow()
+
+    private val _activeRoutingDecision = MutableStateFlow<com.example.gemini.domain.model.SmartRoutingDecision?>(null)
+    val activeRoutingDecision: StateFlow<com.example.gemini.domain.model.SmartRoutingDecision?> = _activeRoutingDecision.asStateFlow()
+
     val selectedModelId: StateFlow<String> = kotlinx.coroutines.flow.combine(
         store.currentConversation,
         localBackend.selectedModelId,
-        agyBackend.selectedModelId
-    ) { conv, localModel, agyModel ->
-        if (conv?.agent == AgentKind.LOCAL || isLocalActive) {
+        agyBackend.selectedModelId,
+        _isAutoRouting
+    ) { conv, localModel, agyModel, isAuto ->
+        if (isAuto) {
+            com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID
+        } else if (conv?.agent == AgentKind.LOCAL || isLocalActive) {
             localModel
         } else {
             agyModel
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, "local-backend")
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID)
     val preferredModelName = agyBackend.preferredModelName
     val quotas = agyBackend.quotas
     val quotaSummary = agyBackend.quotaSummary
@@ -242,6 +251,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun selectModel(modelId: String) {
+        if (com.example.gemini.domain.model.SmartModelRouter.isAuto(modelId)) {
+            _isAutoRouting.value = true
+            viewModelScope.launch {
+                authPrefs.savePreferredModel(
+                    com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
+                    displayName = com.example.gemini.domain.model.SmartModelRouter.AUTO_DISPLAY_NAME
+                )
+            }
+            return
+        }
+        _isAutoRouting.value = false
         if (com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(modelId)) {
             if (!isLocalActive) {
                 startNewChat(AgentKind.LOCAL)
@@ -254,11 +274,44 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         agyBackend.selectModel(modelId)
     }
+
+    fun getDynamicRoutingDecision(draftText: String): com.example.gemini.domain.model.SmartRoutingDecision {
+        return com.example.gemini.domain.model.SmartModelRouter.route(
+            prompt = draftText,
+            hasAttachments = store.attachments.value.isNotEmpty(),
+            isOnline = isNetworkConnected() && agyBackend.systemConnectionState.value.canSend,
+            availableModels = enabledModels.value,
+            quotas = quotas.value,
+            currentSelectedModelId = if (_isAutoRouting.value) com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID else selectedModelId.value
+        )
+    }
+
     /** `/plu:` plugin skills and custom slash commands are expanded here, for all agents. */
-    fun sendMessage(content: String) = PromptExpansion.expand(content).let {
-        when {
-            isLocalActive -> localBackend.sendMessage(it)
-            else -> agyBackend.sendMessage(it)
+    fun sendMessage(content: String) = PromptExpansion.expand(content).let { expanded ->
+        if (_isAutoRouting.value || com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId.value)) {
+            val decision = getDynamicRoutingDecision(expanded)
+            _activeRoutingDecision.value = decision
+            when (decision.targetAgent) {
+                AgentKind.LOCAL -> {
+                    if (!isLocalActive) {
+                        startNewChat(AgentKind.LOCAL)
+                    }
+                    localBackend.selectModel(decision.targetModelId)
+                    localBackend.sendMessage(expanded)
+                }
+                AgentKind.AGY -> {
+                    if (isLocalActive) {
+                        startNewChat(AgentKind.AGY)
+                    }
+                    agyBackend.selectModel(decision.targetModelId)
+                    agyBackend.sendMessage(expanded)
+                }
+            }
+        } else {
+            when {
+                isLocalActive -> localBackend.sendMessage(expanded)
+                else -> agyBackend.sendMessage(expanded)
+            }
         }
     }
     val isTranscribingAudio = agyBackend.isTranscribingAudio
@@ -971,6 +1024,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             authPrefs.isDevModeEnabled.collect { _isDevModeEnabled.value = it }
+        }
+
+        viewModelScope.launch {
+            authPrefs.preferredModelId.collect { savedModel ->
+                _isAutoRouting.value = com.example.gemini.domain.model.SmartModelRouter.isAuto(savedModel)
+            }
         }
 
     }

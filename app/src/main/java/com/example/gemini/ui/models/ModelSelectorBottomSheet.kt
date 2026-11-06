@@ -27,6 +27,7 @@ import com.example.gemini.domain.model.AiModel
 import com.example.gemini.domain.model.LocalCodingDomain
 import com.example.gemini.domain.model.ModelFamily
 import com.example.gemini.domain.model.ModelQuota
+import com.example.gemini.domain.model.SmartModelRouter
 import com.example.gemini.theme.*
 import kotlinx.coroutines.launch
 
@@ -58,11 +59,23 @@ fun ModelSelectorBottomSheet(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Build the clean unified list of models: Local Qwen at top, followed directly by all real Cloud models
+    // Build the clean unified list of models: Auto at top, followed by Local Qwen, followed directly by all real Cloud models
     val allModelItems = remember(availableModels) {
         val list = mutableListOf<CompactModelItem>()
 
-        // 1. Single unified on-device model: Qwen 2.5 Coder 0.5B
+        // 1. Smart LLM Manager (Auto Dynamic Routing)
+        list.add(
+            CompactModelItem(
+                id = SmartModelRouter.AUTO_MODEL_ID,
+                title = "Auto (Smart LLM Manager)",
+                badge = "Smart Auto",
+                badgeColor = Color(0xFF3B82F6),
+                subtitle = "Dynamic routing · Qwen for shell/offline, Flash for Q&A, Claude for complex logic",
+                isLocal = false
+            )
+        )
+
+        // 2. Single unified on-device model: Qwen 2.5 Coder 0.5B
         list.add(
             CompactModelItem(
                 id = "local-qwen-coder-0.5b",
@@ -74,8 +87,8 @@ fun ModelSelectorBottomSheet(
             )
         )
 
-        // 2. All real Cloud models fetched from Antigravity server
-        val cloudModels = availableModels.filter { !LocalCodingDomain.isLocalModel(it.id) }
+        // 3. All real Cloud models fetched from Antigravity server
+        val cloudModels = availableModels.filter { !LocalCodingDomain.isLocalModel(it.id) && !SmartModelRouter.isAuto(it.id) }
         cloudModels.forEach { model ->
             val badgeColor = when (model.family) {
                 ModelFamily.CLAUDE -> ClaudeTerracotta
@@ -156,10 +169,10 @@ fun ModelSelectorBottomSheet(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         allModelItems.forEachIndexed { index, item ->
-                            val isSelected = if (item.isLocal) {
-                                LocalCodingDomain.isLocalModel(selectedModelId)
-                            } else {
-                                selectedModelId == item.id
+                            val isSelected = when {
+                                item.id == SmartModelRouter.AUTO_MODEL_ID -> SmartModelRouter.isAuto(selectedModelId)
+                                item.isLocal -> !SmartModelRouter.isAuto(selectedModelId) && LocalCodingDomain.isLocalModel(selectedModelId)
+                                else -> !SmartModelRouter.isAuto(selectedModelId) && selectedModelId == item.id
                             }
 
                             Row(

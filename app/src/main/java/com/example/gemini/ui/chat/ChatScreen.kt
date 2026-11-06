@@ -690,16 +690,26 @@ fun ChatScreen(
     val waitingForUser = lastToolCalls.any { it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE" }
     val showWorkingRow = workingAnimationEnabled && (isRunningOrStreaming || holdingTail) && !waitingForUser && !footerShown
 
-    val isLocalChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
-    val currentModel = if (isLocalChat) {
-        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModelId)
-        AiModel(
-            id = domain.modelId,
-            displayName = domain.displayName,
-            description = domain.description,
-            family = com.example.gemini.domain.model.ModelFamily.LOCAL
+    val isAutoModel = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
+    val isLocalChat = !isAutoModel && (currentConv?.agent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId))
+    val currentModel = when {
+        isAutoModel -> AiModel(
+            id = com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
+            displayName = com.example.gemini.domain.model.SmartModelRouter.AUTO_DISPLAY_NAME,
+            description = "Dynamic routing · Qwen for shell/offline, Flash for Q&A, Claude for complex logic",
+            family = com.example.gemini.domain.model.ModelFamily.OTHER
         )
-    } else AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
+        isLocalChat -> {
+            val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModelId)
+            AiModel(
+                id = domain.modelId,
+                displayName = domain.displayName,
+                description = domain.description,
+                family = com.example.gemini.domain.model.ModelFamily.LOCAL
+            )
+        }
+        else -> AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
+    }
     val currentQuota = quotas.find { it.modelId == selectedModelId }
 
     val activeChatProject by TermuxDaemonManager.activeProject.collectAsState()
@@ -1284,7 +1294,7 @@ fun ChatScreen(
                     val effectiveAgent = currentConv?.agent ?: newChatAgent
                     val isLocalChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
 
-                    if (!isLocalChat && isServerStopped && messages.isEmpty()) {
+                    if (!isLocalChat && !isAutoModel && isServerStopped && messages.isEmpty()) {
                         BoxWithConstraints(
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -1327,7 +1337,7 @@ fun ChatScreen(
                                 )
                             }
                         }
-                    } else if (!isLocalChat && isServerInitializing && messages.isEmpty()) {
+                    } else if (!isLocalChat && !isAutoModel && isServerInitializing && messages.isEmpty()) {
                         com.example.gemini.ui.components.EngineWarmingUpView()
                     } else if (!conversationError.isNullOrBlank() && messages.isEmpty() && (isExistingConversation || currentConv != null)) {
                         Column(
@@ -2935,6 +2945,7 @@ fun AntiBotStudioHero(
     onSignIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isAuto = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
     val domain = LocalCodingDomain.fromModelId(selectedModelId)
 
     Column(
@@ -2997,13 +3008,21 @@ fun AntiBotStudioHero(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Active Model Pill (Clickable -> Opens Model Selector)
+        val pillBgColor = when {
+            isAuto -> Color(0xFF3B82F6).copy(alpha = 0.12f)
+            isLocalChat -> Color(0xFF10B981).copy(alpha = 0.12f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        }
+        val pillBorderColor = when {
+            isAuto -> Color(0xFF3B82F6).copy(alpha = 0.35f)
+            isLocalChat -> Color(0xFF10B981).copy(alpha = 0.35f)
+            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        }
+
         Surface(
             shape = RoundedCornerShape(14.dp),
-            color = if (isLocalChat) Color(0xFF10B981).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            border = BorderStroke(
-                1.dp,
-                if (isLocalChat) Color(0xFF10B981).copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-            ),
+            color = pillBgColor,
+            border = BorderStroke(1.dp, pillBorderColor),
             modifier = Modifier
                 .clip(RoundedCornerShape(14.dp))
                 .clickable(onClick = onOpenModelSelector)
@@ -3013,14 +3032,22 @@ fun AntiBotStudioHero(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isLocalChat) domain.iconEmoji else "🤖",
+                    text = when {
+                        isAuto -> "⚡"
+                        isLocalChat -> domain.iconEmoji
+                        else -> "🤖"
+                    },
                     fontSize = 15.sp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = if (isLocalChat) domain.displayName else (selectedModel?.displayName ?: "AI Model"),
+                            text = when {
+                                isAuto -> "Auto (Smart LLM Manager)"
+                                isLocalChat -> domain.displayName
+                                else -> (selectedModel?.displayName ?: "AI Model")
+                            },
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -3034,16 +3061,24 @@ fun AntiBotStudioHero(
                         )
                     }
                     Text(
-                        text = if (isLocalChat) "${domain.tag} · 0 Tokens (100% Offline)" else "Cloud Model · Online",
+                        text = when {
+                            isAuto -> "Dynamic Routing · Qwen, Flash & Claude Thinking"
+                            isLocalChat -> "${domain.tag} · 0 Tokens (100% Offline)"
+                            else -> "Cloud Model · Online"
+                        },
                         fontSize = 11.sp,
-                        color = if (isLocalChat) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = when {
+                            isAuto -> Color(0xFF3B82F6)
+                            isLocalChat -> Color(0xFF10B981)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        }
                     )
                 }
             }
         }
 
-        // Unauthenticated Cloud Banner if cloud agent active
-        if (!isLocalChat && !isAuth) {
+        // Unauthenticated Cloud Banner if cloud agent active and not in auto mode
+        if (!isLocalChat && !isAuto && !isAuth) {
             Spacer(modifier = Modifier.height(16.dp))
             Surface(
                 shape = RoundedCornerShape(14.dp),

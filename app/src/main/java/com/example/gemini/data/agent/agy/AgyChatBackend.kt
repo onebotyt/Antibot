@@ -1641,6 +1641,34 @@ class AgyChatBackend(
                     }
                 }
 
+                val initialErr = sendRes.exceptionOrNull()?.message ?: ""
+                val isQuotaExhausted = initialErr.contains("quota", ignoreCase = true) ||
+                        initialErr.contains("credit", ignoreCase = true) ||
+                        initialErr.contains("429")
+
+                if (sendRes.isFailure && isQuotaExhausted && (modelEnum.contains("claude", ignoreCase = true) || modelEnum.contains("opus", ignoreCase = true))) {
+                    val flashModel = _enabledModels.value.find {
+                        it.family == ModelFamily.GEMINI || it.id.contains("flash", ignoreCase = true)
+                    }?.id ?: "MODEL_GEMINI_3_8_FLASH_HIGH"
+                    Log.i("ChatViewModel", "Claude quota limit reached. Auto LLM Manager seamlessly falling back to: $flashModel")
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            application,
+                            "Claude quota limit reached. Auto LLM Manager switched to Gemini Flash.",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    sendRes = agyHubClient.sendUserPrompt(
+                        cascadeId = conv.id,
+                        text = userPrompt,
+                        modelEnum = flashModel,
+                        thinkingBudget = 0,
+                        autoExecutionPolicy = currentAutoExecPolicy,
+                        media = mediaItems,
+                        hubUrl = hubUrl
+                    )
+                }
+
                 if (sendRes.isSuccess) {
                     isPromptInFlight = false
                 } else {

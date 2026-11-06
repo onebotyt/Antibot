@@ -70,6 +70,7 @@ import com.example.gemini.domain.model.AiModel
 import com.example.gemini.domain.model.ChatAttachment
 import com.example.gemini.domain.model.ModelFamily
 import com.example.gemini.domain.model.ModelQuota
+import com.example.gemini.domain.model.SmartModelRouter
 import com.example.gemini.domain.model.ThinkingPreference
 import com.example.gemini.theme.*
 import kotlinx.coroutines.Job
@@ -578,8 +579,22 @@ fun ChatInputBar(
         }
     }
 
+    val isAuto = SmartModelRouter.isAuto(selectedModel.id)
+    val dynamicDecision = remember(isAuto, textFieldValue.text, isOnline) {
+        if (isAuto) {
+            SmartModelRouter.route(
+                prompt = textFieldValue.text,
+                hasAttachments = attachments.isNotEmpty(),
+                isOnline = isOnline,
+                currentSelectedModelId = SmartModelRouter.AUTO_MODEL_ID
+            )
+        } else null
+    }
+
     val canSend = textFieldValue.text.trim().isNotEmpty() || attachments.isNotEmpty()
     val familyColor = when {
+        dynamicDecision != null -> dynamicDecision.badgeColor
+        isAuto -> Color(0xFF3B82F6)
         selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> Color(0xFF10B981)
         selectedModel.family == ModelFamily.CLAUDE -> ClaudeTerracotta
         else -> GeminiBlue
@@ -973,6 +988,7 @@ fun ChatInputBar(
                             },
                             placeholder = {
                                 val inputPlaceholder = when {
+                                    isAuto -> "Ask AntiBot (Auto Smart Router)..."
                                     selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
                                         val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
                                         domain.placeholderPrompt
@@ -1236,35 +1252,57 @@ fun ChatInputBar(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     val isLocal = selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only"
-                                    if (isLocal) {
+                                    if (dynamicDecision != null) {
+                                        if (dynamicDecision.targetAgent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                                            Text(text = "🧠", fontSize = 12.sp)
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Outlined.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = dynamicDecision.badgeColor,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        val pillLabel = if (textFieldValue.text.isBlank()) "Auto" else dynamicDecision.shortPillText
+                                        Text(
+                                            text = pillLabel,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        val badgeText = if (textFieldValue.text.isBlank()) "Smart Auto" else dynamicDecision.reason.label
+                                        val badgeColor = dynamicDecision.badgeColor
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(badgeColor.copy(alpha = 0.15f))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = badgeText,
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = badgeColor
+                                            )
+                                        }
+                                    } else if (isLocal) {
                                         val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
                                         Text(text = domain.iconEmoji, fontSize = 12.sp)
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Outlined.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = familyColor,
-                                            modifier = Modifier.size(13.dp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = domain.shortName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
                                         )
-                                    }
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    val pillLabel = if (isLocal) {
-                                        com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id).shortName
-                                    } else {
-                                        selectedModel.displayName
-                                    }
-                                    Text(
-                                        text = pillLabel,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-
-                                    if (isLocal) {
-                                        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
                                         Spacer(modifier = Modifier.width(4.dp))
                                         val badgeText = when (domain) {
                                             com.example.gemini.domain.model.LocalCodingDomain.DEV_TEAM -> "3 Models"
@@ -1290,6 +1328,22 @@ fun ChatInputBar(
                                             )
                                         }
                                     } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = familyColor,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = selectedModel.displayName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
                                         val pct = quota?.percentage
                                         if (pct != null) {
                                             Spacer(modifier = Modifier.width(4.dp))

@@ -83,6 +83,7 @@ enum class LocalCodingDomain(
 
         fun isLocalModel(id: String?): Boolean {
             if (id.isNullOrBlank()) return false
+            if (id.equals("auto", ignoreCase = true) || id.equals("smart-router", ignoreCase = true)) return false
             return id == "local-model-only" || id.startsWith("local-", ignoreCase = true)
         }
 
