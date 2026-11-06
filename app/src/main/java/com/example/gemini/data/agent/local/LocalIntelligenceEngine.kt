@@ -49,6 +49,25 @@ object LocalIntelligenceEngine {
             return@withContext handleDirectCommand(trimmed, lower, projectDir, context, startTime)
         }
 
+        // 1.5. Native Device Actions (Alarm, Call, SMS, Flashlight, App Launch)
+        val actionResult = com.example.gemini.assistant.actions.DeviceActionDispatcher.tryExecuteAction(context, trimmed)
+        if (actionResult != null) {
+            val content = when (actionResult) {
+                is com.example.gemini.assistant.actions.ActionResult.Success -> actionResult.message
+                is com.example.gemini.assistant.actions.ActionResult.Error -> "⚠️ ${actionResult.reason}"
+            }
+            return@withContext LocalEngineResult(
+                thoughtText = "Dispatched native device automation action for prompt: \"$trimmed\".",
+                content = content,
+                durationMs = System.currentTimeMillis() - startTime
+            )
+        }
+
+        // 1.6. Natural Task & Reminder Creation (Smart-To-Do integration)
+        if (lower.startsWith("remind me ") || lower.startsWith("create task ") || lower.startsWith("add task ") || lower.startsWith("todo ")) {
+            return@withContext handleNaturalTaskCreation(context, trimmed, lower, startTime)
+        }
+
         // 2. Dev Server Start / Launch requests
         if (isDevServerRequest(lower)) {
             return@withContext handleDevServerRequest(projectDir, context, startTime)
@@ -2007,6 +2026,40 @@ object LocalIntelligenceEngine {
         if (kb < 1024) return "%.1f KB".format(kb)
         val mb = kb / 1024.0
         return "%.1f MB".format(mb)
+    }
+
+    private suspend fun handleNaturalTaskCreation(context: Context, trimmed: String, lower: String, startTime: Long): LocalEngineResult {
+        val repo = com.example.gemini.assistant.tasks.SmartTaskRepository(context)
+        val taskBody = trimmed.removePrefix("remind me to ")
+            .removePrefix("remind me ")
+            .removePrefix("create task: ")
+            .removePrefix("create task ")
+            .removePrefix("add task: ")
+            .removePrefix("add task ")
+            .removePrefix("todo: ")
+            .removePrefix("todo ")
+            .trim()
+
+        val dueAt = if (lower.contains("tomorrow")) System.currentTimeMillis() + 86400000L else null
+        val task = repo.createTask(
+            title = taskBody.ifBlank { "Untitled Task" },
+            notes = "Created via AntiBot Assistant",
+            dueAt = dueAt
+        )
+
+        return LocalEngineResult(
+            thoughtText = "Created Smart Task in local SQLite repository with offline sync tracking.",
+            content = """
+            ### 📋 Smart Task Created
+
+            - **Task:** ${task.displayHeadline}
+            - **Status:** Pending · Saved to local database
+            - **Sync:** Revisions tracked for cross-device sync
+
+            *You can view, edit, or check off your tasks in the **Smart Tasks** panel.*
+            """.trimIndent(),
+            durationMs = System.currentTimeMillis() - startTime
+        )
     }
 
     private fun getLanguageForExtension(ext: String): String {

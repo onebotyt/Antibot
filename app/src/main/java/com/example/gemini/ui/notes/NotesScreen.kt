@@ -105,6 +105,8 @@ fun NotesScreen(
 
     BackHandler(enabled = isVisible && openId != null) { closeEditor() }
 
+    var selectedSection by rememberSaveable { mutableStateOf(0) } // 0: Smart Tasks, 1: Notes
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -119,12 +121,53 @@ fun NotesScreen(
                     onDelete = { openId = null; deleteWithUndo(openNote) }
                 )
             } else {
-                NotesList(
-                    notes = notes,
-                    onClose = onClose,
-                    onOpen = { openId = it.id },
-                    onNew = { openNew(it) }
-                )
+                Column(Modifier.fillMaxSize()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.background,
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = onClose) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            TabRow(
+                                selectedTabIndex = selectedSection,
+                                containerColor = MaterialTheme.colorScheme.background,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Tab(
+                                    selected = selectedSection == 0,
+                                    onClick = { selectedSection = 0 },
+                                    text = { Text("📋 Smart Tasks", fontWeight = if (selectedSection == 0) FontWeight.Bold else FontWeight.Normal) }
+                                )
+                                Tab(
+                                    selected = selectedSection == 1,
+                                    onClick = { selectedSection = 1 },
+                                    text = { Text("📝 Notes & Docs", fontWeight = if (selectedSection == 1) FontWeight.Bold else FontWeight.Normal) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (selectedSection == 0) {
+                        com.example.gemini.assistant.tasks.SmartTaskPanel(
+                            onClose = onClose,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        NotesList(
+                            notes = notes,
+                            onClose = onClose,
+                            onOpen = { openId = it.id },
+                            onNew = { openNew(it) },
+                            showHeader = false
+                        )
+                    }
+                }
             }
         }
     }
@@ -138,7 +181,8 @@ private fun NotesList(
     notes: List<Note>,
     onClose: () -> Unit,
     onOpen: (Note) -> Unit,
-    onNew: (NoteKind) -> Unit
+    onNew: (NoteKind) -> Unit,
+    showHeader: Boolean = true
 ) {
     var filter by rememberSaveable { mutableStateOf(NotesFilter.ALL) }
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -164,28 +208,51 @@ private fun NotesList(
 
     Column(Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.background, shadowElevation = 1.dp) {
-            Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { if (searching) { searching = false; query = "" } else onClose() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            Column(Modifier.fillMaxWidth().then(if (showHeader) Modifier.statusBarsPadding() else Modifier)) {
+                if (showHeader) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { if (searching) { searching = false; query = "" } else onClose() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                        if (searching) {
+                            LaunchedEffect(Unit) { searchFocus.requestFocus() }
+                            PlainField(
+                                value = query,
+                                onValueChange = { query = it },
+                                placeholder = "Search notes",
+                                textStyle = TextStyle(fontSize = 16.sp),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).focusRequester(searchFocus)
+                            )
+                            if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = "Clear search") }
+                        } else {
+                            Text("Notes", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                            IconButton(onClick = { searching = true }) { Icon(Icons.Outlined.Search, contentDescription = "Search") }
+                        }
                     }
-                    if (searching) {
-                        LaunchedEffect(Unit) { searchFocus.requestFocus() }
+                } else {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         PlainField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = "Search notes",
-                            textStyle = TextStyle(fontSize = 16.sp),
+                            placeholder = "Search notes & to-dos...",
+                            textStyle = TextStyle(fontSize = 14.sp),
                             singleLine = true,
-                            modifier = Modifier.weight(1f).focusRequester(searchFocus)
+                            modifier = Modifier.weight(1f)
                         )
-                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = "Clear search") }
-                    } else {
-                        Text("Notes", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 4.dp))
-                        IconButton(onClick = { searching = true }) { Icon(Icons.Outlined.Search, contentDescription = "Search") }
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Clear search", modifier = Modifier.size(16.dp))
+                            }
+                        }
                     }
                 }
                 Row(

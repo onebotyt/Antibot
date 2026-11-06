@@ -19,6 +19,15 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
     <!-- Signature-level private permissions to protect internal Termux and API receivers/services -->
     <permission
@@ -308,6 +317,25 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+
+        <!-- Smart Tasks Reminder Receiver -->
+        <receiver
+            android:name="com.example.gemini.assistant.tasks.SmartTaskReminderReceiver"
+            android:exported="false" />
+
+        <!-- AntiBot Smart Assistant Accessibility Service -->
+        <service
+            android:name="com.example.gemini.assistant.vision.AntiBotAccessibilityService"
+            android:label="AntiBot Assistant Vision &amp; Control"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/automation_accessibility_service" />
+        </service>
     </application>
 
 </manifest>

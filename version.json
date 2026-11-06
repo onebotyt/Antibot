@@ -1,13 +1,15 @@
 {
-  "version_code": 146,
-  "version_name": "1.0.26",
+  "version_code": 147,
+  "version_name": "1.0.27",
   "min_supported_version_code": 1,
   "changelog": [
-    "Redesigned UI/UX with Modern Minimal Studio layout, clean top bar, and bottom Studio Navigation Dock (Chat, IDE, Terminal, Browser, Notes)",
-    "Added 5 specialized on-device coding models (< 500MB, 0 tokens, 100% offline): Backend Architect, Frontend UI/UX Expert, Cybersecurity Specialist, Fullstack Engine, and Qwen 2.5 Coder 0.5B",
-    "Streamlined empty state with AntiBot Studio Hero, active model switcher pill, and domain quick-launch action cards",
-    "Disabled intrusive floating center switcher widget by default and cleaned top bar clutter",
-    "Added domain-aware input bar with specialized placeholders and '0 Tokens' badges"
+    "Combined Smart-To-Do with AntiBot to create an autonomous Personal AI Assistant",
+    "Screen Vision & Control: Point & Draw over screen (Circle-to-Search) to ask AI about any region, full screen reading, and autonomous gestures via Accessibility",
+    "Multi-Tool Floating Palette: Replaced single panel with expandable 6-in-1 tool palette (Draw Screen, Read Screen, Smart Tasks, Quick Actions, Share, Chat)",
+    "Device Automation Dispatcher: Voice and text commands to set alarms, timers, make phone calls, send SMS messages, and toggle flashlight",
+    "Smart Tasks & Notes Fusion: Offline SQLite task manager with priority badges, recurring schedules, exact reminder alarms, and NotesScreen tab integration",
+    "Universal Cross-Device Share: UDP LAN discovery on port 43884 (SyncTask compatible) + Zero-Install Local Web Drop (HTTP port 5234) for PC/iPhone/Android file exchange without installing apps + Bluetooth beam",
+    "Human-Like Conversational Voice & Live Subtitles: Natural TTS cadence with markdown filtering and floating on-screen live subtitle captions"
   ],
   "is_critical": false
 }
