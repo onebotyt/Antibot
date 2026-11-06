@@ -5,7 +5,7 @@
   "changelog": [
     "Smart LLM Manager: Added automatic, balanced dynamic model routing across Local Qwen 2.5 Coder (<500MB, 0 tokens), Fast Cloud (Gemini 3.8 Flash), and Deep Reasoning (Claude Sonnet 4.6 Thinking)",
     "Real-Time Dynamic Model Pill: Header and input bar dynamically reflect chosen model and execution rationale ([Local Shell], [Port/Process], [Deep Logic], [Fast Q&A], [Offline Fallback])",
-    "Seamless Auto-Fallback: Automatically routes to offline on-device Qwen when disconnected, and downgrades gracefully (Claude ➔ Flash ➔ Local Qwen) if cloud quotas hit 429 rate limits or depletion"
+    "Seamless Auto-Fallback: Automatically routes to offline on-device Qwen when disconnected, and downgrades gracefully (Claude \u2794 Flash \u2794 Local Qwen) if cloud quotas hit 429 rate limits or depletion"
   ],
   "is_critical": false
 }
