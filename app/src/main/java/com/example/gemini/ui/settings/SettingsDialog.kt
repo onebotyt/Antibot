@@ -570,8 +570,8 @@ fun SettingsDialog(
                     SettingsSection.GITHUB -> GitHubScreen(
                         cardBg = cardBg,
                         cardBorder = cardBorder,
-                        onOpenProject = { path ->
-                            onOpenProject?.invoke(path)
+                        onOpenProject = { item ->
+                            onOpenProject?.invoke(item.path)
                             onDismiss()
                         }
                     )
@@ -1047,14 +1047,14 @@ private fun UtilitiesSubScreen(
             cardBorder = cardBorder,
             onClick = { onNavigate(SettingsSection.ANDROID_AUTOMATION) }
         )
-        val x11Running by com.example.gemini.data.x11.X11DesktopManager.state.collectAsState()
+        val x11State by com.example.gemini.data.x11.X11DesktopManager.state.collectAsState()
         SettingsCategoryCard(
             icon = Icons.Outlined.DesktopWindows,
-            iconTint = if (x11Running.isRunning) QuotaGreen else Color(0xFF3B82F6),
+            iconTint = if (x11State.running) QuotaGreen else Color(0xFF3B82F6),
             title = "X11 Desktop",
-            subtitle = if (x11Running.isRunning) "Running on display :0 (${x11Running.windowManager})" else "Run graphical Linux tools with Termux:X11",
-            badgeText = if (x11Running.isRunning) "Running" else if (!x11Running.hasTermuxX11App) "Install app" else null,
-            badgeColor = if (x11Running.isRunning) QuotaGreen else Color(0xFFF59E0B),
+            subtitle = if (x11State.running) "Running on display :0 (${x11State.desktop.label})" else "Run graphical Linux tools with Termux:X11",
+            badgeText = if (x11State.running) "Running" else if (x11State.app == null) "Install app" else null,
+            badgeColor = if (x11State.running) QuotaGreen else Color(0xFFF59E0B),
             cardBg = cardBg,
             cardBorder = cardBorder,
             onClick = { onNavigate(SettingsSection.X11_DESKTOP) }

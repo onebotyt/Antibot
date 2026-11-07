@@ -39,6 +39,7 @@ android {
         // Only arm64 runs AntiBot (its glibc, proot and IDE bridge are arm64): leave the other ABIs' copies of
         // dependency libraries out of the APK
         ndk { abiFilters += "arm64-v8a" }
+        buildConfigField("boolean", "IS_SHARED_USER_ID", "false")
     }
 
     signingConfigs {
@@ -58,6 +59,7 @@ android {
             buildConfigField("int", "BRIDGE_PORT", "2236")
             buildConfigField("int", "HUB_PORT", "2237")
             buildConfigField("int", "BROWSER_MCP_PORT", "9767")
+            buildConfigField("boolean", "IS_SHARED_USER_ID", "false")
         }
         create("termux") {
             dimension = "mode"
@@ -65,6 +67,7 @@ android {
             buildConfigField("int", "BRIDGE_PORT", "2234")
             buildConfigField("int", "HUB_PORT", "2235")
             buildConfigField("int", "BROWSER_MCP_PORT", "9765")
+            buildConfigField("boolean", "IS_SHARED_USER_ID", "true")
         }
     }
 
