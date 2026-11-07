@@ -570,36 +570,7 @@ fun SettingsDialog(
     }
 }
 
-@Composable
-private fun MainSettingsMenu(
-    themeMode: String,
-    chatFontScale: Float,
-    isServerOnline: Boolean,
-    isBridgeOnline: Boolean,
-    useSshTerminal: Boolean,
-    mcpServers: List<com.example.gemini.domain.model.McpServerState>,
-    allSkills: List<com.example.gemini.data.remote.dto.SkillDefinitionDto> = emptyList(),
-    installedPlugins: List<com.example.gemini.data.remote.dto.InstalledPluginDto> = emptyList(),
-    commandAutoExecutionPolicy: String,
-    commandSandboxEnabled: Boolean,
-    isFloatingDiagnosticsEnabled: Boolean = false,
-    isLocalToolsInstalled: Boolean = false,
-    cardBg: Color,
-    cardBorder: BorderStroke,
-    scrollState: androidx.compose.foundation.ScrollState,
-    enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
-    onNavigate: (SettingsSection) -> Unit
-) {
-    val agyOn = com.example.gemini.domain.model.AgentKind.AGY in enabledAgents
-    val localOn = com.example.gemini.domain.model.AgentKind.LOCAL in enabledAgents
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
 enum class SettingsBadgeStyle {
     GREEN, LAVENDER, AMBER, BLUE, GREY
 }
