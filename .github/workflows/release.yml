@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - main
     paths:
       - 'version.json'
   workflow_dispatch:
