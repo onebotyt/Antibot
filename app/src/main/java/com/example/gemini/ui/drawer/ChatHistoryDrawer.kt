@@ -45,6 +45,10 @@ import com.example.gemini.ui.components.ChatToastType
 import android.widget.Toast
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.painterResource
@@ -584,7 +588,7 @@ fun ChatHistoryDrawer(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            // Sleek AntiBot App Header in Drawer
+            // AntiBot Studio Header (Image 5)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -599,88 +603,89 @@ fun ChatHistoryDrawer(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "AntiBot",
+                    text = "AntiBot Studio",
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = AntiBotCyan.copy(alpha = 0.15f)
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 ) {
                     Text(
                         text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = AntiBotCyan,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            // Top Action Row: New Chat + Workspace Folders Toggle + Search Toggle
+            // Full-Width New Chat Button (Image 5)
+            Button(
+                onClick = {
+                    searchQuery = ""
+                    isSearchActive = false
+                    scope.launch {
+                        try {
+                            listState.scrollToItem(0)
+                        } catch (_: Exception) {}
+                    }
+                    onNewChat()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isAppInDarkTheme()) Color(0xFF1E232A) else Color(0xFF18181B),
+                    contentColor = Color.White
+                ),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New Chat",
+                    tint = Color.White,
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "New Chat",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Row of 3 square action buttons: Power, Folder, Search (Image 5)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // New Chat Button
-                Button(
-                    onClick = {
-                        searchQuery = ""
-                        isSearchActive = false
-                        scope.launch {
-                            try {
-                                listState.scrollToItem(0)
-                            } catch (_: Exception) {
-                            }
-                        }
-                        onNewChat()
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(36.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AntiBotCyan,
-                        contentColor = Color.Black
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "New Chat",
-                        tint = Color.Black,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = "New Chat",
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.Black,
-                        fontSize = 13.5.sp
-                    )
-                }
-
                 // Power / Exit App Button
                 Surface(
                     onClick = { showExitConfirmDialog = true },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                    )
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.PowerSettingsNew,
                             contentDescription = "Exit App",
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -688,25 +693,19 @@ fun ChatHistoryDrawer(
                 // Workspace Folder Grouping Toggle Button
                 Surface(
                     onClick = { onToggleGroupByWorkspace(!groupByWorkspace) },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = if (groupByWorkspace) ClaudeTerracotta.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(
-                        alpha = 0.5f
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (groupByWorkspace) ClaudeTerracotta.copy(alpha = 0.45f)
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                    )
+                    color = if (groupByWorkspace) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, if (groupByWorkspace) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Folder,
                             contentDescription = if (groupByWorkspace) "Disable Workspace Grouping" else "Group by Workspace",
-                            tint = if (groupByWorkspace) ClaudeTerracotta else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                alpha = 0.8f
-                            ),
-                            modifier = Modifier.size(17.dp)
+                            tint = if (groupByWorkspace) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -720,25 +719,19 @@ fun ChatHistoryDrawer(
                             onSearchQueryChange("")
                         }
                     },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = if (isSearchActive || searchQuery.isNotBlank()) ClaudeTerracotta.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(
-                        alpha = 0.5f
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSearchActive || searchQuery.isNotBlank()) ClaudeTerracotta.copy(alpha = 0.45f)
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                    )
+                    color = if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = if (isSearchActive || searchQuery.isNotBlank()) ClaudeTerracotta else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                alpha = 0.8f
-                            ),
-                            modifier = Modifier.size(17.dp)
+                            tint = if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -1027,49 +1020,121 @@ fun ChatHistoryDrawer(
                             modifier = Modifier.fillMaxSize()
                         ) {
                             if (!groupByWorkspace) {
-                                val visibleTree =
-                                    buildVisibleChatTree(topLevelChats, subagentsByParent, expandedParentIds)
-                                items(visibleTree, key = { it.conv.id }) { item ->
-                                    val conv = item.conv
-                                    val isSelected = conv.id == currentConversationId
-                                    val activeInst = activeInstances.find { it.conversationId == conv.id }
-                                    val isActivelyRunning = conv.isRunning && systemConnectionState.isHubOnline
-                                    val isScheduledOrBackground =
-                                        systemConnectionState.isHubOnline && !isActivelyRunning && (conv.notFullyIdle || conv.hasActivity || activeInst != null)
+                                val now = System.currentTimeMillis()
+                                val oneDayMillis = 24 * 60 * 60 * 1000L
+                                val todayChats = topLevelChats.filter { (now - it.updatedAt) < oneDayMillis }
+                                val earlierChats = topLevelChats.filter { (now - it.updatedAt) >= oneDayMillis }
 
-                                    ChatHistoryItemRow(
-                                        conv = conv,
-                                        isSelected = isSelected,
-                                        activeInst = activeInst,
-                                        isActivelyRunning = isActivelyRunning,
-                                        isScheduledOrBackground = isScheduledOrBackground,
-                                        depth = item.depth,
-                                        displayName = if (item.depth > 0) conv.subagentRole?.takeIf { it.isNotBlank() }
-                                            ?: conv.title else conv.title,
-                                        subagents = item.subagents,
-                                        isSubagentsExpanded = item.isExpanded,
-                                        onToggleSubagents = if (item.subagents.isNotEmpty()) {
-                                            {
-                                                expandedParentIds =
-                                                    if (item.isExpanded) expandedParentIds - conv.id else expandedParentIds + conv.id
+                                if (todayChats.isNotEmpty()) {
+                                    item(key = "hdr_today") {
+                                        Text(
+                                            text = "TODAY",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                            letterSpacing = 0.8.sp,
+                                            modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                    val todayTree = buildVisibleChatTree(todayChats, subagentsByParent, expandedParentIds)
+                                    items(todayTree, key = { it.conv.id }) { item ->
+                                        val conv = item.conv
+                                        val isSelected = conv.id == currentConversationId
+                                        val activeInst = activeInstances.find { it.conversationId == conv.id }
+                                        val isActivelyRunning = conv.isRunning && systemConnectionState.isHubOnline
+                                        val isScheduledOrBackground =
+                                            systemConnectionState.isHubOnline && !isActivelyRunning && (conv.notFullyIdle || conv.hasActivity || activeInst != null)
+
+                                        ChatHistoryItemRow(
+                                            conv = conv,
+                                            isSelected = isSelected,
+                                            activeInst = activeInst,
+                                            isActivelyRunning = isActivelyRunning,
+                                            isScheduledOrBackground = isScheduledOrBackground,
+                                            depth = item.depth,
+                                            displayName = if (item.depth > 0) conv.subagentRole?.takeIf { it.isNotBlank() }
+                                                ?: conv.title else conv.title,
+                                            subagents = item.subagents,
+                                            isSubagentsExpanded = item.isExpanded,
+                                            onToggleSubagents = if (item.subagents.isNotEmpty()) {
+                                                {
+                                                    expandedParentIds =
+                                                        if (item.isExpanded) expandedParentIds - conv.id else expandedParentIds + conv.id
+                                                }
+                                            } else null,
+                                            onSelectConversation = {
+                                                if (item.subagents.isNotEmpty()) {
+                                                    expandedParentIds = expandedParentIds + conv.id
+                                                }
+                                                Log.d(
+                                                    "CHAT_OPEN_DEBUG",
+                                                    "📂 [Drawer] User clicked conversation: id=${conv.id}, title='${conv.title}'"
+                                                )
+                                                onSelectConversation(conv.id)
+                                            },
+                                            onForkConversation = onForkConversation,
+                                            onRequestDelete = { conversationToDelete = it },
+                                            onTerminateInstance = { inst, title ->
+                                                instanceToTerminate = inst to title
                                             }
-                                        } else null,
-                                        onSelectConversation = {
-                                            if (item.subagents.isNotEmpty()) {
-                                                expandedParentIds = expandedParentIds + conv.id
+                                        )
+                                    }
+                                }
+
+                                if (earlierChats.isNotEmpty()) {
+                                    item(key = "hdr_earlier") {
+                                        Text(
+                                            text = "EARLIER",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                            letterSpacing = 0.8.sp,
+                                            modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                    val earlierTree = buildVisibleChatTree(earlierChats, subagentsByParent, expandedParentIds)
+                                    items(earlierTree, key = { it.conv.id }) { item ->
+                                        val conv = item.conv
+                                        val isSelected = conv.id == currentConversationId
+                                        val activeInst = activeInstances.find { it.conversationId == conv.id }
+                                        val isActivelyRunning = conv.isRunning && systemConnectionState.isHubOnline
+                                        val isScheduledOrBackground =
+                                            systemConnectionState.isHubOnline && !isActivelyRunning && (conv.notFullyIdle || conv.hasActivity || activeInst != null)
+
+                                        ChatHistoryItemRow(
+                                            conv = conv,
+                                            isSelected = isSelected,
+                                            activeInst = activeInst,
+                                            isActivelyRunning = isActivelyRunning,
+                                            isScheduledOrBackground = isScheduledOrBackground,
+                                            depth = item.depth,
+                                            displayName = if (item.depth > 0) conv.subagentRole?.takeIf { it.isNotBlank() }
+                                                ?: conv.title else conv.title,
+                                            subagents = item.subagents,
+                                            isSubagentsExpanded = item.isExpanded,
+                                            onToggleSubagents = if (item.subagents.isNotEmpty()) {
+                                                {
+                                                    expandedParentIds =
+                                                        if (item.isExpanded) expandedParentIds - conv.id else expandedParentIds + conv.id
+                                                }
+                                            } else null,
+                                            onSelectConversation = {
+                                                if (item.subagents.isNotEmpty()) {
+                                                    expandedParentIds = expandedParentIds + conv.id
+                                                }
+                                                Log.d(
+                                                    "CHAT_OPEN_DEBUG",
+                                                    "📂 [Drawer] User clicked conversation: id=${conv.id}, title='${conv.title}'"
+                                                )
+                                                onSelectConversation(conv.id)
+                                            },
+                                            onForkConversation = onForkConversation,
+                                            onRequestDelete = { conversationToDelete = it },
+                                            onTerminateInstance = { inst, title ->
+                                                instanceToTerminate = inst to title
                                             }
-                                            Log.d(
-                                                "CHAT_OPEN_DEBUG",
-                                                "📂 [Drawer] User clicked conversation: id=${conv.id}, title='${conv.title}'"
-                                            )
-                                            onSelectConversation(conv.id)
-                                        },
-                                        onForkConversation = onForkConversation,
-                                        onRequestDelete = { conversationToDelete = it },
-                                        onTerminateInstance = { inst, title ->
-                                            instanceToTerminate = inst to title
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             } else {
                                 grouped.forEach { (groupName, chats) ->
@@ -1221,203 +1286,145 @@ fun ChatHistoryDrawer(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
             )
 
-            // Bottom Bar: Settings (Left) & Profile/Login (Right)
-            Row(
+            // Bottom Navigation Links (Image 5)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(vertical = 4.dp, horizontal = 4.dp)
             ) {
-                // Settings on left
-                Surface(
-                    onClick = onOpenSettings,
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color.Transparent,
-                    modifier = Modifier.weight(1f)
+                DrawerNavLinkItem(
+                    icon = Icons.Outlined.Settings,
+                    label = "Settings",
+                    onClick = onOpenSettings
+                )
+                DrawerNavLinkItem(
+                    icon = Icons.Outlined.SmartToy,
+                    label = "Agents",
+                    onClick = onOpenSettings
+                )
+                DrawerNavLinkItem(
+                    icon = Icons.Outlined.Extension,
+                    label = "Tools & MCP",
+                    onClick = onOpenSettings
+                )
+                DrawerNavLinkItem(
+                    icon = Icons.Outlined.Dns,
+                    label = "Servers & Connectivity",
+                    onClick = onOpenServerLogs
+                )
+                DrawerNavLinkItem(
+                    icon = Icons.Outlined.Info,
+                    label = "Help & Docs",
+                    onClick = onOpenSettings
+                )
+            }
+
+            // User Profile Footer Card (Image 5)
+            Surface(
+                onClick = {
+                    if (systemConnectionState.status == com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED) {
+                        onLogin()
+                    } else {
+                        showProfileDialog = true
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Settings",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                // Profile / Login on right
-                if (accountsButton != null) {
-                    accountsButton()
-                } else if (isAuthBusy) {
-                    Surface(
-                        onClick = { showSigningInProgressDialog = true },
-                        shape = RoundedCornerShape(14.dp),
-                        color = ClaudeTerracotta.copy(alpha = 0.12f),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(ClaudeTerracotta, CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Signing In...",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = ClaudeTerracotta
-                            )
-                        }
-                    }
-                } else {
-                    when (systemConnectionState.status) {
-                        com.example.gemini.data.remote.SystemStatus.READY -> {
-                            // Profile avatar button with real display name
-                            Surface(
-                                onClick = { showProfileDialog = true },
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    ClaudeTerracotta.copy(alpha = 0.4f)
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                    Box(modifier = Modifier.size(36.dp)) {
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(parseProfileAvatarModel(authInfo.profilePictureUrl))
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "Profile Picture",
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(ClaudeTerracotta),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    SubcomposeAsyncImage(
-                                        model = ImageRequest.Builder(LocalContext.current)
-                                            .data(parseProfileAvatarModel(authInfo.profilePictureUrl))
-                                            .crossfade(true)
-                                            .build(),
-                                        contentDescription = "Profile Picture",
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape),
-                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                        loading = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(ClaudeTerracotta),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                val initial =
-                                                    authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "U"
-                                                Text(
-                                                    text = initial,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        },
-                                        error = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(ClaudeTerracotta),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                val initial =
-                                                    authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "U"
-                                                Text(
-                                                    text = initial,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White
-                                                )
-                                            }
-                                        }
-                                    )
-                                    val nameToShow = authInfo.displayName
-                                    if (nameToShow.isNotBlank()) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = nameToShow,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = 110.dp),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED -> {
-                            // Not logged in (UNAUTHENTICATED) -> Sign In button
-                            FilledTonalButton(
-                                onClick = onLogin,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = ClaudeTerracotta.copy(alpha = 0.15f),
-                                    contentColor = ClaudeTerracotta
-                                ),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Outlined.Login,
-                                    contentDescription = "Sign In",
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Sign In",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        else -> {
-                            // All intermediate or offline states (OFFLINE, STARTING, ACQUIRING_CSRF, CHECKING_AUTH, ERROR)
-                            val statusObj = systemConnectionState.status
-                            Surface(
-                                onClick = if (statusObj == com.example.gemini.data.remote.SystemStatus.OFFLINE || statusObj == com.example.gemini.data.remote.SystemStatus.ERROR) onRetry else onCheckAuth,
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.height(30.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .background(statusObj.dotColor, CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
+                                    val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
                                     Text(
-                                        text = statusObj.label,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Normal,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        text = initial,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            },
+                            error = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(ClaudeTerracotta),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
+                                    Text(
+                                        text = initial,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
                                     )
                                 }
                             }
-                        }
+                        )
+                        // Online indicator dot
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .align(Alignment.BottomEnd)
+                                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                .padding(1.5.dp)
+                                .background(
+                                    if (systemConnectionState.isHubOnline) Color(0xFF22C55E) else systemConnectionState.status.dotColor,
+                                    CircleShape
+                                )
+                        )
                     }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        val nameToShow = authInfo.displayName.ifBlank { "GIRDHAR DHAMI" }
+                        Text(
+                            text = nameToShow.uppercase(),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (isAuthBusy) "Signing In..." else "Pro Plan",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
 
@@ -1437,6 +1444,41 @@ fun ChatHistoryDrawer(
                     onDismiss = { showFullSearchDialog = false }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DrawerNavLinkItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = Color.Transparent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier.size(19.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = label,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+            )
         }
     }
 }

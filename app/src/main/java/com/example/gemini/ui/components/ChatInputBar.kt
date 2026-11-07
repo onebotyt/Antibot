@@ -968,78 +968,12 @@ fun ChatInputBar(
                             }
                         }
 
-                        // 1. Text Field Area on Top
-                        TextField(
-                            value = textFieldValue,
-                            onValueChange = { newVal ->
-                                val trimmed = newVal.text.trim()
-                                if (trimmed.startsWith("content://") || (trimmed.startsWith("file://") && trimmed.lowercase().let { s -> s.endsWith(".png") || s.endsWith(".jpg") || s.endsWith(".jpeg") || s.endsWith(".webp") })) {
-                                    try {
-                                        val parsed = Uri.parse(trimmed)
-                                        val mime = context.contentResolver.getType(parsed)
-                                        if (mime?.startsWith("image/") == true || trimmed.lowercase().let { s -> s.endsWith(".png") || s.endsWith(".jpg") || s.endsWith(".jpeg") || s.endsWith(".webp") }) {
-                                            onAddAttachmentFromUri(parsed)
-                                            onTextFieldValueChange(TextFieldValue(""))
-                                            return@TextField
-                                        }
-                                    } catch (_: Exception) {}
-                                }
-                                onTextFieldValueChange(newVal)
-                            },
-                            placeholder = {
-                                val inputPlaceholder = when {
-                                    isAuto -> "Ask AntiBot (Auto Smart Router)..."
-                                    selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
-                                        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
-                                        domain.placeholderPrompt
-                                    }
-                                    selectedModel.family == ModelFamily.CLAUDE -> "Ask Claude..."
-                                    else -> "Ask ${selectedModel.displayName.split(" ").firstOrNull() ?: "Gemini"}..."
-                                }
-                                Text(
-                                    text = inputPlaceholder,
-                                    fontSize = 14.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester)
-                                .onKeyEvent { keyEvent ->
-                                    if (keyEvent.type == KeyEventType.KeyDown && keyEvent.isCtrlPressed && keyEvent.key == Key.V) {
-                                        val imgUri = ClipboardImageHelper.getClipboardImageUri(context)
-                                        if (imgUri != null) {
-                                            onAddAttachmentFromUri(imgUri)
-                                            dismissedClipboardUri = imgUri
-                                            true
-                                        } else false
-                                    } else false
-                                }
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                cursorColor = ClaudeTerracotta
-                            ),
-                            textStyle = TextStyle(
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp
-                            ),
-                            maxLines = 6,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
-                        )
-
-                    // 2. Attachments Preview (if any)
+                    // 1. Attachments Preview (if any)
                     if (attachments.isNotEmpty() || isUploadingAttachment) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
                                 .horizontalScroll(rememberScrollState()),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1091,7 +1025,6 @@ fun ChatInputBar(
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Clickable preview + name container
                                         Row(
                                             modifier = Modifier
                                                 .clickable {
@@ -1202,288 +1135,259 @@ fun ChatInputBar(
                         }
                     }
 
-                    // 3. Bottom Action Row: [+] [Model Chip] ... [Voice / Send / Stop Button]
+                    // 2. Main Floating Input Pill: [+] [Ask AntiBot...] [Mic] [Send]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 4.dp, end = 4.dp, bottom = 2.dp, top = 2.dp),
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // [+] Attachment Button
-                        Surface(
+                        IconButton(
                             onClick = onAttachClick,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.background,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
                             modifier = Modifier.size(34.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Add,
-                                    contentDescription = "Add attachments",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Outlined.Add,
+                                contentDescription = "Add attachments",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
-                        // Middle Area: Model Selector Pill (takes up to 100% of the available space between [+] and right actions)
-                        Box(
+                        // Center: Text input
+                        TextField(
+                            value = textFieldValue,
+                            onValueChange = { newVal ->
+                                val trimmed = newVal.text.trim()
+                                if (trimmed.startsWith("content://") || (trimmed.startsWith("file://") && trimmed.lowercase().let { s -> s.endsWith(".png") || s.endsWith(".jpg") || s.endsWith(".jpeg") || s.endsWith(".webp") })) {
+                                    try {
+                                        val parsed = Uri.parse(trimmed)
+                                        val mime = context.contentResolver.getType(parsed)
+                                        if (mime?.startsWith("image/") == true || trimmed.lowercase().let { s -> s.endsWith(".png") || s.endsWith(".jpg") || s.endsWith(".jpeg") || s.endsWith(".webp") }) {
+                                            onAddAttachmentFromUri(parsed)
+                                            onTextFieldValueChange(TextFieldValue(""))
+                                            return@TextField
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                                onTextFieldValueChange(newVal)
+                            },
+                            placeholder = {
+                                Text(
+                                    text = "Ask AntiBot...",
+                                    fontSize = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                )
+                            },
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 6.dp),
-                            contentAlignment = Alignment.CenterStart
+                                .focusRequester(focusRequester)
+                                .onKeyEvent { keyEvent ->
+                                    if (keyEvent.type == KeyEventType.KeyDown && keyEvent.isCtrlPressed && keyEvent.key == Key.V) {
+                                        val imgUri = ClipboardImageHelper.getClipboardImageUri(context)
+                                        if (imgUri != null) {
+                                            onAddAttachmentFromUri(imgUri)
+                                            dismissedClipboardUri = imgUri
+                                            true
+                                        } else false
+                                    } else false
+                                }
+                                .padding(horizontal = 2.dp, vertical = 0.dp),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                cursorColor = MaterialTheme.colorScheme.primary
+                            ),
+                            textStyle = TextStyle(
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp
+                            ),
+                            maxLines = 5,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
+                        )
+
+                        // Right: Mic button
+                        IconButton(
+                            onClick = {
+                                if (voiceNotesAsText) {
+                                    startAutoTranscribe()
+                                } else if (isLiveDictating) {
+                                    stopLiveDictation()
+                                } else {
+                                    recordMode = AudioRecordMode.VOICE_NOTE
+                                    triggerMicClick()
+                                }
+                            },
+                            modifier = Modifier.size(34.dp)
                         ) {
-                            Surface(
-                                onClick = {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                    onOpenModelSelector()
-                                },
-                                shape = RoundedCornerShape(18.dp),
-                                color = MaterialTheme.colorScheme.background,
-                                border = BorderStroke(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val isLocal = selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only"
-                                    if (dynamicDecision != null) {
-                                        if (dynamicDecision.targetAgent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                                            Text(text = "🧠", fontSize = 12.sp)
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Outlined.AutoAwesome,
-                                                contentDescription = null,
-                                                tint = dynamicDecision.badgeColor,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        val pillLabel = if (textFieldValue.text.isBlank()) "Auto" else dynamicDecision.shortPillText
-                                        Text(
-                                            text = pillLabel,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        val badgeText = if (textFieldValue.text.isBlank()) "Smart Auto" else dynamicDecision.reason.label
-                                        val badgeColor = dynamicDecision.badgeColor
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(badgeColor.copy(alpha = 0.15f))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = badgeText,
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = badgeColor
-                                            )
-                                        }
-                                    } else if (isLocal) {
-                                        val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
-                                        Text(text = domain.iconEmoji, fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = domain.shortName,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        val badgeText = when (domain) {
-                                            com.example.gemini.domain.model.LocalCodingDomain.DEV_TEAM -> "3 Models"
-                                            com.example.gemini.domain.model.LocalCodingDomain.QWEN_CODER -> "0.5B"
-                                            else -> "0 Tokens"
-                                        }
-                                        val badgeColor = when (domain) {
-                                            com.example.gemini.domain.model.LocalCodingDomain.DEV_TEAM -> Color(0xFF8B5CF6)
-                                            com.example.gemini.domain.model.LocalCodingDomain.QWEN_CODER -> Color(0xFF3B82F6)
-                                            else -> Color(0xFF10B981)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(badgeColor.copy(alpha = 0.15f))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = badgeText,
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = badgeColor
-                                            )
-                                        }
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Outlined.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = familyColor,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = selectedModel.displayName,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
-                                        val pct = quota?.percentage
-                                        if (pct != null) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(badgeColor.copy(alpha = 0.15f))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                                            ) {
-                                                Text(
-                                                    text = "$pct%",
-                                                    fontSize = 9.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = badgeColor
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Switch Model",
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.Mic,
+                                contentDescription = if (voiceNotesAsText) "Record and transcribe" else "Record voice note",
+                                tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
-                        // Dedicated Speech-to-Text Live Dictation Button (AGY Hub)
-                        if (!isStreaming && !isRecordingAudio) {
-                            Surface(
-                                onClick = {
-                                    if (isLiveDictating) {
-                                        stopLiveDictation()
-                                    } else {
-                                        startLiveDictation()
-                                    }
-                                },
-                                shape = CircleShape,
-                                color = if (isLiveDictating) GeminiBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isLiveDictating) GeminiBlue.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                ),
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.GraphicEq,
-                                        contentDescription = if (isLiveDictating) "Stop Dictation" else "Live Dictation",
-                                        tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
 
-                        // Action Button (Send / Stop / Voice Recorder)
+                        // Right: Send or Stop Button
                         if (isStreaming) {
                             Surface(
                                 onClick = onStopStreaming,
                                 shape = CircleShape,
                                 color = ClaudeTerracotta,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(34.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Stop,
                                         contentDescription = "Stop",
                                         tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }
-                        } else if (canSend) {
-                            val sendBtnColor = if (!isAuth) Color(0xFF6B7280) else if (!isOnline) Color(0xFF6B7280) else if (isBackgroundActive) Color(0xFFFFB300) else ClaudeTerracotta
+                        } else {
+                            val sendEnabled = canSend && isOnline && isAuth
+                            val sendBtnBg = if (isDark) {
+                                if (sendEnabled) Color.White else Color(0xFF2C323D)
+                            } else {
+                                if (sendEnabled) Color(0xFF18181B) else Color(0xFFE4E4E7)
+                            }
+                            val sendIconTint = if (isDark) {
+                                if (sendEnabled) Color.Black else Color.White.copy(alpha = 0.35f)
+                            } else {
+                                if (sendEnabled) Color.White else Color.Black.copy(alpha = 0.35f)
+                            }
+
                             Surface(
                                 onClick = {
+                                    if (!canSend) return@Surface
                                     val trimmed = textFieldValue.text.trim()
-                                        if (!isAuth) {
-                                            Toast.makeText(context, "Please sign in first to send messages.", Toast.LENGTH_SHORT).show()
-                                            return@Surface
-                                        }
-                                        if (!isOnline) {
-                                            Toast.makeText(context, offlineMessage, Toast.LENGTH_SHORT).show()
-                                            return@Surface
-                                        }
-                                        if (isLiveDictating) {
-                                            stopLiveDictation()
-                                        }
-                                        onSendMessage(trimmed)
-                                        onTextFieldValueChange(TextFieldValue(""))
+                                    if (!isAuth) {
+                                        Toast.makeText(context, "Please sign in first to send messages.", Toast.LENGTH_SHORT).show()
+                                        return@Surface
+                                    }
+                                    if (!isOnline) {
+                                        Toast.makeText(context, offlineMessage, Toast.LENGTH_SHORT).show()
+                                        return@Surface
+                                    }
+                                    if (isLiveDictating) stopLiveDictation()
+                                    onSendMessage(trimmed)
+                                    onTextFieldValueChange(TextFieldValue(""))
                                 },
                                 shape = CircleShape,
-                                color = sendBtnColor,
-                                modifier = Modifier.size(36.dp)
+                                color = sendBtnBg,
+                                modifier = Modifier.size(34.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.ArrowUpward,
                                         contentDescription = "Send",
-                                        tint = if (isAuth && isOnline) (if (isBackgroundActive) Color(0xFF1E1E1E) else Color.White) else Color(0xFFD1D5DB),
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-                            }
-                        } else {
-                            // Claude-style Microphone Voice Recorder Button
-                            val voiceBgColor = if (isDark) Color(0xFFEDEDED) else Color(0xFF1F1F1F)
-                            val voiceIconColor = if (isDark) Color(0xFF1B1B1B) else Color.White
-
-                            Surface(
-                                onClick = {
-                                    if (voiceNotesAsText) {
-                                        startAutoTranscribe()
-                                    } else {
-                                        recordMode = AudioRecordMode.VOICE_NOTE
-                                        triggerMicClick()
-                                    }
-                                },
-                                shape = CircleShape,
-                                color = voiceBgColor,
-                                shadowElevation = 1.dp,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Mic,
-                                        contentDescription = if (voiceNotesAsText) "Record and transcribe" else "Record voice note",
-                                        tint = voiceIconColor,
-                                        modifier = Modifier.size(20.dp)
+                                        tint = sendIconTint,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
                         }
                     }
+                }
+            }
+
+            // 3. Sub-controls Row (Image 4): [Model Pill ▾] [🟢 Antigravity] ... [🎛️ Tune]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Model Selector Dropdown Pill
+                Surface(
+                    onClick = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        onOpenModelSelector()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val modelName = when {
+                            isAuto -> "Auto Smart Router"
+                            selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
+                                com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id).shortName
+                            }
+                            else -> selectedModel.displayName
+                        }
+                        Text(
+                            text = modelName,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Switch Model",
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Engine Status Pill: 🟢 Antigravity / 🟢 Local Engine
+                val isLocal = selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only"
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(Color(0xFF10B981), CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = if (isLocal) "Local Engine" else "Antigravity",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Sliders / Tune Button: 🎛️
+                IconButton(
+                    onClick = onOpenThinkingSelector,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Tune & Thinking Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }

@@ -85,7 +85,7 @@ import com.example.gemini.data.daemon.TermuxDaemonManager
 import com.example.gemini.data.daemon.IdeApiClient
 
 enum class SettingsSection(val title: String, val subtitle: String) {
-    MAIN("Settings & Preferences", "Configure your AntiBot experience"),
+    MAIN("Settings & Preferences", "Configure AntiBot, engines, tools and app"),
     APPEARANCE("Appearance & Theme", "Theme, dark mode, and chat font scaling"),
     SERVERS("Servers & Connectivity", "Configure AGY Hub and IDE Bridge endpoints"),
     WEBVIEW_EXTENSIONS("Custom AntiBot Plugins", "Install and manage plugins: MCP tools and skills"),
@@ -270,27 +270,25 @@ fun SettingsDialog(
                 .navigationBarsPadding()
                 .windowInsetsPadding(WindowInsets.imeAnimationTarget)
         ) {
-            // Top App Bar
+            // Top App Bar (Image 6)
             TopAppBar(
                 title = {
                     Column {
                         Text(
                             text = currentSection.title,
-                            fontSize = 17.sp,
+                            fontSize = 17.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (currentSection != SettingsSection.MAIN) {
-                            Text(
-                                text = currentSection.subtitle,
-                                fontSize = 11.5.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = currentSection.subtitle,
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 },
                 navigationIcon = {
@@ -309,13 +307,30 @@ fun SettingsDialog(
                     }
                 },
                 actions = {
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            text = "Done",
-                            color = ClaudeTerracotta,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                    if (currentSection == SettingsSection.MAIN) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            Text(
+                                text = "v${BuildConfig.VERSION_NAME}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.5.dp)
+                            )
+                        }
+                    } else {
+                        TextButton(onClick = onDismiss) {
+                            Text(
+                                text = "Done",
+                                color = ClaudeTerracotta,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -577,227 +592,387 @@ private fun MainSettingsMenu(
 ) {
     val agyOn = com.example.gemini.domain.model.AgentKind.AGY in enabledAgents
     val localOn = com.example.gemini.domain.model.AgentKind.LOCAL in enabledAgents
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        SettingsGroupHeader("Agents", MaterialTheme.colorScheme.primary, "Which agents run, and the local server they share")
-        SettingsCategoryCard(
-            icon = Icons.Outlined.SmartToy,
-            iconTint = MaterialTheme.colorScheme.primary,
-            title = "Agents",
-            subtitle = when {
-                agyOn && localOn -> "Antigravity and Local Engine"
-                localOn -> "Local Engine only"
-                else -> "Antigravity only"
-            },
-            badgeText = "${enabledAgents.size} on",
-            badgeColor = MaterialTheme.colorScheme.primary,
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.AGENTS) }
-        )
-        // Section 2: Servers & Network
+        // Section 1: Agents Category Card Container (Image 6)
         val (serverBadge, serverColor) = when {
             isServerOnline && isBridgeOnline -> "Online" to QuotaGreen
             isServerOnline || isBridgeOnline -> "Partial" to Color(0xFFFFA000)
             else -> "Offline" to Color.Red
         }
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Dns,
-            iconTint = serverColor,
-            title = "Servers & Connectivity",
-            subtitle = "AGY Hub & IDE Bridge endpoints",
-            badgeText = serverBadge,
-            badgeColor = serverColor,
+        SettingsCategoryContainer(
+            headerIcon = Icons.Outlined.Code,
+            headerTint = MaterialTheme.colorScheme.primary,
+            headerTitle = "Agents",
+            headerSubtitle = "Which agents run, and the local server they share",
             cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.SERVERS) }
-        )
+            cardBorder = cardBorder
+        ) {
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.SmartToy,
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = "Agents",
+                subtitle = when {
+                    agyOn && localOn -> "Antigravity and Local Engine"
+                    localOn -> "Local Engine only"
+                    else -> "Antigravity only"
+                },
+                badgeText = "${enabledAgents.size} on",
+                badgeColor = MaterialTheme.colorScheme.primary,
+                onClick = { onNavigate(SettingsSection.AGENTS) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Dns,
+                iconTint = serverColor,
+                title = "Servers & Connectivity",
+                subtitle = "AGY Hub & IDE Bridge endpoints",
+                badgeText = serverBadge,
+                badgeColor = serverColor,
+                onClick = { onNavigate(SettingsSection.SERVERS) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Extension,
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = "Custom AntiBot Plugins",
+                subtitle = "Install ZIP, update, rename, enable or disable plugins with MCP tools and skills",
+                onClick = { onNavigate(SettingsSection.WEBVIEW_EXTENSIONS) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Terminal,
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = "Slash Commands",
+                subtitle = "Create / commands that expand into longer prompts or attach a plugin skill",
+                onClick = { onNavigate(SettingsSection.SLASH_COMMANDS) }
+            )
+        }
 
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Extension,
-            iconTint = MaterialTheme.colorScheme.primary,
-            title = "Custom AntiBot Plugins",
-            subtitle = "Install ZIP, update, rename, enable or disable plugins with MCP tools and skills",
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.WEBVIEW_EXTENSIONS) }
-        )
-
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Terminal,
-            iconTint = MaterialTheme.colorScheme.primary,
-            title = "Slash Commands",
-            subtitle = "Create / commands that expand into longer prompts or attach a plugin skill",
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.SLASH_COMMANDS) }
-        )
-
+        // Section 2: Antigravity Category Card Container (Image 6)
         if (agyOn) {
-        SettingsGroupHeader("Antigravity", GeminiBlue, "Google Antigravity agent (agy hub)")
-        // Section 3: MCP Servers & Tools
-        val activeMcpCount = mcpServers.count { it.isEnabled }
-        val totalMcpCount = mcpServers.size
-        val mcpBadge = when {
-            totalMcpCount == 0 -> "0 Configured"
-            activeMcpCount > 0 -> "$activeMcpCount Active"
-            else -> "Disabled"
-        }
-        val mcpColor = when {
-            activeMcpCount > 0 -> QuotaGreen
-            totalMcpCount > 0 -> Color(0xFFFFA000)
-            else -> ClaudeTerracotta
-        }
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Extension,
-            iconTint = mcpColor,
-            title = "MCP Servers & Tools",
-            subtitle = if (totalMcpCount > 0) "$totalMcpCount server(s) • global mcp_config.json" else "Model Context Protocol tools & integrations",
-            badgeText = mcpBadge,
-            badgeColor = mcpColor,
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.MCP) }
-        )
+            val activeMcpCount = mcpServers.count { it.isEnabled }
+            val totalMcpCount = mcpServers.size
+            val mcpBadge = when {
+                totalMcpCount == 0 -> "0 Configured"
+                activeMcpCount > 0 -> "$activeMcpCount Active"
+                else -> "Disabled"
+            }
+            val mcpColor = when {
+                activeMcpCount > 0 -> QuotaGreen
+                totalMcpCount > 0 -> Color(0xFFFFA000)
+                else -> ClaudeTerracotta
+            }
+            val totalSkillsCount = allSkills.size
+            val totalPluginsCount = installedPlugins.size
+            val skillsBadge = "$totalSkillsCount Skills • $totalPluginsCount Plugins"
+            val (policyBadge, policyColor) = when {
+                commandAutoExecutionPolicy.contains("EAGER", ignoreCase = true) -> "⚡ Auto-Run" to QuotaGreen
+                commandAutoExecutionPolicy.contains("AUTO", ignoreCase = true) -> "🛡️ Smart Safety" to Color(0xFF00ACC1)
+                else -> "✋ Ask User" to Color(0xFFF59E0B)
+            }
+            val sandboxSummary = if (commandSandboxEnabled) "Sandbox ON" else "Sandbox OFF"
 
-        // Section 3.5: Skills & Plugins
-        val totalSkillsCount = allSkills.size
-        val totalPluginsCount = installedPlugins.size
-        val skillsBadge = "$totalSkillsCount Skills • $totalPluginsCount Plugins"
-        SettingsCategoryCard(
-            icon = Icons.Outlined.AutoAwesome,
-            iconTint = GeminiBlue,
-            title = "Skills & Plugins",
-            subtitle = "Installed skills, Google plugins catalog, and markdown guides",
-            badgeText = skillsBadge,
-            badgeColor = GeminiBlue,
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.SKILLS_PLUGINS) }
-        )
-
-        // Section 5: Commands & Permissions
-        val (policyBadge, policyColor) = when {
-            commandAutoExecutionPolicy.contains("EAGER", ignoreCase = true) -> "⚡ Auto-Run" to QuotaGreen
-            commandAutoExecutionPolicy.contains("AUTO", ignoreCase = true) -> "🛡️ Smart Safety" to Color(0xFF00ACC1)
-            else -> "✋ Ask User" to Color(0xFFF59E0B)
+            SettingsCategoryContainer(
+                headerIcon = Icons.Outlined.AutoAwesome,
+                headerTint = GeminiBlue,
+                headerTitle = "Antigravity",
+                headerSubtitle = "Google Antigravity agent (agy hub)",
+                cardBg = cardBg,
+                cardBorder = cardBorder
+            ) {
+                SettingsGroupItemRow(
+                    icon = Icons.Outlined.Extension,
+                    iconTint = mcpColor,
+                    title = "MCP Servers & Tools",
+                    subtitle = if (totalMcpCount > 0) "$totalMcpCount server(s) • global mcp_config.json" else "Model Context Protocol tools & integrations",
+                    badgeText = mcpBadge,
+                    badgeColor = mcpColor,
+                    onClick = { onNavigate(SettingsSection.MCP) }
+                )
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+                SettingsGroupItemRow(
+                    icon = Icons.Outlined.AutoAwesome,
+                    iconTint = GeminiBlue,
+                    title = "Skills & Plugins",
+                    subtitle = "Installed skills, Google plugins catalog, and markdown guides",
+                    badgeText = skillsBadge,
+                    badgeColor = GeminiBlue,
+                    onClick = { onNavigate(SettingsSection.SKILLS_PLUGINS) }
+                )
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+                SettingsGroupItemRow(
+                    icon = Icons.Outlined.Security,
+                    iconTint = policyColor,
+                    title = "Commands & Permissions",
+                    subtitle = "Policy: $policyBadge • $sandboxSummary",
+                    badgeText = policyBadge,
+                    badgeColor = policyColor,
+                    onClick = { onNavigate(SettingsSection.COMMANDS) }
+                )
+            }
         }
-        val sandboxSummary = if (commandSandboxEnabled) "Sandbox ON" else "Sandbox OFF"
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Security,
-            iconTint = policyColor,
-            title = "Commands & Permissions",
-            subtitle = "Policy: $policyBadge • $sandboxSummary",
-            badgeText = policyBadge,
-            badgeColor = policyColor,
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.COMMANDS) }
-        )
-        }
 
-        SettingsGroupHeader("App", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), "General app settings")
-        // Section 1: Appearance & Display
+        // Section 3: App Category Card Container (Image 6)
         val themeLabel = when (themeMode) {
             "DARK" -> "Dark Mode"
             "LIGHT" -> "Light Mode"
             else -> "Auto (System)"
         }
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Palette,
-            iconTint = ClaudeTerracotta,
-            title = "Appearance & Theme",
-            subtitle = "$themeLabel • ${(chatFontScale * 100).toInt()}% text scale",
-            badgeText = themeLabel,
+        val diagBadge = if (isFloatingDiagnosticsEnabled) "HUD ON" else "HUD OFF"
+        val diagColor = if (isFloatingDiagnosticsEnabled) QuotaGreen else Color.Gray
+
+        SettingsCategoryContainer(
+            headerIcon = Icons.Default.Smartphone,
+            headerTint = ClaudeTerracotta,
+            headerTitle = "App",
+            headerSubtitle = "General app settings",
             cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.APPEARANCE) }
-        )
-
-
-        // Section 5: Terminal & Shell
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Terminal,
-            iconTint = Color(0xFF00ACC1),
-            title = "Terminal & Shell Execution",
-            subtitle = if (useSshTerminal) "SSH Mode (Termux sshd)" else "Local Linux Environment",
-            badgeText = if (useSshTerminal) "SSH" else "Local",
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.TERMINAL) }
-        )
-
-        // Section 5.5: Backups & Restore (only for rootfs installed app)
-        if (isLocalToolsInstalled) {
-            SettingsCategoryCard(
-                icon = Icons.Outlined.Backup,
-                iconTint = GeminiBlue,
-                title = "Backups & Restore",
-                subtitle = "Backup rootfs environment and AGY chat histories",
-                badgeText = "Rootfs Active",
-                badgeColor = GeminiBlue,
-                cardBg = cardBg,
-                cardBorder = cardBorder,
-                onClick = { onNavigate(SettingsSection.BACKUPS) }
+            cardBorder = cardBorder
+        ) {
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Palette,
+                iconTint = ClaudeTerracotta,
+                title = "Appearance & Theme",
+                subtitle = "$themeLabel • ${(chatFontScale * 100).toInt()}% text scale",
+                badgeText = themeLabel,
+                onClick = { onNavigate(SettingsSection.APPEARANCE) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Terminal,
+                iconTint = Color(0xFF00ACC1),
+                title = "Terminal & Shell Execution",
+                subtitle = if (useSshTerminal) "SSH Mode (Termux sshd)" else "Local Linux Environment",
+                badgeText = if (useSshTerminal) "SSH" else "Local",
+                onClick = { onNavigate(SettingsSection.TERMINAL) }
+            )
+            if (isLocalToolsInstalled) {
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+                SettingsGroupItemRow(
+                    icon = Icons.Outlined.Backup,
+                    iconTint = GeminiBlue,
+                    title = "Backups & Restore",
+                    subtitle = "Backup rootfs environment and AGY chat histories",
+                    badgeText = "Rootfs Active",
+                    badgeColor = GeminiBlue,
+                    onClick = { onNavigate(SettingsSection.BACKUPS) }
+                )
+            }
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Security,
+                iconTint = Color(0xFF10B981),
+                title = "Data Loss Protection",
+                subtitle = "Accidental uninstall shield & App Info clear data protection",
+                badgeText = "Shield",
+                badgeColor = Color(0xFF10B981),
+                onClick = { onNavigate(SettingsSection.DATA_PROTECTION) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Speed,
+                iconTint = if (isFloatingDiagnosticsEnabled) QuotaGreen else Color(0xFF00ACC1),
+                title = "Diagnostics & Performance",
+                subtitle = if (isFloatingDiagnosticsEnabled) "Floating live metrics HUD enabled" else "Live network connections, active streams & thread HUD",
+                badgeText = diagBadge,
+                badgeColor = diagColor,
+                onClick = { onNavigate(SettingsSection.DIAGNOSTICS) }
             )
         }
 
-        // Section 5.6: Data Loss Protection
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Security,
-            iconTint = Color(0xFF10B981),
-            title = "Data Loss Protection",
-            subtitle = "Accidental uninstall shield & App Info clear data protection",
-            badgeText = "Shield",
-            badgeColor = Color(0xFF10B981),
+        // Section 4: Utilities Category Card Container (Image 6)
+        SettingsCategoryContainer(
+            headerIcon = Icons.Outlined.Handyman,
+            headerTint = Color(0xFF00ACC1),
+            headerTitle = "Utilities",
+            headerSubtitle = "Handy device tools",
             cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.DATA_PROTECTION) }
-        )
+            cardBorder = cardBorder
+        ) {
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Handyman,
+                iconTint = Color(0xFF00ACC1),
+                title = "Utilities",
+                subtitle = "ADB Connect, Android Automation",
+                onClick = { onNavigate(SettingsSection.UTILITIES) }
+            )
+        }
 
-        // Section 6: Diagnostics & Performance
-        val diagBadge = if (isFloatingDiagnosticsEnabled) "HUD ON" else "HUD OFF"
-        val diagColor = if (isFloatingDiagnosticsEnabled) QuotaGreen else Color.Gray
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Speed,
-            iconTint = if (isFloatingDiagnosticsEnabled) QuotaGreen else Color(0xFF00ACC1),
-            title = "Diagnostics & Performance",
-            subtitle = if (isFloatingDiagnosticsEnabled) "Floating live metrics HUD enabled" else "Live network connections, active streams & thread HUD",
-            badgeText = diagBadge,
-            badgeColor = diagColor,
+        // Section 5: About & Info Category Card Container (Image 6)
+        SettingsCategoryContainer(
+            headerIcon = Icons.Outlined.Info,
+            headerTint = Color(0xFF8B5CF6),
+            headerTitle = "About & Info",
+            headerSubtitle = "App version, package details, and bridge export",
             cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.DIAGNOSTICS) }
-        )
+            cardBorder = cardBorder
+        ) {
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Info,
+                iconTint = Color(0xFF8B5CF6),
+                title = "About & Info",
+                subtitle = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.APPLICATION_ID}",
+                badgeText = "v${BuildConfig.VERSION_NAME}",
+                badgeColor = Color(0xFF8B5CF6),
+                onClick = { onNavigate(SettingsSection.ABOUT) }
+            )
+        }
+    }
+}
 
-        SettingsGroupHeader("Utilities", Color(0xFF00ACC1), "Handy device tools")
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Handyman,
-            iconTint = Color(0xFF00ACC1),
-            title = "Utilities",
-            subtitle = "ADB Connect, Android Automation",
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.UTILITIES) }
-        )
+@Composable
+private fun SettingsCategoryContainer(
+    headerIcon: ImageVector,
+    headerTint: Color,
+    headerTitle: String,
+    headerSubtitle: String? = null,
+    cardBg: Color,
+    cardBorder: BorderStroke,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = cardBorder,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(headerTint.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = headerIcon,
+                        contentDescription = null,
+                        tint = headerTint,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = headerTitle,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (headerSubtitle != null) {
+                        Text(
+                            text = headerSubtitle,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
 
-        // Section 7: About & Info
-        SettingsCategoryCard(
-            icon = Icons.Outlined.Info,
-            iconTint = Color(0xFF8B5CF6),
-            title = "About & Info",
-            subtitle = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.APPLICATION_ID}",
-            badgeText = "v${BuildConfig.VERSION_NAME}",
-            badgeColor = Color(0xFF8B5CF6),
-            cardBg = cardBg,
-            cardBorder = cardBorder,
-            onClick = { onNavigate(SettingsSection.ABOUT) }
-        )
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            )
+
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroupItemRow(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    badgeText: String? = null,
+    badgeColor: Color = ClaudeTerracotta,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(iconTint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(1.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            if (badgeText != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = badgeColor.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = badgeColor,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 

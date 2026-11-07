@@ -1083,98 +1083,66 @@ fun ChatScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        val displayedChatTitle = remember(currentConv?.title, conversations, currentConv?.id) {
-                            val fromList = conversations.firstOrNull { it.id == currentConv?.id }
-                            val listTitle = fromList?.title?.takeIf {
-                                it.isNotBlank() && it != "New Chat" && it != "Conversation"
-                            }
-                            val activeTitle = currentConv?.title?.takeIf {
-                                it.isNotBlank() && it != "New Chat" && it != "Conversation"
-                            }
-                            listTitle ?: activeTitle ?: currentConv?.title?.takeIf { it.isNotBlank() } ?: "AntiBot Studio"
-                        }
-
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_antibot_logo),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = Color.Unspecified
-                                )
-                                Spacer(modifier = Modifier.width(7.dp))
-                                Text(
-                                    text = displayedChatTitle,
-                                    fontSize = 15.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = AntiBotCyan.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AntiBotCyan,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { scope.launch { drawerState.open() } }
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_antibot_logo),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                        tint = Color.Unspecified
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                val isChatStarted = messages.isNotEmpty()
-                                val displayedProjectName = remember(currentConv?.workspaceUri, isChatStarted) {
-                                    val convUri = currentConv?.workspaceUri
-                                    if (!convUri.isNullOrBlank()) {
-                                        val clean = convUri.removePrefix("file://").trimEnd('/')
-                                        File(clean).name.ifBlank { "Workspace" }
-                                    } else {
-                                        if (isChatStarted) "Outside" else "Select Project"
-                                    }
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isChatStarted) 0.4f else 0.6f),
-                                    modifier = if (isChatStarted) Modifier else Modifier.clickable {
-                                        showProjectPickerDialog = true
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                            Spacer(modifier = Modifier.width(9.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "AntiBot Studio",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(11.dp),
-                                            tint = if (isChatStarted) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = displayedProjectName,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 11.sp,
-                                            color = if (isChatStarted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        if (!isChatStarted) {
-                                            Icon(
-                                                imageVector = Icons.Default.ArrowDropDown,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(14.dp),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .background(Color(0xFF10B981), CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
                                 }
+                                Text(
+                                    text = "AI Coding Environment",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    maxLines = 1
+                                )
                             }
                         }
                     },
@@ -1198,71 +1166,19 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        if (!isLocalChat && !systemConnectionState.isAuth) {
-                            Surface(
-                                onClick = { viewModel.loginToAgyHub(force = true) },
-                                shape = RoundedCornerShape(12.dp),
-                                color = AntiBotCyan.copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.35f)),
-                                modifier = Modifier.padding(end = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Outlined.Login,
-                                        contentDescription = "Sign In",
-                                        tint = AntiBotCyan,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Sign In",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AntiBotCyan
-                                    )
-                                }
-                            }
+                        IconButton(onClick = { showChatTelemetryDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Notifications,
+                                contentDescription = "Notifications & Diagnostics",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                            )
                         }
-                        if (isInFloatingWindow) {
-                            IconButton(onClick = onMinimizeWindow) {
-                                Icon(
-                                    imageVector = Icons.Default.Remove,
-                                    contentDescription = "Minimize to Bubble",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                                )
-                            }
-                            IconButton(onClick = onOpenFullScreen) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                                    contentDescription = "Open Full Screen",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                                )
-                            }
-                        }
-                        // Agent status indicators (always accessible for diagnostics and server logs)
-                        com.example.gemini.ui.agents.AgentStatusIndicator(
-                            entries = agentEntries,
-                            onOpenServerLogs = { showLocalServerOutputDialog = true },
-                            onOpenDaemonLogs = { showDaemonLogsDialog = true }
-                        )
                         IconButton(onClick = { viewModel.startNewChat() }) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "New Chat",
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
-                        }
-                        if (isDevModeEnabled) {
-                            IconButton(onClick = { showChatTelemetryDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Analytics,
-                                    contentDescription = "Chat Telemetry & Tokens",
-                                    tint = AntiBotCyan
-                                )
-                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -1407,27 +1323,6 @@ fun ChatScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                if (isFreshNewChat && enabledAgents.size > 1) {
-                                    com.example.gemini.ui.components.AgentPicker(
-                                        selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = { agent ->
-                                            viewModel.setNewChatAgent(agent)
-                                            viewModel.startNewChat(agent)
-                                            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                                                viewModel.selectModel("local-backend")
-                                            }
-                                        },
-                                        modifier = Modifier.padding(bottom = 16.dp),
-                                        agents = enabledAgents,
-                                        statusColors = agentEntries.associate { it.agent to it.color }
-                                    )
-                                }
-
-                                if (!isNetworkConnected && !isLocalChat) {
-                                    com.example.gemini.ui.components.NewChatOfflinePromptCard(
-                                        modifier = Modifier.padding(bottom = 16.dp)
-                                    )
-                                }
 
                                 AntiBotStudioHero(
                                     selectedModel = currentModel,
@@ -2077,7 +1972,8 @@ fun ChatScreen(
                     StudioNavigationDock(
                         currentTab = "CHAT",
                         onNavigateToChat = { /* Already on chat */ },
-                        onNavigateToIde = onNavigateToIde,
+                        onNavigateToProjects = { showProjectPickerDialog = true },
+                        onNavigateToAgents = { scope.launch { drawerState.open() } },
                         onNavigateToTerminal = {
                             if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) {
                                 onNavigateToTerminal()
@@ -2088,8 +1984,7 @@ fun ChatScreen(
                                 showLocalToolsInstallDialog = true
                             }
                         },
-                        onNavigateToBrowser = onNavigateToBrowser,
-                        onNavigateToNotes = onNavigateToNotes,
+                        onNavigateToSettings = { showSettingsDialog = true },
                         isTerminalActive = useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)
                     )
                 }
@@ -2945,247 +2840,100 @@ fun AntiBotStudioHero(
     onSignIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isAuto = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
-    val domain = LocalCodingDomain.fromModelId(selectedModelId)
-
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // App Logo & Badging
+        // Soft rounded robot icon container (Image 4)
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
             modifier = Modifier.size(64.dp)
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     painter = painterResource(R.drawable.ic_antibot_logo),
                     contentDescription = "AntiBot",
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(40.dp),
                     tint = Color.Unspecified
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "AntiBot Studio",
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                letterSpacing = (-0.5).sp
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-            ) {
-                Text(
-                    text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
+        // Main Title (Image 4)
+        Text(
+            text = "How can I help you build today?",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            letterSpacing = (-0.4).sp
+        )
 
         Spacer(modifier = Modifier.height(6.dp))
 
+        // Subtitle (Image 4)
         Text(
-            text = "High-Performance Autonomous AI Coding Environment",
-            fontSize = 13.sp,
+            text = "Code, debug, design, and ship with Antigravity.",
+            fontSize = 13.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        // Active Model Pill (Clickable -> Opens Model Selector)
-        val pillBgColor = when {
-            isAuto -> Color(0xFF3B82F6).copy(alpha = 0.12f)
-            isLocalChat -> Color(0xFF10B981).copy(alpha = 0.12f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        }
-        val pillBorderColor = when {
-            isAuto -> Color(0xFF3B82F6).copy(alpha = 0.35f)
-            isLocalChat -> Color(0xFF10B981).copy(alpha = 0.35f)
-            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-        }
-
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = pillBgColor,
-            border = BorderStroke(1.dp, pillBorderColor),
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .clickable(onClick = onOpenModelSelector)
+        // 2x2 Action Cards Grid (Image 4)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = when {
-                        isAuto -> "⚡"
-                        isLocalChat -> domain.iconEmoji
-                        else -> "🤖"
-                    },
-                    fontSize = 15.sp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = when {
-                                isAuto -> "Auto (Smart LLM Manager)"
-                                isLocalChat -> domain.displayName
-                                else -> (selectedModel?.displayName ?: "AI Model")
-                            },
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(
-                            imageVector = Icons.Default.UnfoldMore,
-                            contentDescription = "Switch Model",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    Text(
-                        text = when {
-                            isAuto -> "Dynamic Routing · Qwen, Flash & Claude Thinking"
-                            isLocalChat -> "${domain.tag} · 0 Tokens (100% Offline)"
-                            else -> "Cloud Model · Online"
-                        },
-                        fontSize = 11.sp,
-                        color = when {
-                            isAuto -> Color(0xFF3B82F6)
-                            isLocalChat -> Color(0xFF10B981)
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        }
-                    )
+            HeroActionCard(
+                icon = Icons.Outlined.Folder,
+                title = "Build a project",
+                subtitle = "Create an app, API, or site from scratch",
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    onSelectPrompt("Build a new project from scratch: ", null)
                 }
-            }
+            )
+            HeroActionCard(
+                icon = Icons.Outlined.Code,
+                title = "Work on code",
+                subtitle = "Refactor, optimize, or fix bugs in a repo",
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    onSelectPrompt("Review, optimize, or fix bugs in this code: ", null)
+                }
+            )
         }
 
-        // Unauthenticated Cloud Banner if cloud agent active and not in auto mode
-        if (!isLocalChat && !isAuto && !isAuth) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.3f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Sign in to access Gemini 2.5 Pro & Cloud Tools",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = onSignIn,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Icon(imageVector = Icons.AutoMirrored.Outlined.Login, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Sign In with Google", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Specialized Domain Quick Action Cards
-        Text(
-            text = "Specialized AI Coding Assistants",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            modifier = Modifier.align(Alignment.Start)
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            StudioDomainCard(
-                title = "Backend API",
-                subtitle = "REST, SQL & Auth",
-                emoji = "🛠️",
-                accentColor = Color(0xFF3B82F6),
+            HeroActionCard(
+                icon = Icons.Outlined.Lightbulb,
+                title = "Explain & learn",
+                subtitle = "Deep dive into architecture and concepts",
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    onSelectPrompt(
-                        "Design a high-performance REST API with database schema and auth for: ",
-                        "local-backend"
-                    )
+                    onSelectPrompt("Explain the architecture and best practices for: ", null)
                 }
             )
-            StudioDomainCard(
-                title = "UI/UX & Frontend",
-                subtitle = "Compose & React",
-                emoji = "🎨",
-                accentColor = Color(0xFFEC4899),
+            HeroActionCard(
+                icon = Icons.Outlined.Build,
+                title = "Use tools",
+                subtitle = "Run shell commands, MCP tools, and browse",
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    onSelectPrompt(
-                        "Create a modern Jetpack Compose Material 3 UI component for: ",
-                        "local-frontend"
-                    )
-                }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            StudioDomainCard(
-                title = "Security Audit",
-                subtitle = "OWASP & Leaks",
-                emoji = "🛡️",
-                accentColor = Color(0xFFEF4444),
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onSelectPrompt(
-                        "Audit this code for security vulnerabilities, injection risks, and safe handling: ",
-                        "local-security"
-                    )
-                }
-            )
-            StudioDomainCard(
-                title = "Fullstack Code",
-                subtitle = "Qwen 0.5B / Project",
-                emoji = "⚡",
-                accentColor = Color(0xFF10B981),
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onSelectPrompt(
-                        "Explain the project structure and create an implementation plan for: ",
-                        "local-model-only"
-                    )
+                    onSelectPrompt("Run shell commands, MCP tools, and browse: ", null)
                 }
             )
         }
@@ -3193,43 +2941,48 @@ fun AntiBotStudioHero(
 }
 
 @Composable
-private fun StudioDomainCard(
+private fun HeroActionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    emoji: String,
-    accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = emoji, fontSize = 16.sp)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = title,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = title,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = subtitle,
-                fontSize = 10.5.sp,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                maxLines = 1,
+                lineHeight = 15.sp,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -3240,26 +2993,24 @@ private fun StudioDomainCard(
 fun StudioNavigationDock(
     currentTab: String = "CHAT",
     onNavigateToChat: () -> Unit = {},
-    onNavigateToIde: () -> Unit = {},
+    onNavigateToProjects: () -> Unit = {},
+    onNavigateToAgents: () -> Unit = {},
     onNavigateToTerminal: () -> Unit = {},
-    onNavigateToBrowser: () -> Unit = {},
-    onNavigateToNotes: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     isTerminalActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             StudioDockItem(
@@ -3269,10 +3020,16 @@ fun StudioNavigationDock(
                 onClick = onNavigateToChat
             )
             StudioDockItem(
-                label = "IDE",
-                icon = Icons.Default.Code,
-                isSelected = currentTab == "IDE",
-                onClick = onNavigateToIde
+                label = "Projects",
+                icon = Icons.Outlined.Folder,
+                isSelected = currentTab == "PROJECTS",
+                onClick = onNavigateToProjects
+            )
+            StudioDockItem(
+                label = "Agents",
+                icon = Icons.Outlined.SmartToy,
+                isSelected = currentTab == "AGENTS",
+                onClick = onNavigateToAgents
             )
             StudioDockItem(
                 label = "Terminal",
@@ -3282,16 +3039,10 @@ fun StudioNavigationDock(
                 onClick = onNavigateToTerminal
             )
             StudioDockItem(
-                label = "Browser",
-                icon = Icons.Outlined.Language,
-                isSelected = currentTab == "BROWSER",
-                onClick = onNavigateToBrowser
-            )
-            StudioDockItem(
-                label = "Notes",
-                icon = Icons.Outlined.Description,
-                isSelected = currentTab == "NOTES",
-                onClick = onNavigateToNotes
+                label = "Settings",
+                icon = Icons.Outlined.Settings,
+                isSelected = currentTab == "SETTINGS",
+                onClick = onNavigateToSettings
             )
         }
     }
@@ -3308,35 +3059,36 @@ private fun StudioDockItem(
     val tint = when {
         isSelected -> MaterialTheme.colorScheme.primary
         accentTint != null -> accentTint
-        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
     }
-    Surface(
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = tint,
-                modifier = Modifier.size(16.dp)
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = label,
+            fontSize = 10.5.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            color = tint
+        )
+        if (isSelected) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Box(
+                modifier = Modifier
+                    .size(4.dp)
+                    .background(tint, CircleShape)
             )
-            if (isSelected) {
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = label,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = tint
-                )
-            }
         }
     }
 }
