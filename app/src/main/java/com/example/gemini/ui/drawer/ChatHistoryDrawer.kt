@@ -625,67 +625,63 @@ fun ChatHistoryDrawer(
                 }
             }
 
-            // Full-Width New Chat Button (Image 5)
-            Button(
-                onClick = {
-                    searchQuery = ""
-                    isSearchActive = false
-                    scope.launch {
-                        try {
-                            listState.scrollToItem(0)
-                        } catch (_: Exception) {}
-                    }
-                    onNewChat()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(42.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isAppInDarkTheme()) Color(0xFF1E232A) else Color(0xFF18181B),
-                    contentColor = Color.White
-                ),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New Chat",
-                    tint = Color.White,
-                    modifier = Modifier.size(17.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "New Chat",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    fontSize = 14.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Row of 3 square action buttons: Power, Folder, Search (Image 5)
+            // Single-row New Chat + 3 Action Buttons (Image 4)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // New Chat Button (weighted)
+                Button(
+                    onClick = {
+                        searchQuery = ""
+                        isSearchActive = false
+                        scope.launch {
+                            try {
+                                listState.scrollToItem(0)
+                            } catch (_: Exception) {}
+                        }
+                        onNewChat()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isAppInDarkTheme()) Color(0xFF262A34) else Color(0xFF18181B),
+                        contentColor = Color.White
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "New Chat",
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "New Chat",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 13.5.sp
+                    )
+                }
+
                 // Power / Exit App Button
                 Surface(
                     onClick = { showExitConfirmDialog = true },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
+                    modifier = Modifier.size(40.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.PowerSettingsNew,
                             contentDescription = "Exit App",
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -694,18 +690,16 @@ fun ChatHistoryDrawer(
                 // Workspace Folder Grouping Toggle Button
                 Surface(
                     onClick = { onToggleGroupByWorkspace(!groupByWorkspace) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
+                    modifier = Modifier.size(40.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = if (groupByWorkspace) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, if (groupByWorkspace) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    color = if (groupByWorkspace) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, if (groupByWorkspace) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Folder,
                             contentDescription = if (groupByWorkspace) "Disable Workspace Grouping" else "Group by Workspace",
-                            tint = if (groupByWorkspace) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            tint = if (groupByWorkspace) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -720,26 +714,66 @@ fun ChatHistoryDrawer(
                             onSearchQueryChange("")
                         }
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
+                    modifier = Modifier.size(40.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    color = if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            tint = if (isSearchActive || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            // breathing room between the header actions and the list
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Row 2: Filter Chips [All] [Local (0 Tokens)] [Antigravity] (Image 4 - Always Visible)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf<Pair<com.example.gemini.domain.model.AgentKind?, String>>(
+                    null to "All",
+                    com.example.gemini.domain.model.AgentKind.LOCAL to "Local (0 Tokens)",
+                    com.example.gemini.domain.model.AgentKind.AGY to "Antigravity"
+                ).forEach { (agent, label) ->
+                    val selected = agentFilter == agent
+                    Surface(
+                        onClick = { agentFilter = agent },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) {
+                            if (isAppInDarkTheme()) Color(0xFF272A34) else Color(0xFFE4E4E7)
+                        } else Color.Transparent,
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) {
+                                    if (isAppInDarkTheme()) Color(0xFFF1F5F9) else Color(0xFF18181B)
+                                } else {
+                                    if (isAppInDarkTheme()) Color(0xFF94A3B8) else Color(0xFF71717A)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Inline Search Bar (Smooth, no text clipping, auto-expandable)
             AnimatedVisibility(
@@ -859,34 +893,6 @@ fun ChatHistoryDrawer(
                 }
             }
 
-            if (hasBothAgents || agentFilter != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf<Pair<com.example.gemini.domain.model.AgentKind?, String>>(
-                        null to "All",
-                        com.example.gemini.domain.model.AgentKind.LOCAL to "Local (0 Tokens)",
-                        com.example.gemini.domain.model.AgentKind.AGY to "Antigravity"
-                    ).forEach { (agent, label) ->
-                        val selected = agentFilter == agent
-                        val accent = agent?.accent() ?: MaterialTheme.colorScheme.primary
-                        Text(
-                            text = label,
-                            fontSize = 11.5.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
-                                .clickable { agentFilter = agent }
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
 
             val isEngineConnecting = agyEnabled && (systemConnectionState.status == com.example.gemini.data.remote.SystemStatus.STARTING ||
                     systemConnectionState.status == com.example.gemini.data.remote.SystemStatus.ACQUIRING_CSRF ||
@@ -1029,12 +1035,11 @@ fun ChatHistoryDrawer(
                                 if (todayChats.isNotEmpty()) {
                                     item(key = "hdr_today") {
                                         Text(
-                                            text = "TODAY",
-                                            fontSize = 11.sp,
+                                            text = "Today",
+                                            fontSize = 12.5.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                                            letterSpacing = 0.8.sp,
-                                            modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 4.dp)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(start = 10.dp, top = 10.dp, bottom = 4.dp)
                                         )
                                     }
                                     val todayTree = buildVisibleChatTree(todayChats, subagentsByParent, expandedParentIds)
@@ -1085,12 +1090,11 @@ fun ChatHistoryDrawer(
                                 if (earlierChats.isNotEmpty()) {
                                     item(key = "hdr_earlier") {
                                         Text(
-                                            text = "EARLIER",
-                                            fontSize = 11.sp,
+                                            text = "Earlier",
+                                            fontSize = 12.5.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                                            letterSpacing = 0.8.sp,
-                                            modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 4.dp)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(start = 10.dp, top = 14.dp, bottom = 4.dp)
                                         )
                                     }
                                     val earlierTree = buildVisibleChatTree(earlierChats, subagentsByParent, expandedParentIds)
@@ -1357,7 +1361,7 @@ fun ChatHistoryDrawer(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(ClaudeTerracotta),
+                                        .background(Color(0xFF1E293B)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
@@ -1373,7 +1377,7 @@ fun ChatHistoryDrawer(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(ClaudeTerracotta),
+                                        .background(Color(0xFF1E293B)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
@@ -1400,25 +1404,18 @@ fun ChatHistoryDrawer(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        val nameToShow = authInfo.displayName.ifBlank { "GIRDHAR DHAMI" }
-                        Text(
-                            text = nameToShow.uppercase(),
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (isAuthBusy) "Signing In..." else "Pro Plan",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1
-                        )
-                    }
+                    val nameToShow = authInfo.displayName.ifBlank { "GIRDHAR DHAMI" }
+                    Text(
+                        text = nameToShow.uppercase(),
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
 
                     Icon(
                         imageVector = Icons.Default.ChevronRight,

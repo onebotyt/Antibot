@@ -2846,38 +2846,38 @@ fun AntiBotStudioHero(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Soft rounded robot icon container (Image 4)
+        // Soft rounded robot icon container (Image 5)
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            modifier = Modifier.size(64.dp)
+            modifier = Modifier.size(76.dp)
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_antibot_logo),
+                    imageVector = Icons.Outlined.SmartToy,
                     contentDescription = "AntiBot",
-                    modifier = Modifier.size(40.dp),
-                    tint = Color.Unspecified
+                    modifier = Modifier.size(42.dp),
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
-        // Main Title (Image 4)
+        // Main Title (Image 5)
         Text(
             text = "How can I help you build today?",
-            fontSize = 22.sp,
+            fontSize = 25.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
-            letterSpacing = (-0.4).sp
+            letterSpacing = (-0.5).sp
         )
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Subtitle (Image 4)
+        // Subtitle (Image 5)
         Text(
             text = "Code, debug, design, and ship with Antigravity.",
             fontSize = 13.5.sp,
@@ -2887,27 +2887,27 @@ fun AntiBotStudioHero(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // 2x2 Action Cards Grid (Image 4)
+        // 2x2 Action Cards Grid (Image 5)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             HeroActionCard(
-                icon = Icons.Outlined.Folder,
+                icon = Icons.Outlined.Code,
                 title = "Build a project",
-                subtitle = "Create an app, API, or site from scratch",
+                subtitle = "Create an app, API or website",
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    onSelectPrompt("Build a new project from scratch: ", null)
+                    onSelectPrompt("Build a new project: ", null)
                 }
             )
             HeroActionCard(
-                icon = Icons.Outlined.Code,
+                icon = Icons.Outlined.ViewInAr,
                 title = "Work on code",
-                subtitle = "Refactor, optimize, or fix bugs in a repo",
+                subtitle = "Refactor, fix or add features",
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    onSelectPrompt("Review, optimize, or fix bugs in this code: ", null)
+                    onSelectPrompt("Work on code: ", null)
                 }
             )
         }
@@ -2919,21 +2919,21 @@ fun AntiBotStudioHero(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             HeroActionCard(
-                icon = Icons.Outlined.Lightbulb,
+                icon = Icons.Outlined.AutoAwesome,
                 title = "Explain & learn",
-                subtitle = "Deep dive into architecture and concepts",
+                subtitle = "Understand code, concepts and errors",
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    onSelectPrompt("Explain the architecture and best practices for: ", null)
+                    onSelectPrompt("Explain concepts: ", null)
                 }
             )
             HeroActionCard(
-                icon = Icons.Outlined.Build,
+                icon = Icons.Outlined.Layers,
                 title = "Use tools",
-                subtitle = "Run shell commands, MCP tools, and browse",
+                subtitle = "Terminal, MCP, agents and more",
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    onSelectPrompt("Run shell commands, MCP tools, and browse: ", null)
+                    onSelectPrompt("Use tools: ", null)
                 }
             )
         }
@@ -2953,8 +2953,8 @@ private fun HeroActionCard(
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
         Column(
             modifier = Modifier
@@ -2964,14 +2964,14 @@ private fun HeroActionCard(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(22.dp)
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = title,
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2979,8 +2979,8 @@ private fun HeroActionCard(
             Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                 lineHeight = 15.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -3002,20 +3002,19 @@ fun StudioNavigationDock(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
             StudioDockItem(
                 label = "Chat",
-                icon = Icons.Outlined.ChatBubbleOutline,
+                icon = if (currentTab == "CHAT") Icons.Filled.Home else Icons.Outlined.Home,
                 isSelected = currentTab == "CHAT",
                 onClick = onNavigateToChat
             )
@@ -3027,7 +3026,7 @@ fun StudioNavigationDock(
             )
             StudioDockItem(
                 label = "Agents",
-                icon = Icons.Outlined.SmartToy,
+                icon = Icons.Outlined.GridView,
                 isSelected = currentTab == "AGENTS",
                 onClick = onNavigateToAgents
             )
@@ -3056,40 +3055,55 @@ private fun StudioDockItem(
     accentTint: Color? = null,
     onClick: () -> Unit
 ) {
+    val isDark = isAppInDarkTheme()
     val tint = when {
-        isSelected -> MaterialTheme.colorScheme.primary
+        isSelected -> MaterialTheme.colorScheme.onSurface
         accentTint != null -> accentTint
-        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = tint,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = label,
-            fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            color = tint
-        )
         if (isSelected) {
-            Spacer(modifier = Modifier.height(2.dp))
             Box(
                 modifier = Modifier
-                    .size(4.dp)
-                    .background(tint, CircleShape)
-            )
+                    .size(width = 54.dp, height = 30.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isDark) Color(0xFF272A34) else Color(0xFFF1F5F9)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier.size(width = 54.dp, height = 30.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = tint
+        )
     }
 }
 

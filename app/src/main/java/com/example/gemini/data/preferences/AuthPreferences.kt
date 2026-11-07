@@ -190,9 +190,9 @@ class AuthPreferences(private val context: Context) {
 
     fun getThemeModeSync(): String {
         val cached = syncPrefs.getString("app_theme_mode", null)
-        if (cached != null) return cached
+        if (cached != null && cached != "SYSTEM") return cached
 
-        // Fast fallback: parse datastore pb file directly if syncPrefs not yet populated
+        // Default to LIGHT to match the AntiBot Studio design spec in Images 3, 4, 5
         try {
             val pbFile = java.io.File(context.filesDir, "datastore/auth_prefs.preferences_pb")
             if (pbFile.exists()) {
@@ -202,9 +202,9 @@ class AuthPreferences(private val context: Context) {
                 if (idx != -1) {
                     val sub = content.substring(idx + key.length, minOf(content.length, idx + key.length + 30))
                     val mode = when {
-                        sub.contains("LIGHT") -> "LIGHT"
                         sub.contains("DARK") -> "DARK"
-                        else -> "SYSTEM"
+                        sub.contains("SYSTEM") -> "SYSTEM"
+                        else -> "LIGHT"
                     }
                     syncPrefs.edit().putString("app_theme_mode", mode).apply()
                     return mode
@@ -212,7 +212,7 @@ class AuthPreferences(private val context: Context) {
             }
         } catch (_: Exception) {}
 
-        return "SYSTEM"
+        return "LIGHT"
     }
 
     val enabledModelIds: Flow<Set<String>?> = context.dataStore.data.map { it[ENABLED_MODELS] }
@@ -225,7 +225,8 @@ class AuthPreferences(private val context: Context) {
     /** Wavy-line dividers in chats: a new day ("Sat, Oct 10") and model switches ("Switched to …"). */
     val chatDividersEnabled: Flow<Boolean> = context.dataStore.data.map { it[CHAT_DIVIDERS_ENABLED] ?: true }
     val themeMode: Flow<String> = context.dataStore.data.map { prefs ->
-        val mode = prefs[APP_THEME_MODE] ?: "SYSTEM"
+        val rawMode = prefs[APP_THEME_MODE]
+        val mode = if (rawMode == null || rawMode == "SYSTEM") "LIGHT" else rawMode
         if (syncPrefs.getString("app_theme_mode", null) != mode) {
             syncPrefs.edit().putString("app_theme_mode", mode).apply()
         }
