@@ -1,6 +1,7 @@
 package com.example.gemini.ui.drawer
 
 import com.example.gemini.ui.components.accent
+import com.example.gemini.theme.isAppInDarkTheme
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.animation.AnimatedVisibility
