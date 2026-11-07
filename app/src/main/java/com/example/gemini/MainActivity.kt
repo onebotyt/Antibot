@@ -195,6 +195,7 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
+            var hasSkippedInstaller by remember { mutableStateOf(false) }
             // Remote mode runs everything on the server: nothing to install on the phone
             val showFullScreenInstaller = !isInstalledState && !hasSkippedInstaller &&
                 !com.example.gemini.data.preferences.AuthPreferences.currentRemoteMode

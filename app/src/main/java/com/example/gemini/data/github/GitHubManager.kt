@@ -568,7 +568,9 @@ object GitHubManager {
             else if (line.isNotBlank() && !line.contains('%')) log += line
         }
         val exit = if (remote) {
-            com.example.gemini.data.remote.AgyBridgeService.instance.cloneRepository(url, folder.orEmpty(), onLine = sink)
+            val dest = folder?.takeIf { it.isNotBlank() }?.let { " " + q(it) } ?: ""
+            val cmd = "cd ~ && git clone ${q(url)}$dest && echo \"ANTIGEM_CLONED_PATH=\$(pwd)/\$(basename ${q(url)} .git)\""
+            serverShell(cmd, timeoutSeconds = 300, stdin = null, onLine = sink).exitCode
         } else {
             LocalEnvironmentManager.executeScriptLive(context, "git_clone", listOfNotNull(url, folder?.takeIf { it.isNotBlank() }), sink).exitCode
         }

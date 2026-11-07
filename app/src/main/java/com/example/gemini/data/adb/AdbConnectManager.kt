@@ -388,6 +388,9 @@ object AdbConnectManager {
 
     // ---------------- mDNS ----------------
 
+    fun connectPorts(): Flow<Int> = localServicePorts(CONNECT_SERVICE)
+    fun pairingPorts(): Flow<Int> = localServicePorts(PAIRING_SERVICE)
+
     /** Ports of [type] services advertised by this device itself (not other phones on the Wi-Fi). */
     private fun localServicePorts(type: String): Flow<Int> = callbackFlow {
         val nsd = appContext.getSystemService(NsdManager::class.java)

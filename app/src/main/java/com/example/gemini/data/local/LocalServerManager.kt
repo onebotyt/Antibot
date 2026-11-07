@@ -33,6 +33,10 @@ object LocalServerManager {
     private val _status = MutableStateFlow<LocalServerStatus>(LocalServerStatus.Idle)
     val status: StateFlow<LocalServerStatus> = _status.asStateFlow()
 
+    fun publishRemoteStatus(newStatus: LocalServerStatus) {
+        _status.value = newStatus
+    }
+
     private val _serverSession = MutableStateFlow<LocalPtySession?>(null)
     val serverSession: StateFlow<LocalPtySession?> = _serverSession.asStateFlow()
 
