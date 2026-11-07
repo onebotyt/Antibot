@@ -51,13 +51,14 @@ private fun repoNameOf(url: String): String =
  */
 @Composable
 fun GitCloneDialog(
+    initialUrl: String = "",
     onCloned: (ProjectItem) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var repoUrl by remember { mutableStateOf("") }
-    var projectName by remember { mutableStateOf("") }
+    var repoUrl by remember(initialUrl) { mutableStateOf(initialUrl) }
+    var projectName by remember(initialUrl) { mutableStateOf(repoNameOf(initialUrl.trim())) }
     var started by remember { mutableStateOf(false) }
     val logs = remember { mutableStateListOf<String>() }
     var isRunning by remember { mutableStateOf(false) }

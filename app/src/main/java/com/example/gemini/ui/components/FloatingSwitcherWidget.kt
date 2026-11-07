@@ -77,6 +77,8 @@ fun FloatingSwitcherWidget(
     var isPositionInitialized by remember { mutableStateOf(false) }
     var anchorRightX by remember { mutableFloatStateOf(0f) }
     var anchorLeftX by remember { mutableFloatStateOf(0f) }
+    var anchorTopY by remember { mutableFloatStateOf(0f) }
+    var anchorBottomY by remember { mutableFloatStateOf(0f) }
     val isVertical = orientation.equals("VERTICAL", ignoreCase = true)
 
     // Directional arrows:
