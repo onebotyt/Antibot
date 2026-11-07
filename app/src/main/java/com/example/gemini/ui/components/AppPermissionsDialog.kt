@@ -90,7 +90,7 @@ fun AppPermissionsDialog(
     var hasStorage by remember { mutableStateOf(PermissionUtils.hasStoragePermission(context)) }
     var hasAudio by remember { mutableStateOf(PermissionUtils.hasAudioPermission(context)) }
 
-    BackHandler(enabled = hasNotification) {
+    BackHandler(enabled = true) {
         onDismissOrCompleted()
     }
 
@@ -171,9 +171,9 @@ fun AppPermissionsDialog(
         }
     }
 
-    val screenBg = if (isDark) ClaudeDarkBg else ClaudeCream
-    val textPrimary = if (isDark) TextPrimaryDark else TextPrimaryLight
-    val textSecondary = if (isDark) TextSecondaryDark else TextSecondaryLight
+    val screenBg = AppColors.background
+    val textPrimary = AppColors.onBackground
+    val textSecondary = AppColors.textSecondary
 
     Surface(
         modifier = Modifier
@@ -199,7 +199,7 @@ fun AppPermissionsDialog(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(CircleShape)
-                        .background(AntiBotCyan.copy(alpha = if (isDark) 0.16f else 0.12f)),
+                        .background(AntiBotCyan.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -294,35 +294,70 @@ fun AppPermissionsDialog(
                     .padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (!hasNotification) {
-                    Text(
-                        text = "👉 Please enable Notifications above to proceed",
-                        fontSize = 12.5.sp,
-                        color = Color(0xFFEF4444),
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
+                if (hasNotification) {
+                    Button(
+                        onClick = onDismissOrCompleted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AntiBotCyan,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text(
+                            text = "Continue to AntiBot 🚀",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                try {
+                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    onDismissOrCompleted()
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AntiBotCyan,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text(
+                            text = "Grant Notifications to Continue 🔔",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
 
-                Button(
-                    onClick = onDismissOrCompleted,
-                    enabled = hasNotification,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AntiBotCyan,
-                        contentColor = Color.Black,
-                        disabledContainerColor = if (isDark) Color(0xFF282724) else Color(0xFFE5E7EB),
-                        disabledContentColor = if (isDark) Color(0xFF6B7280) else Color(0xFF9CA3AF)
-                    )
-                ) {
-                    Text(
-                        text = if (hasNotification) "Continue to AntiBot 🚀" else "Notifications Required to Proceed",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    TextButton(
+                        onClick = onDismissOrCompleted,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Skip for now & Continue",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = textSecondary
+                        )
+                    }
                 }
             }
         }
@@ -341,20 +376,16 @@ private fun PermissionCard(
     isGranted: Boolean,
     onGrantClick: () -> Unit
 ) {
-    val cardBg = if (isDark) {
-        if (isGranted) Color(0xFF232320) else Color(0xFF272623)
-    } else {
-        if (isGranted) Color(0xFFF9FAFB) else Color(0xFFFFFFFF)
-    }
+    val cardBg = if (isGranted) AppColors.card.copy(alpha = 0.85f) else AppColors.card
 
     val cardBorder = if (isGranted) {
-        BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = if (isDark) 0.5f else 0.4f))
+        BorderStroke(1.dp, Color(0xFF22C55E).copy(alpha = 0.5f))
     } else {
-        BorderStroke(1.dp, if (isDark) Color(0xFF383733) else Color(0xFFE5E7EB))
+        BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.22f))
     }
 
-    val textPrimary = if (isDark) TextPrimaryDark else TextPrimaryLight
-    val textSecondary = if (isDark) TextSecondaryDark else TextSecondaryLight
+    val textPrimary = AppColors.onBackground
+    val textSecondary = AppColors.textSecondary
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -373,8 +404,8 @@ private fun PermissionCard(
                     .size(42.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
-                        if (isGranted) Color(0xFF22C55E).copy(alpha = if (isDark) 0.16f else 0.12f)
-                        else accentColor.copy(alpha = if (isDark) 0.16f else 0.12f)
+                        if (isGranted) Color(0xFF22C55E).copy(alpha = 0.16f)
+                        else accentColor.copy(alpha = 0.16f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -409,9 +440,9 @@ private fun PermissionCard(
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = if (isGranted) {
-                            Color(0xFF22C55E).copy(alpha = if (isDark) 0.18f else 0.12f)
+                            Color(0xFF22C55E).copy(alpha = 0.18f)
                         } else {
-                            badgeColor.copy(alpha = if (isDark) 0.18f else 0.12f)
+                            badgeColor.copy(alpha = 0.18f)
                         }
                     ) {
                         Text(
@@ -456,15 +487,16 @@ private fun PermissionCard(
                         )
                     }
                 } else {
-                    FilledTonalButton(
+                    Button(
                         onClick = onGrantClick,
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (isDark) Color(0xFF383733) else Color(0xFFE5E7EB),
-                            contentColor = textPrimary
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor.copy(alpha = 0.18f),
+                            contentColor = accentColor
                         ),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f)),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
+                        modifier = Modifier.height(34.dp)
                     ) {
                         Text(
                             text = "Grant Access",

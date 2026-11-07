@@ -546,7 +546,7 @@ class BrowserSessionManager private constructor() {
 
     fun init(context: Context) {
         appContext = context.applicationContext
-        WebView.setWebContentsDebuggingEnabled(true)
+        runCatching { WebView.setWebContentsDebuggingEnabled(true) }
         loadShortcutsIfNeeded(context)
     }
 

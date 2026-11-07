@@ -357,7 +357,7 @@ class AuthPreferences(private val context: Context) {
     val chatDividersEnabled: Flow<Boolean> = context.dataStore.data.map { it[CHAT_DIVIDERS_ENABLED] ?: true }
     val themeMode: Flow<String> = context.dataStore.data.map { prefs ->
         val rawMode = prefs[APP_THEME_MODE]
-        val mode = if (rawMode == null || rawMode == "SYSTEM") "LIGHT" else rawMode
+        val mode = if (rawMode == null || rawMode == "SYSTEM") "DARK" else rawMode
         if (syncPrefs.getString("app_theme_mode", null) != mode) {
             syncPrefs.edit().putString("app_theme_mode", mode).apply()
         }

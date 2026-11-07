@@ -63,11 +63,15 @@ open class TermuxService : Service(), LifecycleOwner, ViewModelStoreOwner, Saved
         const val ACTION_STOP_SERVICE = "com.antibot.service_stop"
 
         fun start(context: Context) {
-            val intent = Intent(context, com.termux.app.TermuxService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, com.termux.app.TermuxService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed starting TermuxService: ${e.message}")
             }
         }
 

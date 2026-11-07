@@ -36,7 +36,7 @@ object ThemeManager {
     var darkId by mutableStateOf(BuiltInThemes.DARK_DEFAULT)
         private set
     /** Whether the screen shows the dark side right now (set by GeminiTheme). */
-    var isDark by mutableStateOf(false)
+    var isDark by mutableStateOf(true)
         private set
 
     private class Resolved(val theme: AppTheme, val map: Map<String, Long>, val scheme: ColorScheme, val colors: ThemeColors)
@@ -53,7 +53,7 @@ object ThemeManager {
         lightId = p.getString("light_id", null) ?: BuiltInThemes.LIGHT_DEFAULT
         darkId = p.getString("dark_id", null) ?: BuiltInThemes.DARK_DEFAULT
         // the mode decides which side shows before the first frame (the UI corrects it if the system says otherwise)
-        isDark = p.getString("last_dark", null) == "1"
+        isDark = p.getString("last_dark", null)?.let { it == "1" } ?: true
     }
 
     // ---------------------------------------------------------------- reading

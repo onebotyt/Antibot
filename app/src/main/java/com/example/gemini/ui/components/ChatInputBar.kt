@@ -1210,143 +1210,152 @@ fun ChatInputBar(
                             .padding(start = 4.dp, end = 4.dp, bottom = 4.dp, top = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // [+] Attachment Button
-                        Surface(
-                            onClick = onAttachClick,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.background,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                            modifier = Modifier.size(34.dp)
+                        // Left Group: [+] [Model Pill] [Tune]
+                        Row(
+                            modifier = Modifier.weight(1f, fill = false),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Add,
-                                    contentDescription = "Add attachments",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        // Model Selector Pill (Image 4 & 5)
-                        Surface(
-                            onClick = {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                                onOpenModelSelector()
-                            },
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.background,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                            modifier = Modifier.weight(1f, fill = false)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            // [+] Attachment Button
+                            Surface(
+                                onClick = onAttachClick,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                                modifier = Modifier.size(32.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = familyColor,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                val modelName = when {
-                                    isAuto -> "Auto Smart Router"
-                                    selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
-                                        com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id).shortName
-                                    }
-                                    else -> selectedModel.displayName
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Add,
+                                        contentDescription = "Add attachments",
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
-                                Text(
-                                    text = modelName,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 110.dp)
-                                )
-
-                                val pct = quota?.percentage
-                                if (pct != null) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(badgeColor.copy(alpha = 0.15f))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(
-                                            text = "$pct%",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = badgeColor
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Switch Model",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(14.dp)
-                                )
                             }
-                        }
 
-                        Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
 
-                        // Sliders / Tune Button: 🎛️ (Image 5)
-                        Surface(
-                            onClick = onOpenThinkingSelector,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.background,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = "Tune & Thinking Settings",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                    modifier = Modifier.size(16.dp)
-                                )
+                            // Model Selector Pill
+                            Surface(
+                                onClick = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                    onOpenModelSelector()
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = familyColor,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    val modelName = when {
+                                        isAuto -> "Auto"
+                                        selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
+                                            com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id).shortName
+                                        }
+                                        else -> selectedModel.displayName
+                                    }
+                                    Text(
+                                        text = modelName,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.widthIn(max = 85.dp)
+                                    )
+
+                                    val pct = quota?.percentage
+                                    if (pct != null) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(badgeColor.copy(alpha = 0.15f))
+                                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "$pct%",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = badgeColor
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Switch Model",
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Sliders / Tune Button: 🎛️
+                            Surface(
+                                onClick = onOpenThinkingSelector,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = "Tune & Thinking Settings",
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.weight(1f))
 
-                        // Dedicated Speech-to-Text Live Dictation Button (AGY Hub)
-                        if (!isStreaming && !isRecordingAudio) {
-                            Surface(
-                                onClick = {
-                                    if (isLiveDictating) stopLiveDictation()
-                                    else startLiveDictation()
-                                },
-                                shape = CircleShape,
-                                color = if (isLiveDictating) GeminiBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isLiveDictating) GeminiBlue.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                ),
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.GraphicEq,
-                                        contentDescription = if (isLiveDictating) "Stop Dictation" else "Live Dictation",
-                                        tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                        modifier = Modifier.size(17.dp)
-                                    )
+                        // Right Group: [Dictation] [Send / Stop / Mic]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Dedicated Speech-to-Text Live Dictation Button (AGY Hub)
+                            if (!isStreaming && !isRecordingAudio) {
+                                Surface(
+                                    onClick = {
+                                        if (isLiveDictating) stopLiveDictation()
+                                        else startLiveDictation()
+                                    },
+                                    shape = CircleShape,
+                                    color = if (isLiveDictating) GeminiBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isLiveDictating) GeminiBlue.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                    ),
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.GraphicEq,
+                                            contentDescription = if (isLiveDictating) "Stop Dictation" else "Live Dictation",
+                                            tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
+                                Spacer(modifier = Modifier.width(4.dp))
                             }
-                            Spacer(modifier = Modifier.width(4.dp))
-                        }
 
                         // Send / Stop / Mic Button
                         if (isStreaming && !canSend) {
@@ -1429,6 +1438,7 @@ fun ChatInputBar(
             }
         }
     }
+}
 }
 }
 

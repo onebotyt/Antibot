@@ -67,10 +67,14 @@ class MainActivity : ComponentActivity() {
 
         // Offload non-critical service initializations from UI thread for 2x faster app startup
         lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            com.example.gemini.ui.browser.BrowserSessionManager.instance.init(this@MainActivity)
-            com.example.gemini.data.local.LocalTerminalBridge.instance.init(this@MainActivity)
-            com.example.gemini.data.notes.NotesRepository.init(this@MainActivity)
-            com.example.gemini.data.remote.AndroidLocalBridgeServer.instance.start(this@MainActivity)
+            try {
+                com.example.gemini.ui.browser.BrowserSessionManager.instance.init(this@MainActivity)
+                com.example.gemini.data.local.LocalTerminalBridge.instance.init(this@MainActivity)
+                com.example.gemini.data.notes.NotesRepository.init(this@MainActivity)
+                com.example.gemini.data.remote.AndroidLocalBridgeServer.instance.start(this@MainActivity)
+            } catch (t: Throwable) {
+                android.util.Log.e("MainActivity", "Failed starting background services", t)
+            }
         }
         handleOAuthIntent(intent)
         handleIncomingFileIntent(intent)
@@ -209,8 +213,10 @@ class MainActivity : ComponentActivity() {
                         com.example.gemini.ui.components.AppPermissionsDialog(
                             onDismissOrCompleted = {
                                 showPermissionsDialog = false
-                                com.example.gemini.data.service.TermuxService.start(context)
-                                com.example.gemini.data.local.LocalServerManager.autoStartOnAppLaunch(context)
+                                if (com.example.gemini.ui.components.PermissionUtils.hasNotificationPermission(context)) {
+                                    com.example.gemini.data.service.TermuxService.start(context)
+                                    com.example.gemini.data.local.LocalServerManager.autoStartOnAppLaunch(context)
+                                }
                             }
                         )
                     } else if (showFullScreenInstaller) {
