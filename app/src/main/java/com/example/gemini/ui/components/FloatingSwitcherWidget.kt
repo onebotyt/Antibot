@@ -77,58 +77,60 @@ fun FloatingSwitcherWidget(
     var isPositionInitialized by remember { mutableStateOf(false) }
     var anchorRightX by remember { mutableFloatStateOf(0f) }
     var anchorLeftX by remember { mutableFloatStateOf(0f) }
-    var anchorBottomY by remember { mutableFloatStateOf(0f) }
-    var anchorTopY by remember { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(screenWidthPx, screenHeightPx) {
-        if (screenWidthPx > 0 && screenHeightPx > 0 && (!isPositionInitialized || !isDragging)) {
-            val posX = (savedPosXRatio * screenWidthPx).coerceIn(0f, (screenWidthPx - 50f).coerceAtLeast(0f))
-            val posY = (savedPosYRatio * screenHeightPx).coerceIn(0f, (screenHeightPx - 80f).coerceAtLeast(0f))
-            anchorLeftX = posX
-            anchorRightX = posX + (if (widgetSize.width > 0) widgetSize.width else 40)
-            anchorTopY = posY
-            anchorBottomY = posY + (if (widgetSize.height > 0) widgetSize.height else 40)
-            isPositionInitialized = true
-        }
-    }
-
     val isVertical = orientation.equals("VERTICAL", ignoreCase = true)
-    val isNearRightEdge = anchorRightX > (screenWidthPx / 2)
-    val isNearBottom = anchorBottomY > (screenHeightPx / 2)
 
     // Directional arrows:
     // Vertical layout extends vertically -> UP / DOWN arrows (^ / v)
     // Horizontal layout extends horizontally -> LEFT / RIGHT arrows (< / >)
     val expandArrowIcon: ImageVector = if (isVertical) {
-        if (isNearBottom) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore
+        if (anchorBottomY > (screenHeightPx / 2)) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore
     } else {
-        if (isNearRightEdge) Icons.Outlined.ChevronLeft else Icons.Outlined.ChevronRight
+        if (anchorRightX > (screenWidthPx / 2)) Icons.Outlined.ChevronLeft else Icons.Outlined.ChevronRight
     }
 
     val collapseArrowIcon: ImageVector = if (isVertical) {
-        if (isNearBottom) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess
+        if (anchorBottomY > (screenHeightPx / 2)) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess
     } else {
-        if (isNearRightEdge) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft
+        if (anchorRightX > (screenWidthPx / 2)) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft
     }
 
-    val imeBottomPx = WindowInsets.ime.getBottom(density).toFloat()
-    val navBarsBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
-    val effectiveBottomInset = maxOf(imeBottomPx, navBarsBottomPx)
-
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .zIndex(999f)
+            .zIndex(9999f)
     ) {
+        val containerWidthPx = constraints.maxWidth.toFloat()
+        val containerHeightPx = constraints.maxHeight.toFloat()
+        val statusBarTopPx = WindowInsets.statusBars.getTop(density).toFloat()
+        val navBarsBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
+
+        val minSafeY = (statusBarTopPx + 8f).coerceAtLeast(0f)
+        val maxSafeY = (containerHeightPx - widgetSize.height - navBarsBottomPx - 8f).coerceAtLeast(minSafeY)
+        val minSafeX = 4f
+        val maxSafeX = (containerWidthPx - widgetSize.width - 4f).coerceAtLeast(minSafeX)
+
+        val isNearRightEdge = anchorRightX > (containerWidthPx / 2)
+        val isNearBottom = anchorBottomY > (containerHeightPx / 2)
+
+        LaunchedEffect(containerWidthPx, containerHeightPx) {
+            if (containerWidthPx > 0 && containerHeightPx > 0 && (!isPositionInitialized || !isDragging)) {
+                val posX = (savedPosXRatio * containerWidthPx).coerceIn(minSafeX, maxSafeX)
+                val posY = (savedPosYRatio * containerHeightPx).coerceIn(minSafeY, maxSafeY)
+                anchorLeftX = posX
+                anchorRightX = posX + (if (widgetSize.width > 0) widgetSize.width else 40)
+                anchorTopY = posY
+                anchorBottomY = posY + (if (widgetSize.height > 0) widgetSize.height else 40)
+                isPositionInitialized = true
+            }
+        }
+
         Box(
             modifier = Modifier
                 .offset {
-                    val maxX = (screenWidthPx - widgetSize.width).coerceAtLeast(0f)
-                    val maxY = (screenHeightPx - widgetSize.height - effectiveBottomInset).coerceAtLeast(0f)
                     val targetX = if (isNearRightEdge) (anchorRightX - widgetSize.width) else anchorLeftX
                     val targetY = if (isNearBottom) (anchorBottomY - widgetSize.height) else anchorTopY
-                    val clampedX = targetX.coerceIn(0f, maxX)
-                    val clampedY = targetY.coerceIn(0f, maxY)
+                    val clampedX = targetX.coerceIn(minSafeX, maxSafeX)
+                    val clampedY = targetY.coerceIn(minSafeY, maxSafeY)
                     IntOffset(clampedX.roundToInt(), clampedY.roundToInt())
                 }
                 .onSizeChanged { newSize ->
@@ -153,10 +155,8 @@ fun FloatingSwitcherWidget(
                         onDragStart = {
                             isDragging = true
                             lastInteractionTimestamp = System.currentTimeMillis()
-                            val maxX = (screenWidthPx - widgetSize.width).coerceAtLeast(0f)
-                            val maxY = (screenHeightPx - widgetSize.height - effectiveBottomInset).coerceAtLeast(0f)
-                            val currentX = (if (isNearRightEdge) (anchorRightX - widgetSize.width) else anchorLeftX).coerceIn(0f, maxX)
-                            val currentY = (if (isNearBottom) (anchorBottomY - widgetSize.height) else anchorTopY).coerceIn(0f, maxY)
+                            val currentX = (if (isNearRightEdge) (anchorRightX - widgetSize.width) else anchorLeftX).coerceIn(minSafeX, maxSafeX)
+                            val currentY = (if (isNearBottom) (anchorBottomY - widgetSize.height) else anchorTopY).coerceIn(minSafeY, maxSafeY)
                             anchorLeftX = currentX
                             anchorRightX = currentX + widgetSize.width
                             anchorTopY = currentY
@@ -164,18 +164,16 @@ fun FloatingSwitcherWidget(
                         },
                         onDragEnd = {
                             isDragging = false
-                            val maxX = (screenWidthPx - widgetSize.width).coerceAtLeast(0f)
-                            val maxY = (screenHeightPx - widgetSize.height - effectiveBottomInset).coerceAtLeast(0f)
                             val targetX = if (isNearRightEdge) (anchorRightX - widgetSize.width) else anchorLeftX
                             val targetY = if (isNearBottom) (anchorBottomY - widgetSize.height) else anchorTopY
-                            val clampedX = targetX.coerceIn(0f, maxX)
-                            val clampedY = targetY.coerceIn(0f, maxY)
+                            val clampedX = targetX.coerceIn(minSafeX, maxSafeX)
+                            val clampedY = targetY.coerceIn(minSafeY, maxSafeY)
                             anchorLeftX = clampedX
                             anchorRightX = clampedX + widgetSize.width
                             anchorTopY = clampedY
                             anchorBottomY = clampedY + widgetSize.height
-                            val ratioX = if (screenWidthPx > 0) (clampedX / screenWidthPx).coerceIn(0f, 1f) else 0.95f
-                            val ratioY = if (screenHeightPx > 0) (clampedY / screenHeightPx).coerceIn(0f, 1f) else 0.50f
+                            val ratioX = if (containerWidthPx > 0) (clampedX / containerWidthPx).coerceIn(0f, 1f) else 0.95f
+                            val ratioY = if (containerHeightPx > 0) (clampedY / containerHeightPx).coerceIn(0f, 1f) else 0.50f
                             onPositionSaved(ratioX, ratioY)
                         },
                         onDragCancel = {
@@ -184,11 +182,9 @@ fun FloatingSwitcherWidget(
                         onDrag = { change, dragAmount ->
                             change.consume()
                             lastInteractionTimestamp = System.currentTimeMillis()
-                            val maxX = (screenWidthPx - widgetSize.width).coerceAtLeast(0f)
-                            val maxY = (screenHeightPx - widgetSize.height - effectiveBottomInset).coerceAtLeast(0f)
-                            anchorLeftX = (anchorLeftX + dragAmount.x).coerceIn(0f, maxX)
+                            anchorLeftX = (anchorLeftX + dragAmount.x).coerceIn(minSafeX, maxSafeX)
                             anchorRightX = anchorLeftX + widgetSize.width
-                            anchorTopY = (anchorTopY + dragAmount.y).coerceIn(0f, maxY)
+                            anchorTopY = (anchorTopY + dragAmount.y).coerceIn(minSafeY, maxSafeY)
                             anchorBottomY = anchorTopY + widgetSize.height
                         }
                     )
@@ -217,7 +213,7 @@ fun FloatingSwitcherWidget(
                         Icon(
                             imageVector = expandArrowIcon,
                             contentDescription = "Expand Switcher",
-                            tint = ClaudeTerracotta,
+                            tint = com.example.gemini.theme.AppColors.primary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -388,10 +384,11 @@ private fun FloatingSwitcherItemButton(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val accentColor = com.example.gemini.theme.AppColors.primary
     Surface(
         shape = CircleShape,
-        color = if (isSelected) ClaudeTerracotta.copy(alpha = 0.20f) else Color.Transparent,
-        border = if (isSelected) BorderStroke(1.dp, ClaudeTerracotta.copy(alpha = 0.5f)) else null,
+        color = if (isSelected) accentColor.copy(alpha = 0.20f) else Color.Transparent,
+        border = if (isSelected) BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)) else null,
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
@@ -401,7 +398,7 @@ private fun FloatingSwitcherItemButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                tint = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
                 modifier = Modifier.size(20.dp)
             )
         }
