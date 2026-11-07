@@ -107,10 +107,37 @@ class AuthPreferences(private val context: Context) {
         @Volatile
         var currentSecurityToken: String = ""
 
+        // ---- Server mode: an extra header the reverse proxy (nginx / Apache / Caddy) in front of the server checks ----
+        const val DEFAULT_EDGE_HEADER_NAME = "X-AntiBot-Key"
+        const val EDGE_VALUE_LENGTH = 20
+        private const val EDGE_CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+        @Volatile
+        var currentEdgeHeaderName: String = DEFAULT_EDGE_HEADER_NAME
+        @Volatile
+        var currentEdgeHeaderValue: String = ""
+
+        fun generateEdgeHeaderValue(): String {
+            val sb = StringBuilder(EDGE_VALUE_LENGTH)
+            for (i in 0 until EDGE_VALUE_LENGTH) sb.append(EDGE_CHARSET[secureRandom.nextInt(EDGE_CHARSET.length)])
+            return sb.toString()
+        }
+
+        /** Header names: letters, digits and dashes (no underscore: nginx drops those unless told not to). */
+        fun isValidEdgeName(name: String) = name.isNotBlank() && name.length <= 64 && name.all { it.isLetterOrDigit() && it.code < 128 || it == '-' }
+        fun isValidEdgeValue(value: String) = value.length in 8..200 && value.all { it.code in 33..126 && it != '"' && it != '\\' && it != '\'' }
+
+        /** The extra proxy header to send to a server, or null when it is off (local mode, or no value set). */
+        fun edgeHeader(): Pair<String, String>? {
+            val n = currentEdgeHeaderName.trim()
+            val v = currentEdgeHeaderValue
+            return if (currentRemoteMode && !currentRemoteTunnel && n.isNotEmpty() && v.isNotEmpty()) n to v else null
+        }
+
         val currentFramedHeader: String
             get() = buildFramedHeader(currentSecurityToken)
 
-        // per app (see the build flavors): com.antigem uses other ports than com.termux so both can run together
+        // per app (see the build flavors): com.antibot uses other ports than com.termux so both can run together
         val DEFAULT_HUB_URL = "http://127.0.0.1:${com.example.gemini.BuildConfig.HUB_PORT}"
         val DEFAULT_BRIDGE_HTTP_URL = "http://127.0.0.1:${com.example.gemini.BuildConfig.BRIDGE_PORT}"
 
@@ -129,6 +156,88 @@ class AuthPreferences(private val context: Context) {
 
         val currentBridgeWsUrl: String
             get() = toWsUrl(currentBridgeHttpUrl)
+
+        /**
+         * True when the bridge and the agents run on another machine (a VPS) that the app reaches over the
+         * network and manages over SSH. Everything local to the phone is then switched off.
+         */
+        @Volatile
+        var currentRemoteMode: Boolean = false
+
+        /**
+         * Server mode through an SSH tunnel: the bridge and the hub listen only on the server's 127.0.0.1 and the app
+         * forwards the same ports on this phone's 127.0.0.1 to them over the SSH connection.
+         */
+        @Volatile
+        var currentRemoteTunnel: Boolean = false
+
+        /** SSH private key (PEM/OpenSSH text) and its passphrase, used for the server connection when set. */
+        @Volatile
+        var currentSshPrivateKey: String = ""
+
+        @Volatile
+        var currentSshKeyPassphrase: String = ""
+
+        /**
+         * Turns what the user typed into a base URL: `a.xyz.com` -> `http://a.xyz.com:<defaultPort>`,
+         * `https://a.xyz.com` stays on 443, `1.2.3.4:9000` -> `http://1.2.3.4:9000`.
+         */
+        fun normalizeServerUrl(raw: String, defaultPort: Int): String? {
+            var text = raw.trim()
+            if (text.isEmpty()) return null
+            val hasScheme = text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true)
+            if (text.contains("://") && !hasScheme) return null
+            if (!hasScheme) text = "http://$text"
+            val uri = try { java.net.URI(text) } catch (_: Exception) { return null }
+            val scheme = uri.scheme?.lowercase() ?: return null
+            val host = uri.host?.takeIf { it.isNotBlank() } ?: return null
+            if (uri.userInfo != null) return null
+            val portPart = when {
+                uri.port > 0 -> ":${uri.port}"
+                !hasScheme -> ":$defaultPort"
+                else -> ""
+            }
+            val hostPart = if (host.contains(":") && !host.startsWith("[")) "[$host]" else host
+            val path = (uri.rawPath ?: "").trimEnd('/')
+            return "$scheme://$hostPart$portPart$path"
+        }
+
+        /** Host part of a saved server URL (for the SSH default and for display). */
+        fun hostOf(url: String): String = try {
+            java.net.URI(url).host.orEmpty().removePrefix("[").removeSuffix("]")
+        } catch (_: Exception) { "" }
+
+        /**
+         * Attachment/artifact addresses saved while the bridge was on this phone point at 127.0.0.1; once the bridge is
+         * on a server they must go to the server.
+         */
+        fun rebaseBridgeUrl(url: String): String {
+            val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return url
+            val host = uri.host ?: return url
+            if (!isLoopbackHost(host)) return url
+            val bridge = currentBridgeHttpUrl.trimEnd('/')
+            if (isLoopbackHost(hostOf(bridge))) return url
+            val tail = (uri.rawPath ?: "") + (uri.rawQuery?.let { "?$it" } ?: "")
+            return bridge + tail
+        }
+
+        /** True when [url] points at the configured bridge (its files need the security header). */
+        fun isBridgeUrl(url: String): Boolean {
+            val a = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+            val b = runCatching { java.net.URI(currentBridgeHttpUrl) }.getOrNull() ?: return false
+            val portA = if (a.port > 0) a.port else if (a.scheme == "https") 443 else 80
+            val portB = if (b.port > 0) b.port else if (b.scheme == "https") 443 else 80
+            return a.host.equals(b.host, ignoreCase = true) && portA == portB
+        }
+
+        /** The bridge is on another machine: use network-grade timeouts. */
+        fun isRemoteEndpoint(): Boolean =
+            currentRemoteMode || !isLoopbackHost(hostOf(currentBridgeHttpUrl)) || !isLoopbackHost(hostOf(currentHubUrl))
+
+        fun isLoopbackHost(host: String): Boolean {
+            val h = host.lowercase()
+            return h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "0.0.0.0"
+        }
 
         fun toWsUrl(httpUrl: String): String = when {
             httpUrl.startsWith("https://") -> httpUrl.replaceFirst("https://", "wss://")
@@ -149,12 +258,32 @@ class AuthPreferences(private val context: Context) {
         com.example.gemini.data.remote.inspector.NetworkInspectorManager.isEnabled = inspectorOn
         com.example.gemini.data.remote.inspector.NetworkInspectorManager.isFloatingBubbleEnabled = inspectorFloating
 
+        currentRemoteMode = syncPrefs.getBoolean("remote_mode", false)
+        currentRemoteTunnel = syncPrefs.getBoolean("remote_tunnel", false)
+        currentSshPrivateKey = syncPrefs.getString("ssh_private_key", "") ?: ""
+        currentSshKeyPassphrase = syncPrefs.getString("ssh_key_passphrase", "") ?: ""
+
         var token = syncPrefs.getString("security_token", null)
         if (token.isNullOrBlank() || token.length != TOKEN_LENGTH) {
             token = generateRandomToken()
             syncPrefs.edit().putString("security_token", token).apply()
         }
         currentSecurityToken = token
+        currentEdgeHeaderName = syncPrefs.getString("edge_header_name", null)?.takeIf { it.isNotBlank() } ?: DEFAULT_EDGE_HEADER_NAME
+        currentEdgeHeaderValue = syncPrefs.getString("edge_header_value", "") ?: ""
+    }
+
+    fun getEdgeHeaderSync(): Pair<String, String> = currentEdgeHeaderName to currentEdgeHeaderValue
+
+    fun saveEdgeHeaderSync(name: String, value: String) {
+        val cleanName = name.trim().takeIf { isValidEdgeName(it) } ?: DEFAULT_EDGE_HEADER_NAME
+        val cleanValue = value.trim().takeIf { isValidEdgeValue(it) } ?: ""
+        currentEdgeHeaderName = cleanName
+        currentEdgeHeaderValue = cleanValue
+        syncPrefs.edit()
+            .putString("edge_header_name", cleanName)
+            .putString("edge_header_value", cleanValue)
+            .apply()
     }
 
     val groupChatsByWorkspace: Flow<Boolean> = context.dataStore.data.map { it[GROUP_CHATS_BY_WORKSPACE] ?: false }
@@ -190,9 +319,8 @@ class AuthPreferences(private val context: Context) {
 
     fun getThemeModeSync(): String {
         val cached = syncPrefs.getString("app_theme_mode", null)
-        if (cached != null && cached != "SYSTEM") return cached
+        if (cached != null) return cached
 
-        // Default to LIGHT to match the AntiBot Studio design spec in Images 3, 4, 5
         try {
             val pbFile = java.io.File(context.filesDir, "datastore/auth_prefs.preferences_pb")
             if (pbFile.exists()) {
@@ -202,9 +330,9 @@ class AuthPreferences(private val context: Context) {
                 if (idx != -1) {
                     val sub = content.substring(idx + key.length, minOf(content.length, idx + key.length + 30))
                     val mode = when {
+                        sub.contains("LIGHT") -> "LIGHT"
                         sub.contains("DARK") -> "DARK"
-                        sub.contains("SYSTEM") -> "SYSTEM"
-                        else -> "LIGHT"
+                        else -> "DARK"
                     }
                     syncPrefs.edit().putString("app_theme_mode", mode).apply()
                     return mode
@@ -212,7 +340,7 @@ class AuthPreferences(private val context: Context) {
             }
         } catch (_: Exception) {}
 
-        return "LIGHT"
+        return "DARK"
     }
 
     val enabledModelIds: Flow<Set<String>?> = context.dataStore.data.map { it[ENABLED_MODELS] }
@@ -500,6 +628,126 @@ class AuthPreferences(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[APP_THEME_MODE] = mode
         }
+    }
+
+    fun isRemoteModeSync(): Boolean = currentRemoteMode
+
+    fun saveRemoteModeSync(enabled: Boolean) {
+        currentRemoteMode = enabled
+        syncPrefs.edit().putBoolean("remote_mode", enabled).commit()
+    }
+
+    fun saveRemoteTunnelSync(enabled: Boolean) {
+        currentRemoteTunnel = enabled
+        syncPrefs.edit().putBoolean("remote_tunnel", enabled).commit()
+    }
+
+    /** A port on the server that the app makes reachable on this phone's 127.0.0.1 over SSH (e.g. `npm run dev`). */
+    data class PortForward(val serverPort: Int, val localPort: Int, val name: String, val enabled: Boolean)
+
+    fun getPortForwardsSync(): List<PortForward> = runCatching {
+        val arr = org.json.JSONArray(syncPrefs.getString("port_forwards_json", "[]"))
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.getJSONObject(i)
+            val sp = o.optInt("server", 0)
+            if (sp !in 1..65535) null
+            else PortForward(sp, o.optInt("local", sp).takeIf { it in 1..65535 } ?: sp, o.optString("name"), o.optBoolean("on", true))
+        }
+    }.getOrDefault(emptyList())
+
+    fun savePortForwardsSync(list: List<PortForward>) {
+        val arr = org.json.JSONArray()
+        list.forEach {
+            arr.put(org.json.JSONObject().put("server", it.serverPort).put("local", it.localPort).put("name", it.name).put("on", it.enabled))
+        }
+        syncPrefs.edit().putString("port_forwards_json", arr.toString()).commit()
+    }
+
+    /** Named connection profiles the user saved by hand ("remote" = server mode, otherwise local). Stored as JSON on the phone. */
+    fun listProfiles(remote: Boolean): List<org.json.JSONObject> = runCatching {
+        val arr = org.json.JSONArray(syncPrefs.getString("profiles_json", "[]"))
+        (0 until arr.length()).map { arr.getJSONObject(it) }.filter { it.optBoolean("remote") == remote }
+    }.getOrDefault(emptyList())
+
+    fun saveProfile(remote: Boolean, name: String, data: org.json.JSONObject) {
+        val arr = runCatching { org.json.JSONArray(syncPrefs.getString("profiles_json", "[]")) }.getOrDefault(org.json.JSONArray())
+        val out = org.json.JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (!(o.optBoolean("remote") == remote && o.optString("name") == name)) out.put(o)
+        }
+        out.put(data.put("name", name).put("remote", remote))
+        syncPrefs.edit().putString("profiles_json", out.toString()).apply()
+    }
+
+    fun deleteProfile(remote: Boolean, name: String) {
+        val arr = runCatching { org.json.JSONArray(syncPrefs.getString("profiles_json", "[]")) }.getOrDefault(org.json.JSONArray())
+        val out = org.json.JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (!(o.optBoolean("remote") == remote && o.optString("name") == name)) out.put(o)
+        }
+        syncPrefs.edit().putString("profiles_json", out.toString()).remove("profile_remote").remove("profile_local").apply()
+    }
+
+    fun saveSshKeySync(privateKey: String, passphrase: String) {
+        currentSshPrivateKey = privateKey.trim()
+        currentSshKeyPassphrase = passphrase
+        syncPrefs.edit()
+            .putString("ssh_private_key", currentSshPrivateKey)
+            .putString("ssh_key_passphrase", passphrase)
+            .commit()
+    }
+
+    /** Paths ON THE SERVER (blank = automatic: the bridge the app installs, `agy` found by the bridge). */
+    fun getRemoteBridgeBinSync(): String = syncPrefs.getString("remote_bridge_bin", "") ?: ""
+    fun getRemoteAgyBinSync(): String = syncPrefs.getString("remote_agy_bin", "") ?: ""
+    fun getRemoteClaudeBinSync(): String = syncPrefs.getString("remote_claude_bin", "") ?: ""
+
+    fun saveRemoteBinariesSync(bridge: String, agy: String, claude: String = "") {
+        syncPrefs.edit()
+            .putString("remote_bridge_bin", bridge.trim())
+            .putString("remote_agy_bin", agy.trim())
+            .putString("remote_claude_bin", claude.trim())
+            .apply()
+    }
+
+    /** Ports/bind the bridge LISTENS on at the server (blank = derived from the URLs). */
+    fun getRemoteListenSync(): Triple<String, String, String> = Triple(
+        syncPrefs.getString("remote_listen_bridge_port", "") ?: "",
+        syncPrefs.getString("remote_listen_hub_port", "") ?: "",
+        syncPrefs.getString("remote_listen_bind", "") ?: ""
+    )
+
+    fun saveRemoteListenSync(bridgePort: String, hubPort: String, bind: String) {
+        syncPrefs.edit()
+            .putString("remote_listen_bridge_port", bridgePort.trim())
+            .putString("remote_listen_hub_port", hubPort.trim())
+            .putString("remote_listen_bind", bind.trim())
+            .apply()
+    }
+
+    /** Remote mode: let the server's `adb` reach this phone's adb daemon through an SSH reverse tunnel. */
+    fun isAdbTunnelEnabledSync(): Boolean = syncPrefs.getBoolean("adb_tunnel_enabled", false)
+
+    fun getAdbTunnelPortsSync(): Pair<Int, Int> = Pair(
+        syncPrefs.getInt("adb_tunnel_connect_port", 15555),
+        syncPrefs.getInt("adb_tunnel_pair_port", 15556)
+    )
+
+    fun saveAdbTunnelSync(enabled: Boolean, connectPort: Int, pairPort: Int) {
+        syncPrefs.edit()
+            .putBoolean("adb_tunnel_enabled", enabled)
+            .putInt("adb_tunnel_connect_port", connectPort)
+            .putInt("adb_tunnel_pair_port", pairPort)
+            .apply()
+    }
+
+    /** Where on the server the app keeps the bridge it uploads and starts (relative to the SSH user's home). */
+    fun getRemoteInstallDirSync(): String = syncPrefs.getString("remote_install_dir", ".antibot") ?: ".antibot"
+
+    fun saveRemoteInstallDirSync(dir: String) {
+        syncPrefs.edit().putString("remote_install_dir", dir.trim().ifBlank { ".antibot" }).apply()
     }
 
     suspend fun saveGroupChatsByWorkspace(enabled: Boolean) {

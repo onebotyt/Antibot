@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"gemini-server/pkg/buildinfo"
 	"io"
 	"net/http"
 	"os"
@@ -75,7 +76,7 @@ func (h *Handler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":    "ok",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"version":   "2.0.0",
+		"version":   buildinfo.Version(),
 	})
 }
 
@@ -110,7 +111,7 @@ func (h *Handler) StatusHandler(w http.ResponseWriter, r *http.Request) {
 		"status":    "ok",
 		"uptime":    time.Since(startTime).Seconds(),
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"version":   "2.0.0",
+		"version":   buildinfo.Version(),
 		"hub": map[string]interface{}{
 			"active":     hubActive,
 			"status":     hubStatus,
@@ -1154,14 +1155,23 @@ func (h *Handler) FsBrowseHandler(w http.ResponseWriter, r *http.Request) {
 		var size int64
 		var modTime int64
 		isDir := e.IsDir()
+		mode := ""
 
 		if statInfo, err := os.Stat(fullPath); err == nil {
 			isDir = statInfo.IsDir()
 			size = statInfo.Size()
 			modTime = statInfo.ModTime().UnixMilli()
+			mode = statInfo.Mode().String()
 		} else if info, err := e.Info(); err == nil && info != nil {
 			size = info.Size()
 			modTime = info.ModTime().UnixMilli()
+			mode = info.Mode().String()
+		}
+		childCount := 0
+		if isDir && len(entries) <= 400 {
+			if n := fsCountChildren(fullPath); n > 0 {
+				childCount = n
+			}
 		}
 
 		ext := ""
@@ -1183,6 +1193,11 @@ func (h *Handler) FsBrowseHandler(w http.ResponseWriter, r *http.Request) {
 			Size:    size,
 			ModTime: modTime,
 			Ext:     ext,
+
+			Hidden:     strings.HasPrefix(name, "."),
+			Symlink:    e.Type()&os.ModeSymlink != 0,
+			Mode:       mode,
+			ChildCount: childCount,
 		})
 	}
 
@@ -1669,7 +1684,7 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		Path:      targetPath,
 		IsImage:   isImage,
 		Size:      len(buffer),
-		URL:       fmt.Sprintf("http://127.0.0.1:%s/attachments/%s", h.Cfg.Port, uniqueName),
+		URL:       fmt.Sprintf("%s/attachments/%s", publicBaseURL(r, h.Cfg.Port), uniqueName),
 	})
 }
 

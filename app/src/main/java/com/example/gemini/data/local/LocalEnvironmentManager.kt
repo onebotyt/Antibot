@@ -1791,7 +1791,7 @@ object LocalEnvironmentManager {
 
     private fun extractGlibcMinAsset(context: Context, prefixDir: File): Boolean {
         log("Checking for bundled minimal Glibc runtime...")
-        val assetName = "glibc-min-arm64.tar"
+        val assetName = if (context.assets.list("")?.contains("glibc-min-arm64.tar.xz") == true) "glibc-min-arm64.tar.xz" else "glibc-min-arm64.tar"
         val inStream = try {
             context.assets.open(assetName)
         } catch (e: Exception) {
@@ -1806,7 +1806,12 @@ object LocalEnvironmentManager {
             File(glibcDir, "etc").mkdirs()
 
             var extractedFiles = 0
-            BufferedInputStream(inStream).use { rawStream ->
+            val decompressedStream: InputStream = if (assetName.endsWith(".xz")) {
+                org.tukaani.xz.XZInputStream(BufferedInputStream(inStream, 64 * 1024))
+            } else {
+                BufferedInputStream(inStream)
+            }
+            decompressedStream.use { rawStream ->
                 TarArchiveInputStream(rawStream).use { tarIn ->
                     var entry: TarArchiveEntry? = tarIn.nextEntry
                     while (entry != null) {

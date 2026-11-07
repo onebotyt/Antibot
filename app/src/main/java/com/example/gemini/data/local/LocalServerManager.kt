@@ -56,14 +56,23 @@ object LocalServerManager {
         }
     }
 
+    /** The IDE bridge is shipped xz-compressed (see compressAgyIdeBridge in app/build.gradle.kts). */
+    private const val BRIDGE_ASSET = "agy_ide_bridge.xz"
+
+    /** Opens assets/bin/[assetName], decompressing it on the fly when it is an .xz file. */
+    private fun openBinAsset(context: Context, assetName: String): java.io.InputStream {
+        val raw = context.assets.open("bin/$assetName")
+        return if (assetName.endsWith(".xz")) org.tukaani.xz.XZInputStream(java.io.BufferedInputStream(raw, 64 * 1024)) else raw
+    }
+
     private fun extractAssetToBin(
         context: Context,
         binDir: File,
         assetName: String,
-        targetFileName: String = assetName
+        targetFileName: String = assetName.removeSuffix(".xz")
     ) {
         val targetFile = File(binDir, targetFileName)
-        context.assets.open("bin/$assetName").use { input ->
+        openBinAsset(context, assetName).use { input ->
             val tempFile = File(binDir, "$targetFileName.tmp")
             tempFile.outputStream().use { output ->
                 input.copyTo(output)
@@ -116,7 +125,8 @@ object LocalServerManager {
                     binDir.mkdirs()
                 }
                 try {
-                    extractAssetToBin(context, binDir, "agy_ide_bridge")
+                    val bridgeAsset = if (runCatching { context.assets.open("bin/$BRIDGE_ASSET").close() }.isSuccess) BRIDGE_ASSET else "agy_ide_bridge"
+                    extractAssetToBin(context, binDir, bridgeAsset, "agy_ide_bridge")
                 } catch (e: Exception) {
                     Log.w(TAG, "agy_ide_bridge asset not extracted", e)
                 }

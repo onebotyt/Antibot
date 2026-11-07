@@ -2178,6 +2178,7 @@ fun ChatScreen(
             enabledAgents = enabledAgents,
             isApplyingAgents = isApplyingAgents,
             onApplyAgents = { viewModel.applyAgents(it) },
+            onOpenProject = { onNavigateToIde() },
             onDismiss = {
                 showSettingsDialog = false
             }

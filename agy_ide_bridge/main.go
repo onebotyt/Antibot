@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"runtime/debug"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 
 	// DNS for Android (no /etc/resolv.conf there); a package so `go build main.go` includes it too
 	_ "gemini-server/pkg/androiddns"
+	"gemini-server/pkg/claude"
 	"gemini-server/pkg/config"
 	"gemini-server/pkg/handlers"
 	"gemini-server/pkg/hub"
@@ -30,7 +30,7 @@ import (
 )
 
 func printUsage() {
-	fmt.Println(`antiGem Go IDE Server & AGY Hub Supervisor
+	fmt.Println(`AntiBot Go IDE Server & AGY Hub Supervisor
 
 Usage:
   go run main.go [flags]
@@ -38,13 +38,16 @@ Usage:
 Flags:
   -u, --unpatch             Unpatch AGY binary back to standard header and exit (do not start server)
   --bin <path>              Custom path to AGY binary (for --unpatch or custom setups)
+  --claude-bin <path>       Custom path to the Claude Code CLI (default: claude on PATH)
   -t, --token <token>       12-character security token for API & AGY CSRF obfuscation
   -f, --force, --f          Force start AGY Hub automatically without prompting
   -p, --port <port>         Port for the Go IDE Server (default: 1234)
+  --bind <address>          Address the IDE Server listens on (default: 127.0.0.1; use 0.0.0.0 only to reach it directly from other machines)
   --hub-port <port>         Port for the AGY Hub RPC server (default: 1235)
   --tz-offset <seconds>     Timezone offset in seconds (e.g. 20700 for UTC+05:45)
   --tz <location>           Timezone location name (e.g. Asia/Kathmandu)
   --no-hub                  Skip launching AGY Hub (run IDE server only)
+  --no-claude               Disable Claude Code (no /api/claude endpoints, never runs the claude CLI)
   -d, --dir <path>          Custom workspace directory
   -h, --help                Show help documentation`)
 }
@@ -64,6 +67,16 @@ func (r *statusRecorder) WriteHeader(code int) {
 		r.ResponseWriter.WriteHeader(code)
 	}
 }
+
+// Flush lets streaming handlers (git clone progress) push each line to the client right away.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap exposes the real writer to http.ResponseController.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
@@ -115,6 +128,8 @@ func main() {
 
 	var unpatchOnly bool
 	var customAgyBin string
+	var customClaudeBin string
+	var noClaude bool
 	var forceStart bool
 	var skipHub bool
 	var cliToken string
@@ -135,6 +150,13 @@ func main() {
 				customAgyBin = os.Args[i+1]
 				i++
 			}
+		case strings.HasPrefix(arg, "--claude-bin="):
+			customClaudeBin = strings.TrimPrefix(arg, "--claude-bin=")
+		case arg == "--claude-bin":
+			if i+1 < len(os.Args) {
+				customClaudeBin = os.Args[i+1]
+				i++
+			}
 		case strings.HasPrefix(arg, "--token="):
 			cliToken = strings.TrimPrefix(arg, "--token=")
 		case arg == "-t" || arg == "--token":
@@ -146,11 +168,20 @@ func main() {
 			forceStart = true
 		case arg == "--no-hub" || arg == "-n" || arg == "--skip-hub":
 			skipHub = true
+		case arg == "--no-claude":
+			noClaude = true
 		case strings.HasPrefix(arg, "--port="):
 			cfg.Port = strings.TrimPrefix(arg, "--port=")
 		case arg == "-p" || arg == "--port":
 			if i+1 < len(os.Args) {
 				cfg.Port = os.Args[i+1]
+				i++
+			}
+		case strings.HasPrefix(arg, "--bind="):
+			cfg.Bind = strings.TrimPrefix(arg, "--bind=")
+		case arg == "--bind":
+			if i+1 < len(os.Args) {
+				cfg.Bind = os.Args[i+1]
 				i++
 			}
 		case strings.HasPrefix(arg, "--hub-port="):
@@ -199,7 +230,7 @@ func main() {
 		}
 		patchTarget := hub.ResolvePatchTarget(resolvedBin)
 		fmt.Println("\033[1;36m============================================================\033[0m")
-		fmt.Println("\033[1;33m  ⚡ antiGem AGY Binary Header Unpatcher\033[0m")
+		fmt.Println("\033[1;33m  ⚡ AntiBot AGY Binary Header Unpatcher\033[0m")
 		fmt.Println("\033[1;36m============================================================\033[0m")
 		fmt.Printf("  \033[1m• Target Binary:\033[0m  %s\n", patchTarget)
 
@@ -234,8 +265,8 @@ func main() {
 
 	resolvedAgyBin, err := hub.ResolveAgyBinaryInteractive(customAgyBin, forceStart || skipHub)
 	if customAgyBin != "" && err != nil {
-		fmt.Printf(" \033[33m[!] Specified AGY binary not found at '%s': %v. Falling back to auto-discovery...\033[0m\n", customAgyBin, err)
-		resolvedAgyBin, err = hub.ResolveAgyBinaryInteractive("", forceStart || skipHub)
+		fmt.Printf(" \033[1;31m✗ Fatal Error:\033[0m %v\n", err)
+		os.Exit(1)
 	}
 	if err != nil && !skipHub {
 		fmt.Printf(" \033[31m[!] AGY Discovery Warning:\033[0m %v\n", err)
@@ -243,9 +274,9 @@ func main() {
 
 	// Stylized Banner
 	fmt.Println("\033[1;36m============================================================\033[0m")
-	fmt.Println("\033[1;32m  ⚡ antiGem Go IDE Server & AGY Hub Supervisor\033[0m")
+	fmt.Println("\033[1;32m  ⚡ AntiBot Go IDE Server & AGY Hub Supervisor\033[0m")
 	fmt.Println("\033[1;36m============================================================\033[0m")
-	fmt.Printf("  \033[1m• IDE Server Port:\033[0m  http://0.0.0.0:%s\n", cfg.Port)
+	fmt.Printf("  \033[1m• IDE Server Port:\033[0m  http://%s:%s\n", cfg.Bind, cfg.Port)
 	fmt.Printf("  \033[1m• Projects Dir:\033[0m     %s\n", cfg.ProjectsBaseDir)
 	fmt.Printf("  \033[1m• Target Hub Port:\033[0m  %s\n", hubPort)
 	if resolvedAgyBin != "" {
@@ -264,7 +295,20 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Custom AntiGem plugins on disk: list, install (ZIP or GitHub repository), update, remove, export
+	// Claude Code CLI sessions (process manager + NDJSON WebSocket relay); off with --no-claude
+	var claudeMgr *claude.Manager
+	if noClaude {
+		mux.HandleFunc("/api/claude/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"success":false,"disabled":true,"error":"Claude Code is turned off in the app"}`))
+		})
+	} else {
+		claudeMgr = claude.NewManager(cfg.HomeDir, cfg.WorkspaceDir, customClaudeBin)
+		mux.Handle("/api/claude/", claudeMgr)
+	}
+
+	// Custom AntiBot plugins on disk: list, install (ZIP or GitHub repository), update, remove, export
 	mux.Handle("/api/custom-plugins/", plugins.NewManager(cfg.HomeDir))
 
 	// REST Endpoints
@@ -273,6 +317,10 @@ func main() {
 	mux.HandleFunc("/api/shutdown", h.ShutdownHandler)
 	mux.HandleFunc("/api/auth/login-url", h.GetLoginURLHandler)
 	mux.HandleFunc("/api/auth/start-login", h.StartLoginHandler)
+	mux.HandleFunc("/api/auth/forward-callback", h.ForwardLoginCallbackHandler)
+	mux.HandleFunc("/api/server/info", h.ServerInfoHandler)
+	mux.HandleFunc("/api/agy/cli", h.AgyCliHandler)
+	mux.HandleFunc("/api/agy/cli/install", h.AgyCliInstallHandler)
 	mux.HandleFunc("/api/models", h.ModelsHandler)
 	mux.HandleFunc("/api/models/refresh", h.ModelsHandler)
 	mux.HandleFunc("/api/quotas", h.QuotasHandler)
@@ -287,6 +335,20 @@ func main() {
 	mux.HandleFunc("/api/projects/create", h.CreateProjectHandler)
 	mux.HandleFunc("/api/fs/browse", h.FsBrowseHandler)
 	mux.HandleFunc("/api/fs/mkdir", h.FsMkdirHandler)
+	// Files screen (explorer): places, details, safe create / rename, batch copy / move / delete, zip, unzip, search, streaming
+	mux.HandleFunc("/api/fs/roots", h.FsRootsHandler)
+	mux.HandleFunc("/api/fs/stat", h.FsStatHandler)
+	mux.HandleFunc("/api/fs/new", h.FsNewHandler)
+	mux.HandleFunc("/api/fs/rename", h.FsRenameHandler)
+	mux.HandleFunc("/api/fs/chmod", h.FsChmodHandler)
+	mux.HandleFunc("/api/fs/transfer", h.FsTransferHandler)
+	mux.HandleFunc("/api/fs/delete", h.FsDeleteHandler)
+	mux.HandleFunc("/api/fs/compress", h.FsCompressHandler)
+	mux.HandleFunc("/api/fs/extract", h.FsExtractHandler)
+	mux.HandleFunc("/api/fs/archive/list", h.FsArchiveListHandler)
+	mux.HandleFunc("/api/fs/search", h.FsSearchHandler)
+	mux.HandleFunc("/api/fs/raw", h.FsRawHandler)
+	mux.HandleFunc("/api/fs/upload", h.FsUploadHandler)
 	mux.HandleFunc("/api/tree", h.FileTreeHandler)
 	mux.HandleFunc("/api/file/read", h.FileReadHandler)
 	mux.HandleFunc("/api/file/save", h.FileSaveHandler)
@@ -302,6 +364,7 @@ func main() {
 	// Git Source Control Endpoints
 	mux.HandleFunc("/api/git/status", h.GitStatusHandler)
 	mux.HandleFunc("/api/git/init", h.GitInitHandler)
+	mux.HandleFunc("/api/git/clone", h.GitCloneHandler)
 	mux.HandleFunc("/api/git/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			h.GitSetConfigHandler(w, r)
@@ -376,7 +439,7 @@ func main() {
 		}
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/plain")
-			_, _ = w.Write([]byte(fmt.Sprintf("antiGem IDE Server running on :%s\n", cfg.Port)))
+			_, _ = w.Write([]byte(fmt.Sprintf("AntiBot IDE Server running on :%s\n", cfg.Port)))
 			return
 		}
 		http.NotFound(w, r)
@@ -385,7 +448,8 @@ func main() {
 	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, "+framedHeader)
+		// "*" lets any request header through without ever naming the secret one
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, *")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -410,7 +474,9 @@ func main() {
 		}
 
 		var reqPayload string
-		if r.Body != nil && !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		// raw uploads (Files screen) can be gigabytes: never read them into memory for logging
+		if r.Body != nil && !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") &&
+			!strings.HasPrefix(r.Header.Get("Content-Type"), "application/octet-stream") {
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err == nil && len(bodyBytes) > 0 {
 				r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -479,10 +545,12 @@ func main() {
 	})
 
 	server := &http.Server{
-		Addr:         "0.0.0.0:" + cfg.Port,
-		Handler:      recoveryHandler,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		Addr:    net.JoinHostPort(cfg.Bind, cfg.Port),
+		Handler: security.GuardResponse(secToken, recoveryHandler),
+		// No whole-request Read/Write timeouts: over a real network (phone -> VPS) large uploads,
+		// exports and streamed downloads legitimately take longer than a minute.
+		ReadHeaderTimeout: 20 * time.Second,
+		IdleTimeout:       180 * time.Second,
 	}
 
 	stopChan := make(chan os.Signal, 1)
@@ -496,49 +564,13 @@ func main() {
 		}
 	}
 
-	var listener net.Listener
-	var listenErr error
-	for attempt := 1; attempt <= 5; attempt++ {
-		lc := net.ListenConfig{
-			Control: func(network, address string, c syscall.RawConn) error {
-				var opErr error
-				err := c.Control(func(fd uintptr) {
-					opErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-					if opErr == nil {
-						_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, 0xf /* SO_REUSEPORT */, 1)
-					}
-				})
-				if err != nil {
-					return err
-				}
-				return opErr
-			},
-		}
-		listener, listenErr = lc.Listen(context.Background(), "tcp", "0.0.0.0:"+cfg.Port)
-		if listenErr == nil {
-			break
-		}
-		if strings.Contains(listenErr.Error(), "address already in use") {
-			log.Printf("\033[1;33m[!] Port %s in use (attempt %d/5), clearing stale processes...\033[0m", cfg.Port, attempt)
-			myPid := os.Getpid()
-			cleanCmd := fmt.Sprintf("for pid in $(pgrep -f agy_ide_bridge 2>/dev/null); do if [ \"$pid\" != \"%d\" ]; then kill -9 \"$pid\" 2>/dev/null; fi; done; fuser -k %s/tcp 2>/dev/null", myPid, cfg.Port)
-			_ = exec.Command("sh", "-c", cleanCmd).Run()
-			time.Sleep(600 * time.Millisecond)
-		} else {
-			break
-		}
-	}
-	if listenErr != nil {
-		log.Fatalf("Server error: failed to bind 0.0.0.0:%s: %v", cfg.Port, listenErr)
-	}
-
 	go func() {
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()
 
-	fmt.Printf(" \033[32m🚀 antiGem IDE Server running at http://0.0.0.0:%s\033[0m\n\n", cfg.Port)
+	fmt.Printf(" \033[32m🚀 AntiBot IDE Server running at http://%s:%s\033[0m\n\n", cfg.Bind, cfg.Port)
 
 	// Determine if AGY Hub should be started
 	shouldStartHub := false
@@ -589,12 +621,15 @@ func main() {
 	}
 
 	<-stopChan
-	fmt.Println("\n🛑 Shutting down antiGem server gracefully...")
+	fmt.Println("\n🛑 Shutting down AntiBot server gracefully...")
 
 	// 1. Close all active WebSocket client connections immediately
 	wsHub.Close()
 
-	// 2. Stop the AGY Hub process group and continuous background monitor
+	// 2. Stop Claude Code sessions, then the AGY Hub process group and continuous background monitor
+	if claudeMgr != nil {
+		claudeMgr.StopAll()
+	}
 	if hubMgr != nil {
 		hubMgr.Stop()
 	}
@@ -605,6 +640,6 @@ func main() {
 	_ = server.Shutdown(ctx)
 	_ = server.Close()
 
-	fmt.Println("✅ antiGem Go server stopped.")
+	fmt.Println("✅ AntiBot Go server stopped.")
 	os.Exit(0)
 }

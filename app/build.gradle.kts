@@ -11,6 +11,14 @@ val parsedVersion = if (versionFile.exists()) {
 val appVersionCode = (parsedVersion["version_code"] as? Number)?.toInt() ?: 1
 val appVersionName = (parsedVersion["version_name"] as? String) ?: "1.0.0"
 
+// The IDE bridge (Go) reports the same version as the app: its build embeds a copy of version.json, refreshed here on
+// every Gradle build so the two can never differ and nobody has to remember it.
+val syncBridgeVersion by tasks.registering(Copy::class) {
+    from(versionFile)
+    into(rootProject.file("agy_ide_bridge/pkg/buildinfo"))
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(syncBridgeVersion) }
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
@@ -28,6 +36,9 @@ android {
         versionCode = appVersionCode
         versionName = appVersionName
         resValue("string", "app_name", "AntiBot v$appVersionName")
+        // Only arm64 runs AntiBot (its glibc, proot and IDE bridge are arm64): leave the other ABIs' copies of
+        // dependency libraries out of the APK
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     signingConfigs {
@@ -99,7 +110,7 @@ android {
     }
 
     androidResources {
-        noCompress += listOf("gz", "tgz", "tar.gz", "tar")
+        noCompress += listOf("gz", "tgz", "tar.gz", "tar", "xz")
     }
 
     packaging {
@@ -112,6 +123,9 @@ android {
         excludes += "META-INF/DEPENDENCIES"
         excludes += "META-INF/LICENSE*"
         excludes += "META-INF/NOTICE*"
+        // jcodings (pulled in by the editor's TextMate highlighting through joni) ships character-set converters
+        // (Big5, EUC-JP, GBK…, 1.1 MB) that regex matching never uses; its Unicode tables (tables/CR_*) stay
+        excludes += "tables/Transcoder_*"
       }
     }
 
@@ -223,34 +237,38 @@ wire {
   }
 }
 
+// The bridge is built into build/ and shipped xz-compressed (13 MB -> 3.8 MB in the APK); the app unpacks it into the
+// terminal's bin/ (LocalServerManager). Preset 6 compresses as well as -9e here, with an 8 MB dictionary, so unpacking
+// needs little memory.
+val agyIdeBridgeRaw = layout.buildDirectory.file("intermediates/agyIdeBridge/agy_ide_bridge")
 val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
-  val binDir = layout.projectDirectory.dir("src/main/assets/bin")
+  dependsOn(syncBridgeVersion) // the bridge embeds the app's version
   val bridgeSourceDir = layout.projectDirectory.dir("../agy_ide_bridge")
-
-  onlyIf {
-    try {
-      val process = ProcessBuilder("go", "version").start()
-      process.waitFor() == 0
-    } catch (_: Exception) {
-      val target = binDir.file("agy_ide_bridge").asFile
-      if (target.exists()) {
-        logger.warn("Go compiler not found, using existing pre-built agy_ide_bridge binary.")
-      } else {
-        logger.warn("Go compiler not found and agy_ide_bridge not present in assets.")
-      }
-      false
-    }
-  }
+  val rawFile = agyIdeBridgeRaw.get().asFile
 
   doFirst {
-    binDir.asFile.mkdirs()
+    rawFile.parentFile.mkdirs()
   }
 
   workingDir = bridgeSourceDir.asFile
   environment("GOOS", "android")
   environment("GOARCH", "arm64")
   environment("CGO_ENABLED", "0")
-  commandLine("go", "build", "-ldflags=-s -w", "-o", binDir.file("agy_ide_bridge").asFile.absolutePath, "main.go")
+  commandLine("go", "build", "-ldflags=-s -w", "-o", rawFile.absolutePath, "main.go")
+}
+
+val compressAgyIdeBridge = tasks.register<Exec>("compressAgyIdeBridge") {
+  dependsOn(buildAgyIdeBridge)
+  val binDir = layout.projectDirectory.dir("src/main/assets/bin").asFile
+  val rawFile = agyIdeBridgeRaw.get().asFile
+
+  doFirst {
+    binDir.mkdirs()
+    // an uncompressed copy left by older builds would be packaged too
+    File(binDir, "agy_ide_bridge").delete()
+  }
+
+  commandLine("sh", "-c", "xz -6 -T1 -c \"$1\" > \"$2\"", "sh", rawFile.absolutePath, File(binDir, "agy_ide_bridge.xz").absolutePath)
 }
 
 val copyScriptsToAssets = tasks.register<Copy>("copyScriptsToAssets") {
@@ -279,7 +297,7 @@ val copyScriptsToAssets = tasks.register<Copy>("copyScriptsToAssets") {
 }
 
 tasks.named("preBuild") {
-  dependsOn(buildAgyIdeBridge, copyScriptsToAssets)
+  dependsOn(compressAgyIdeBridge, copyScriptsToAssets)
 }
 
 
@@ -302,3 +320,105 @@ val bundleExtensionDocs by tasks.registering(Sync::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/extensionDocAssets").get().asFile)
 tasks.named("preBuild").configure { dependsOn(bundleExtensionDocs) }
+
+// Changelog: the app's "What's new" page is built from the git history of version.json, one entry per version_code
+// (the newest commit of each wins, dated by that commit). The version.json being built is used for its own version, so
+// an uncommitted bump shows up too. Needs the full history: CI checks out with fetch-depth 0. Without git (or with a
+// shallow clone) only the current version is listed.
+abstract class GenerateChangelogTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val versionJson: RegularFileProperty
+
+    @get:Internal
+    abstract val repoDir: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    init {
+        // the history changes with every commit, which no file input captures; the output is rewritten only if it changed
+        outputs.upToDateWhen { false }
+    }
+
+    private fun git(vararg args: String): String? = try {
+        val process = ProcessBuilder(listOf("git", "-C", repoDir.get().asFile.absolutePath) + args)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+        val out = process.inputStream.bufferedReader().readText()
+        if (process.waitFor() == 0) out else null
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun changesOf(raw: Any?): List<String> = when (raw) {
+        is List<*> -> raw.map { it.toString() }
+        is String -> raw.split('\n')
+        else -> emptyList()
+    }.map { it.trim().trimStart('•', '-', '*', ' ').trim() }.filter { it.isNotEmpty() }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parse(text: String): Map<String, Any?>? = try {
+        groovy.json.JsonSlurper().parseText(text) as? Map<String, Any?>
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun kotlinString(s: String) = "\"" + s
+        .replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
+        .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
+
+    @TaskAction
+    fun generate() {
+        data class Entry(val code: Int, val name: String, val date: String?, val changes: List<String>)
+        val byCode = LinkedHashMap<Int, Entry>()
+
+        // newest first: the first commit seen for a version_code is its latest edit
+        val log = git("log", "--format=%H %cI", "--", "version.json")
+        if (log == null) logger.warn("Changelog: git history unavailable, listing only the current version")
+        else if (git("rev-parse", "--is-shallow-repository")?.trim() == "true") logger.warn("Changelog: shallow clone, older versions may be missing")
+        log.orEmpty().lineSequence().filter { it.isNotBlank() }.forEach { line ->
+            val sha = line.substringBefore(' ')
+            val date = line.substringAfter(' ').take(10)
+            val json = git("show", "$sha:version.json")?.let(::parse) ?: return@forEach
+            val code = (json["version_code"] as? Number)?.toInt() ?: return@forEach
+            if (code in byCode) return@forEach
+            byCode[code] = Entry(code, json["version_name"]?.toString() ?: "?", date, changesOf(json["changelog"]))
+        }
+
+        parse(versionJson.get().asFile.readText())?.let { json ->
+            val code = (json["version_code"] as? Number)?.toInt() ?: return@let
+            byCode[code] = Entry(code, json["version_name"]?.toString() ?: "?", byCode[code]?.date, changesOf(json["changelog"]))
+        }
+
+        val body = byCode.values.sortedByDescending { it.code }.joinToString(",\n") { e ->
+            "        ChangelogEntry(${e.code}, ${kotlinString(e.name)}, ${e.date?.let(::kotlinString) ?: "null"}, listOf(" +
+                e.changes.joinToString(", ") { kotlinString(it) } + "))"
+        }
+        val source = """
+            |package com.example.gemini.data.changelog
+            |
+            |// Generated by the generateChangelog Gradle task from the git history of version.json. Do not edit.
+            |internal object GeneratedChangelog {
+            |    val entries: List<ChangelogEntry> = listOf(
+            |$body
+            |    )
+            |}
+            |""".trimMargin()
+
+        val out = outputDir.get().asFile.resolve("com/example/gemini/data/changelog/GeneratedChangelog.kt")
+        out.parentFile.mkdirs()
+        if (!out.exists() || out.readText() != source) out.writeText(source)
+    }
+}
+
+val generateChangelog = tasks.register<GenerateChangelogTask>("generateChangelog") {
+    versionJson.set(versionFile)
+    repoDir.set(rootProject.layout.projectDirectory)
+    outputDir.set(layout.buildDirectory.dir("generated/changelog/kotlin"))
+}
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin?.addGeneratedSourceDirectory(generateChangelog, GenerateChangelogTask::outputDir)
+    }
+}

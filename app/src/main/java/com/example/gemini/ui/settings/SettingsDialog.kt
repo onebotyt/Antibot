@@ -99,12 +99,18 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     AGENTS("Agents", "Configure active intelligence engine"),
     DIAGNOSTICS("Diagnostics & Performance", "Live network connections, active streams & thread HUD"),
     UTILITIES("Utilities", "Handy device tools"),
+    GITHUB("GitHub", "Sign in with the GitHub CLI, your repositories and git credentials"),
     ADB_CONNECT("ADB Connect", "Connect the terminal's adb to this phone over Wireless debugging"),
     ANDROID_AUTOMATION("Android Automation", "Let AI agents see and control this phone"),
+    X11_DESKTOP("X11 Desktop", "Linux desktop apps with Termux:X11"),
+    CHANGELOG("What's new", "Every AntiBot version and what changed"),
     ABOUT("About & Info", "App version, package details, and bridge export");
 
     /** Where Back goes from this section. */
-    val parent: SettingsSection get() = if (this == ADB_CONNECT || this == ANDROID_AUTOMATION) UTILITIES else MAIN
+    val parent: SettingsSection get() = when (this) {
+        ADB_CONNECT, ANDROID_AUTOMATION, X11_DESKTOP -> UTILITIES
+        else -> MAIN
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -238,6 +244,7 @@ fun SettingsDialog(
     enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
     isApplyingAgents: Boolean = false,
     onApplyAgents: (Set<com.example.gemini.domain.model.AgentKind>) -> Unit = {},
+    onOpenProject: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -560,6 +567,23 @@ fun SettingsDialog(
                         cardBorder = cardBorder,
                         onOpenAdbConnect = { currentSection = SettingsSection.ADB_CONNECT }
                     )
+                    SettingsSection.GITHUB -> GitHubScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder,
+                        onOpenProject = { path ->
+                            onOpenProject?.invoke(path)
+                            onDismiss()
+                        }
+                    )
+                    SettingsSection.X11_DESKTOP -> X11DesktopScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder,
+                        onOpenAdbConnect = { currentSection = SettingsSection.ADB_CONNECT }
+                    )
+                    SettingsSection.CHANGELOG -> ChangelogScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder
+                    )
                     SettingsSection.ABOUT -> AboutSubScreen(
                         cardBg = cardBg,
                         cardBorder = cardBorder
@@ -771,6 +795,13 @@ private fun MainSettingsMenu(
                 badgeStyle = SettingsBadgeStyle.GREY,
                 onClick = { onNavigate(SettingsSection.DIAGNOSTICS) }
             )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Code,
+                title = "GitHub",
+                subtitle = "Sign in, repositories and credentials",
+                onClick = { onNavigate(SettingsSection.GITHUB) }
+            )
         }
 
         // Section 4: Utilities Category (Image 3)
@@ -803,6 +834,13 @@ private fun MainSettingsMenu(
                 badgeText = "v${BuildConfig.VERSION_NAME}",
                 badgeStyle = SettingsBadgeStyle.LAVENDER,
                 onClick = { onNavigate(SettingsSection.ABOUT) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.AutoAwesome,
+                title = "What's new",
+                subtitle = "Release changelog and updates",
+                onClick = { onNavigate(SettingsSection.CHANGELOG) }
             )
         }
     }
@@ -1009,6 +1047,18 @@ private fun UtilitiesSubScreen(
             cardBorder = cardBorder,
             onClick = { onNavigate(SettingsSection.ANDROID_AUTOMATION) }
         )
+        val x11Running by com.example.gemini.data.x11.X11DesktopManager.state.collectAsState()
+        SettingsCategoryCard(
+            icon = Icons.Outlined.DesktopWindows,
+            iconTint = if (x11Running.isRunning) QuotaGreen else Color(0xFF3B82F6),
+            title = "X11 Desktop",
+            subtitle = if (x11Running.isRunning) "Running on display :0 (${x11Running.windowManager})" else "Run graphical Linux tools with Termux:X11",
+            badgeText = if (x11Running.isRunning) "Running" else if (!x11Running.hasTermuxX11App) "Install app" else null,
+            badgeColor = if (x11Running.isRunning) QuotaGreen else Color(0xFFF59E0B),
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            onClick = { onNavigate(SettingsSection.X11_DESKTOP) }
+        )
     }
 }
 
@@ -1203,6 +1253,8 @@ private fun AppearanceSubScreen(
                 }
             }
         }
+
+        ThemeGallery(cardBg = cardBg, themeMode = themeMode, onSetThemeMode = onSetThemeMode)
 
         Spacer(modifier = Modifier.height(6.dp))
 
@@ -2005,7 +2057,7 @@ private fun AppearanceSubScreen(
 // SUB-SCREEN 2: SERVERS & CONNECTIVITY
 // ==========================================
 @Composable
-private fun ServersSubScreen(
+private fun LegacyServersSubScreen(
     currentHubUrl: String,
     currentBridgeUrl: String,
     isServerOnline: Boolean,

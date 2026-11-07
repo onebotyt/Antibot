@@ -171,15 +171,7 @@ class MainActivity : ComponentActivity() {
                         insetsController.isAppearanceLightStatusBars = false
                         insetsController.isAppearanceLightNavigationBars = false
                     } else {
-                        val bgArgb = when (themeMode.uppercase()) {
-                            "LIGHT" -> com.example.gemini.theme.ClaudeCream.toArgb()
-                            "NEON" -> com.example.gemini.theme.NeonCarbonBg.toArgb()
-                            "SAPPHIRE" -> com.example.gemini.theme.SapphireNavyBg.toArgb()
-                            "EMERALD" -> com.example.gemini.theme.EmeraldMatrixBg.toArgb()
-                            "AMETHYST" -> com.example.gemini.theme.AmethystCosmicBg.toArgb()
-                            "OLED" -> com.example.gemini.theme.OledBlackBg.toArgb()
-                            else -> if (useDarkTheme) com.example.gemini.theme.AntiBotSpaceBg.toArgb() else com.example.gemini.theme.AntiBotSpaceBg.toArgb()
-                        }
+                        val bgArgb = com.example.gemini.theme.AppColors.background.toArgb()
                         window.statusBarColor = bgArgb
                         window.navigationBarColor = bgArgb
                         val isLight = themeMode.equals("LIGHT", ignoreCase = true) || (!useDarkTheme && themeMode.equals("SYSTEM", ignoreCase = true))
@@ -203,9 +195,9 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
-            var hasSkippedInstaller by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-
-            val showFullScreenInstaller = !isInstalledState && !hasSkippedInstaller
+            // Remote mode runs everything on the server: nothing to install on the phone
+            val showFullScreenInstaller = !isInstalledState && !hasSkippedInstaller &&
+                !com.example.gemini.data.preferences.AuthPreferences.currentRemoteMode
 
             GeminiTheme(themeMode = themeMode, darkTheme = useDarkTheme) {
                 Surface(
