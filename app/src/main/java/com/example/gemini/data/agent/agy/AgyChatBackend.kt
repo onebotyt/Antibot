@@ -1061,7 +1061,7 @@ class AgyChatBackend(
                                 isPromptInFlight = false
                                 _isStreaming.value = false
                                 trajectoryEngine.cancelRunning()
-                                markLastAssistantMessageDisconnected()
+                                markLastAssistantMessageDisconnected(conversationId)
                             }
                         }
                         break
@@ -1090,7 +1090,7 @@ class AgyChatBackend(
                             isPromptInFlight = false
                             _isStreaming.value = false
                             trajectoryEngine.cancelRunning()
-                            markLastAssistantMessageDisconnected()
+                            markLastAssistantMessageDisconnected(conversationId)
                         }
                     }
                     break
@@ -1099,14 +1099,27 @@ class AgyChatBackend(
         }
     }
 
-    private fun markLastAssistantMessageDisconnected() {
+    private fun markLastAssistantMessageDisconnected(convId: String = "") {
         val list = _messages.value.toMutableList()
         var updated = false
+        val lastUserPrompt = list.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
+        if (lastUserPrompt.isNotBlank() && convId.isNotBlank()) {
+            com.example.gemini.domain.model.OfflineRecoveryManager.recordInterruptedTask(
+                conversationId = convId,
+                prompt = lastUserPrompt,
+                preferredModelId = "MODEL_GEMINI_3_8_FLASH_HIGH",
+                reason = "Internet disconnected"
+            )
+        }
         for (i in list.indices.reversed()) {
             val msg = list[i]
             if (msg.role == MessageRole.ASSISTANT && msg.isStreaming) {
                 val newContent = if (msg.content.isBlank() && msg.toolCalls.isEmpty()) {
-                    "⚠️ Connection to Antigravity daemon was interrupted."
+                    formatStructuredErrorMessage(
+                        title = "Internet Disconnected",
+                        userMessage = "Internet connection stopped working. AntiBot Smart Manager recorded your task. When internet returns, Gemini will automatically resume and work on it.",
+                        shortError = "Offline checkpoint recorded"
+                    )
                 } else {
                     msg.content
                 }
@@ -1645,25 +1658,47 @@ class AgyChatBackend(
                 val initialErr = sendRes.exceptionOrNull()?.message ?: ""
                 val isQuotaExhausted = initialErr.contains("quota", ignoreCase = true) ||
                         initialErr.contains("credit", ignoreCase = true) ||
-                        initialErr.contains("429")
+                        initialErr.contains("limit", ignoreCase = true) ||
+                        initialErr.contains("429") ||
+                        initialErr.contains("resource_exhausted", ignoreCase = true)
 
-                if (sendRes.isFailure && isQuotaExhausted && (modelEnum.contains("claude", ignoreCase = true) || modelEnum.contains("opus", ignoreCase = true))) {
-                    val flashModel = _enabledModels.value.find {
+                val isNetworkIssue = initialErr.contains("connect", ignoreCase = true) ||
+                        initialErr.contains("abort", ignoreCase = true) ||
+                        initialErr.contains("no such host", ignoreCase = true) ||
+                        initialErr.contains("unreachable", ignoreCase = true) ||
+                        initialErr.contains("timeout", ignoreCase = true)
+
+                // 1. Quota / Rate limit defense: If model hit limits, Smart Manager automatically switches model!
+                if (sendRes.isFailure && isQuotaExhausted) {
+                    val fallbackModel = _enabledModels.value.find {
                         it.family == ModelFamily.GEMINI || it.id.contains("flash", ignoreCase = true)
                     }?.id ?: "MODEL_GEMINI_3_8_FLASH_HIGH"
-                    Log.i("ChatViewModel", "Claude quota limit reached. Auto LLM Manager seamlessly falling back to: $flashModel")
+                    Log.i("ChatViewModel", "Model limit reached for $modelEnum. Smart Manager auto-switched to: $fallbackModel")
                     withContext(Dispatchers.Main) {
                         android.widget.Toast.makeText(
                             application,
-                            "Claude quota limit reached. Auto LLM Manager switched to Gemini Flash.",
+                            "Limit reached for $modelEnum. Smart Manager switched to Gemini Flash.",
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     }
                     sendRes = agyHubClient.sendUserPrompt(
                         cascadeId = conv.id,
                         text = userPrompt,
-                        modelEnum = flashModel,
+                        modelEnum = fallbackModel,
                         thinkingBudget = 0,
+                        autoExecutionPolicy = currentAutoExecPolicy,
+                        media = mediaItems,
+                        hubUrl = hubUrl
+                    )
+                } else if (sendRes.isFailure && !isNetworkIssue) {
+                    // 2. Transient error: Smart Manager automatically retries once with the same model!
+                    Log.i("ChatViewModel", "Transient error from $modelEnum: $initialErr. Smart Manager retrying with same model...")
+                    delay(350)
+                    sendRes = agyHubClient.sendUserPrompt(
+                        cascadeId = conv.id,
+                        text = userPrompt,
+                        modelEnum = modelEnum,
+                        thinkingBudget = thinkingBudget,
                         autoExecutionPolicy = currentAutoExecPolicy,
                         media = mediaItems,
                         hubUrl = hubUrl
@@ -1675,16 +1710,31 @@ class AgyChatBackend(
                 } else {
                     val err = sendRes.exceptionOrNull()?.message ?: "Failed to send message"
                     Log.e("ChatViewModel", "sendUserPrompt final error: $err")
+                    val isOffline = isNetworkIssue || err.contains("connect", ignoreCase = true) ||
+                            err.contains("network", ignoreCase = true) || err.contains("abort", ignoreCase = true) ||
+                            err.contains("no such host", ignoreCase = true)
+
+                    if (isOffline) {
+                        com.example.gemini.domain.model.OfflineRecoveryManager.recordInterruptedTask(
+                            conversationId = conv.id,
+                            prompt = userPrompt,
+                            preferredModelId = "MODEL_GEMINI_3_8_FLASH_HIGH",
+                            reason = "Internet disconnected"
+                        )
+                    }
+
                     val formattedErr = formatStructuredErrorMessage(
                         title = when {
+                            isOffline -> "Internet Disconnected"
                             err.contains("auth", ignoreCase = true) -> "Authentication Required"
                             err.contains("quota", ignoreCase = true) || err.contains("credit", ignoreCase = true) || err.contains("429") -> "Quota Limit Exceeded"
                             err.contains("model not found", ignoreCase = true) -> "Model Not Found"
-                            err.contains("connect", ignoreCase = true) || err.contains("network", ignoreCase = true) -> "Server Connection Error"
                             else -> "Message Delivery Error"
                         },
-                        userMessage = err,
-                        shortError = err
+                        userMessage = if (isOffline) {
+                            "Internet connection stopped working. AntiBot Smart Manager recorded your task. When internet returns, Gemini will automatically resume and work on it."
+                        } else err,
+                        shortError = if (isOffline) "Offline (Checkpoint Saved)" else err
                     )
                     withContext(Dispatchers.Main) {
                         _isServerOnline.value = false

@@ -86,6 +86,7 @@ import com.example.gemini.data.daemon.IdeApiClient
 
 enum class SettingsSection(val title: String, val subtitle: String) {
     MAIN("Settings & Preferences", "Configure AntiBot, engines, tools and app"),
+    LLM_MANAGER("Smart LLM Manager", "Task-to-model routing, limit protection & auto-recovery"),
     APPEARANCE("Appearance & Theme", "Theme, dark mode, and chat font scaling"),
     SERVERS("Servers & Connectivity", "Configure AGY Hub and IDE Bridge endpoints"),
     WEBVIEW_EXTENSIONS("Custom AntiBot Plugins", "Install and manage plugins: MCP tools and skills"),
@@ -388,6 +389,13 @@ fun SettingsDialog(
                         onNavigate = { currentSection = it }
                     )
 
+                    SettingsSection.LLM_MANAGER -> LlmManagerSubScreen(
+                        authPrefs = authPrefs,
+                        availableModels = availableModels,
+                        cardBg = cardBg,
+                        cardBorder = cardBorder
+                    )
+
                     SettingsSection.APPEARANCE -> AppearanceSubScreen(
                         themeMode = themeMode,
                         chatFontScale = chatFontScale,
@@ -654,6 +662,15 @@ private fun MainSettingsMenu(
                 badgeText = "${enabledAgents.size} On",
                 badgeStyle = SettingsBadgeStyle.GREEN,
                 onClick = { onNavigate(SettingsSection.AGENTS) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.AutoAwesome,
+                title = "Smart LLM Manager",
+                subtitle = "Task routing, quota defense & offline recovery",
+                badgeText = "Auto Active",
+                badgeStyle = SettingsBadgeStyle.BLUE,
+                onClick = { onNavigate(SettingsSection.LLM_MANAGER) }
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             SettingsGroupItemRow(
@@ -1151,6 +1168,379 @@ private fun SettingsCategoryCard(
 }
 
 // ==========================================
+// SUB-SCREEN: SMART LLM MANAGER
+// ==========================================
+@Composable
+private fun LlmManagerSubScreen(
+    authPrefs: com.example.gemini.data.preferences.AuthPreferences,
+    availableModels: List<com.example.gemini.domain.model.AiModel>,
+    cardBg: Color,
+    cardBorder: BorderStroke
+) {
+    val coroutineScope = rememberCoroutineScope()
+
+    val archModel by authPrefs.llmManagerArchitectureModel.collectAsState(initial = authPrefs.getLlmManagerArchitectureModelSync())
+    val codeModel by authPrefs.llmManagerCodingModel.collectAsState(initial = authPrefs.getLlmManagerCodingModelSync())
+    val fastQaModel by authPrefs.llmManagerFastQaModel.collectAsState(initial = authPrefs.getLlmManagerFastQaModelSync())
+    val shellModel by authPrefs.llmManagerShellModel.collectAsState(initial = authPrefs.getLlmManagerShellModelSync())
+    val fallbackModel by authPrefs.llmManagerFallbackModel.collectAsState(initial = authPrefs.getLlmManagerFallbackModelSync())
+
+    var activeDialogTask by remember { mutableStateOf<String?>(null) } // "ARCH", "CODE", "QA", "SHELL", "FALLBACK"
+
+    fun modelDisplayName(id: String): String {
+        return when {
+            id == "auto" -> "Auto Dynamic"
+            id == "claude" -> "Claude (Sonnet / Opus)"
+            id == "gemini" -> "Gemini 3.8 Flash"
+            id.startsWith("local") -> "Local Qwen 2.5 Coder 0.5B (0 Tokens)"
+            else -> availableModels.find { it.id == id }?.displayName ?: id
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Info banner
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFF3B82F6).copy(alpha = 0.12f),
+            border = BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.35f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.SmartToy,
+                    contentDescription = null,
+                    tint = Color(0xFF3B82F6),
+                    modifier = Modifier.size(24.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Smart LLM Manager",
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "Configures which model executes each task category. Preserves strict quotas on premium models like Claude, and automatically recovers when network interrupts or limits are reached.",
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Task-to-Model Routing",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        // 1. Architecture & Deep Logic
+        LlmTaskCard(
+            title = "Architecture & Deep Logic",
+            subtitle = "System design, security audits & high-level architecture",
+            selectedModelName = modelDisplayName(archModel),
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            accentColor = ClaudeTerracotta,
+            onClick = { activeDialogTask = "ARCH" }
+        )
+
+        // 2. Complex Coding & Debugging
+        LlmTaskCard(
+            title = "Coding & Debugging",
+            subtitle = "Refactoring, stack trace investigation & logic fixing",
+            selectedModelName = modelDisplayName(codeModel),
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            accentColor = Color(0xFF8B5CF6),
+            onClick = { activeDialogTask = "CODE" }
+        )
+
+        // 3. Fast Q&A & General Assistance
+        LlmTaskCard(
+            title = "Fast Q&A & Conversation",
+            subtitle = "General questions, summaries & fast explanations",
+            selectedModelName = modelDisplayName(fastQaModel),
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            accentColor = GeminiBlue,
+            onClick = { activeDialogTask = "QA" }
+        )
+
+        // 4. Shell & Terminal Execution
+        LlmTaskCard(
+            title = "Shell & Terminal Inspection",
+            subtitle = "Bash execution, ports & process checks (0 tokens on device)",
+            selectedModelName = modelDisplayName(shellModel),
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            accentColor = Color(0xFF10B981),
+            onClick = { activeDialogTask = "SHELL" }
+        )
+
+        Text(
+            text = "Rate Limit & Quota Defense",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        // 5. Fallback Model
+        LlmTaskCard(
+            title = "Quota Limit Fallback Model",
+            subtitle = "When a premium model hits a 429 rate limit or quota ceiling, Smart Manager automatically swaps to this model seamlessly",
+            selectedModelName = modelDisplayName(fallbackModel),
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            accentColor = Color(0xFFF59E0B),
+            onClick = { activeDialogTask = "FALLBACK" }
+        )
+
+        Text(
+            text = "Interruption & Resilient Recovery",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = cardBg,
+            border = cardBorder,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981).copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Auto-Record & Resume on Network Loss",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "If internet drops during chat, Smart Manager saves a flight checkpoint and automatically resumes with Gemini when connection returns.",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF3B82F6).copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Model Error Auto-Retry",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "If an LLM returns a transient generation error, Smart Manager retries execution automatically with the same model.",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Model picker dialog
+    if (activeDialogTask != null) {
+        val task = activeDialogTask!!
+        val candidates = remember(availableModels) {
+            val list = mutableListOf<Pair<String, String>>()
+            list.add("gemini" to "Gemini 3.8 Flash (High Speed & Large Context)")
+            list.add("claude" to "Claude 3.7 Sonnet (Deep Reasoning)")
+            list.add("local-qwen-coder-0.5b" to "Local Qwen 2.5 Coder 0.5B (0 Tokens • On-Device)")
+            availableModels.filter { !it.id.startsWith("local-") }.forEach {
+                if (it.id !in list.map { pair -> pair.first }) {
+                    list.add(it.id to it.displayName)
+                }
+            }
+            list
+        }
+
+        AlertDialog(
+            onDismissRequest = { activeDialogTask = null },
+            title = {
+                Text(
+                    text = when (task) {
+                        "ARCH" -> "Select Architecture Model"
+                        "CODE" -> "Select Coding Model"
+                        "QA" -> "Select Fast Q&A Model"
+                        "SHELL" -> "Select Shell Model"
+                        else -> "Select Quota Fallback Model"
+                    },
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    candidates.forEach { (id, name) ->
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    when (task) {
+                                        "ARCH" -> authPrefs.setLlmManagerArchitectureModel(id)
+                                        "CODE" -> authPrefs.setLlmManagerCodingModel(id)
+                                        "QA" -> authPrefs.setLlmManagerFastQaModel(id)
+                                        "SHELL" -> authPrefs.setLlmManagerShellModel(id)
+                                        "FALLBACK" -> authPrefs.setLlmManagerFallbackModel(id)
+                                    }
+                                    activeDialogTask = null
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = name,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { activeDialogTask = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun LlmTaskCard(
+    title: String,
+    subtitle: String,
+    selectedModelName: String,
+    cardBg: Color,
+    cardBorder: BorderStroke,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = cardBg,
+        border = cardBorder,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(accentColor.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = selectedModelName,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+// ==========================================
 // SUB-SCREEN 1: APPEARANCE & THEME
 // ==========================================
 @Composable
@@ -1180,38 +1570,31 @@ private fun AppearanceSubScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Theme Selector Header
+        // Display Mode Header
         Text(
-            text = "Color Theme",
+            text = "Display Mode",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
 
-        // 3 Theme Options Cards
-        val themes = listOf(
-            Triple("SYSTEM", "Auto", Icons.Outlined.BrightnessAuto to Color(0xFF6B7280)),
-            Triple("DARK", "Dark", Icons.Outlined.DarkMode to ClaudeTerracotta),
-            Triple("LIGHT", "Light", Icons.Outlined.LightMode to ClaudeTerracotta),
-            Triple("NEON", "Neon", Icons.Outlined.AutoAwesome to NeonCyan),
-            Triple("SAPPHIRE", "Sapphire", Icons.Outlined.Palette to SapphireBlue),
-            Triple("EMERALD", "Emerald", Icons.Outlined.Terminal to EmeraldGreen),
-            Triple("AMETHYST", "Amethyst", Icons.Outlined.AutoAwesome to AmethystPurple),
-            Triple("OLED", "OLED", Icons.Outlined.DarkMode to OledAccent)
+        // 3 Clean Mode Options Cards: Auto, Dark, Light
+        val themeModes = listOf(
+            Triple("SYSTEM", "Auto (System)", Icons.Outlined.BrightnessAuto to Color(0xFF3B82F6)),
+            Triple("DARK", "Dark Mode", Icons.Outlined.DarkMode to ClaudeTerracotta),
+            Triple("LIGHT", "Light Mode", Icons.Outlined.LightMode to Color(0xFFF59E0B))
         )
 
-        FlowRow(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            themes.forEach { (mode, label, iconAndColor) ->
+            themeModes.forEach { (mode, label, iconAndColor) ->
                 val (icon, accentColor) = iconAndColor
                 val isSelected = themeMode.equals(mode, ignoreCase = true)
                 Surface(
                     modifier = Modifier
-                        .weight(1f, fill = false)
-                        .defaultMinSize(minWidth = 74.dp)
+                        .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { onSetThemeMode(mode) },
                     shape = RoundedCornerShape(12.dp),
@@ -1222,13 +1605,13 @@ private fun AppearanceSubScreen(
                     )
                 ) {
                     Column(
-                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(24.dp)
+                                .size(26.dp)
                                 .clip(CircleShape)
                                 .background(if (isSelected) accentColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface)
                                 .border(1.dp, accentColor, CircleShape),
@@ -1238,13 +1621,13 @@ private fun AppearanceSubScreen(
                                 imageVector = icon,
                                 contentDescription = label,
                                 tint = accentColor,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(5.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = label,
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1

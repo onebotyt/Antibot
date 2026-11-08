@@ -79,6 +79,11 @@ class AuthPreferences(private val context: Context) {
         val HAS_SEEN_TERMINAL_LAUNCHER_ONBOARDING = androidx.datastore.preferences.core.booleanPreferencesKey("has_seen_terminal_launcher_onboarding")
         val TERMINAL_LAUNCHER_STYLE = stringPreferencesKey("terminal_launcher_style") // "ANTITERM" or "TERMUX"
         val IS_TERMINAL_LAUNCHER_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("is_terminal_launcher_enabled")
+        val LLM_MANAGER_ARCHITECTURE_MODEL = stringPreferencesKey("llm_manager_architecture_model")
+        val LLM_MANAGER_CODING_MODEL = stringPreferencesKey("llm_manager_coding_model")
+        val LLM_MANAGER_FAST_QA_MODEL = stringPreferencesKey("llm_manager_fast_qa_model")
+        val LLM_MANAGER_SHELL_MODEL = stringPreferencesKey("llm_manager_shell_model")
+        val LLM_MANAGER_FALLBACK_MODEL = stringPreferencesKey("llm_manager_fallback_model")
 
         const val DEFAULT_BRIDGE_BINARY_PATH = "~/../usr/bin/agy_ide_bridge"
         const val DEFAULT_UBUNTU_BRIDGE_BINARY_PATH = "/antigem/bin/agy_ide_bridge"
@@ -788,6 +793,43 @@ class AuthPreferences(private val context: Context) {
                 prefs[PREFERRED_MODEL_NAME] = displayName
             }
         }
+    }
+
+    val llmManagerArchitectureModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_ARCHITECTURE_MODEL] ?: "claude" }
+    val llmManagerCodingModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_CODING_MODEL] ?: "claude" }
+    val llmManagerFastQaModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_FAST_QA_MODEL] ?: "gemini" }
+    val llmManagerShellModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_SHELL_MODEL] ?: "local-qwen-coder-0.5b" }
+    val llmManagerFallbackModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_FALLBACK_MODEL] ?: "gemini" }
+
+    fun getLlmManagerArchitectureModelSync(): String = syncPrefs.getString("llm_manager_architecture_model", "claude") ?: "claude"
+    fun getLlmManagerCodingModelSync(): String = syncPrefs.getString("llm_manager_coding_model", "claude") ?: "claude"
+    fun getLlmManagerFastQaModelSync(): String = syncPrefs.getString("llm_manager_fast_qa_model", "gemini") ?: "gemini"
+    fun getLlmManagerShellModelSync(): String = syncPrefs.getString("llm_manager_shell_model", "local-qwen-coder-0.5b") ?: "local-qwen-coder-0.5b"
+    fun getLlmManagerFallbackModelSync(): String = syncPrefs.getString("llm_manager_fallback_model", "gemini") ?: "gemini"
+
+    suspend fun setLlmManagerArchitectureModel(modelId: String) {
+        syncPrefs.edit().putString("llm_manager_architecture_model", modelId).apply()
+        context.dataStore.edit { it[LLM_MANAGER_ARCHITECTURE_MODEL] = modelId }
+    }
+
+    suspend fun setLlmManagerCodingModel(modelId: String) {
+        syncPrefs.edit().putString("llm_manager_coding_model", modelId).apply()
+        context.dataStore.edit { it[LLM_MANAGER_CODING_MODEL] = modelId }
+    }
+
+    suspend fun setLlmManagerFastQaModel(modelId: String) {
+        syncPrefs.edit().putString("llm_manager_fast_qa_model", modelId).apply()
+        context.dataStore.edit { it[LLM_MANAGER_FAST_QA_MODEL] = modelId }
+    }
+
+    suspend fun setLlmManagerShellModel(modelId: String) {
+        syncPrefs.edit().putString("llm_manager_shell_model", modelId).apply()
+        context.dataStore.edit { it[LLM_MANAGER_SHELL_MODEL] = modelId }
+    }
+
+    suspend fun setLlmManagerFallbackModel(modelId: String) {
+        syncPrefs.edit().putString("llm_manager_fallback_model", modelId).apply()
+        context.dataStore.edit { it[LLM_MANAGER_FALLBACK_MODEL] = modelId }
     }
 
     suspend fun setCommandAutoExecutionPolicy(policy: String) {

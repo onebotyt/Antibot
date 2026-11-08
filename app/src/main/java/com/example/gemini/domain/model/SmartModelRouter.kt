@@ -13,9 +13,10 @@ enum class RoutingReason(val label: String, val badgeColor: Color) {
     LOCAL_PORT_PROCESS("Port/Process", Color(0xFF10B981)),
     LOCAL_OFFLINE("Offline Fallback", Color(0xFF10B981)),
     FAST_QA("Fast Q&A", GeminiBlue),
+    CODING("Coding", Color(0xFF8B5CF6)),
     DEEP_REASONING("Deep Logic", ClaudeTerracotta),
     CYBER_SECURITY("Security", Color(0xFFEF4444)),
-    QUOTA_FALLBACK("Quota Fallback", Color(0xFFF59E0B)),
+    QUOTA_FALLBACK("Quota Defense", Color(0xFFF59E0B)),
     MANUAL("Manual", Color(0xFF3B82F6))
 }
 
@@ -34,7 +35,8 @@ data class SmartRoutingDecision(
         get() = when {
             targetModelId.startsWith("local-") || targetModelId == "local-model-only" -> "Auto ➔ Qwen"
             targetModelId.contains("claude", ignoreCase = true) -> "Auto ➔ Claude"
-            targetModelId.contains("gemini", ignoreCase = true) -> "Auto ➔ Flash"
+            targetModelId.contains("flash", ignoreCase = true) -> "Auto ➔ Flash"
+            targetModelId.contains("pro", ignoreCase = true) -> "Auto ➔ Gemini Pro"
             else -> "Auto ➔ $modelDisplayName"
         }
 
@@ -43,9 +45,21 @@ data class SmartRoutingDecision(
 }
 
 /**
+ * User-configurable task-to-model preferences configured in Settings -> Smart LLM Manager.
+ */
+data class LlmManagerConfig(
+    val architectureModel: String = "claude",
+    val codingModel: String = "claude",
+    val fastQaModel: String = "gemini",
+    val shellModel: String = "local-qwen-coder-0.5b",
+    val fallbackModel: String = "gemini"
+)
+
+/**
  * AntiBot Smart LLM Manager & Model Router.
- * Automatically dispatches queries across Local Qwen, Fast Cloud (Flash), and Deep Reasoning (Claude)
- * based on prompt heuristics, local filesystem/terminal intent, connectivity, and quota availability.
+ * Automatically dispatches queries across any configured cloud models (Claude, Gemini, GPT-OSS)
+ * and Local Qwen based on prompt heuristics, user task mappings, rate limit protection,
+ * and offline status.
  */
 object SmartModelRouter {
     const val AUTO_MODEL_ID = "auto"
@@ -59,6 +73,46 @@ object SmartModelRouter {
     }
 
     /**
+     * Resolves candidate model matching an ID, keyword or family and checks whether its quota is valid.
+     */
+    fun resolveCandidateModel(
+        pattern: String,
+        availableModels: List<AiModel>,
+        quotas: List<ModelQuota>
+    ): AiModel? {
+        if (pattern.isBlank()) return null
+        val lower = pattern.lowercase()
+
+        // 1. Exact ID match
+        var match = availableModels.find { it.id.equals(pattern, ignoreCase = true) }
+        // 2. Keyword/ID substring match
+        if (match == null) {
+            match = when (lower) {
+                "claude" -> availableModels.find { it.family == ModelFamily.CLAUDE }
+                    ?: availableModels.find { it.id.contains("claude", ignoreCase = true) }
+                "gemini", "gemini-flash", "flash" -> availableModels.find {
+                    it.id.contains("flash", ignoreCase = true) || it.displayName.contains("flash", ignoreCase = true)
+                } ?: availableModels.find { it.family == ModelFamily.GEMINI }
+                "gemini-pro", "pro" -> availableModels.find {
+                    it.id.contains("pro", ignoreCase = true) || it.displayName.contains("pro", ignoreCase = true)
+                }
+                else -> availableModels.find {
+                    it.id.contains(pattern, ignoreCase = true) || it.displayName.contains(pattern, ignoreCase = true)
+                }
+            }
+        }
+
+        if (match == null) return null
+
+        // Check quota availability
+        val quota = quotas.find { it.modelId == match?.id }
+        if (quota != null && quota.percentage <= 0) {
+            return null // Quota exhausted
+        }
+        return match
+    }
+
+    /**
      * Resolves the optimal model and backend for a given user prompt.
      */
     fun route(
@@ -67,7 +121,8 @@ object SmartModelRouter {
         isOnline: Boolean = true,
         availableModels: List<AiModel> = emptyList(),
         quotas: List<ModelQuota> = emptyList(),
-        currentSelectedModelId: String = AUTO_MODEL_ID
+        currentSelectedModelId: String = AUTO_MODEL_ID,
+        config: LlmManagerConfig = LlmManagerConfig()
     ): SmartRoutingDecision {
         // 1. If user manually locked onto a specific model, honor it
         if (!isAuto(currentSelectedModelId)) {
@@ -129,34 +184,42 @@ object SmartModelRouter {
                 cleanPrompt.contains("preview website")
 
         if (isTerminalCommand || isPortOrProcess || isWorkspaceInspection) {
-            val reason = when {
-                isPortOrProcess -> RoutingReason.LOCAL_PORT_PROCESS
-                isWorkspaceInspection -> RoutingReason.LOCAL_WORKSPACE
-                else -> RoutingReason.LOCAL_SHELL
+            val isLocalShell = config.shellModel.startsWith("local", ignoreCase = true)
+            if (isLocalShell) {
+                val reason = when {
+                    isPortOrProcess -> RoutingReason.LOCAL_PORT_PROCESS
+                    isWorkspaceInspection -> RoutingReason.LOCAL_WORKSPACE
+                    else -> RoutingReason.LOCAL_SHELL
+                }
+                return SmartRoutingDecision(
+                    targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
+                    targetAgent = AgentKind.LOCAL,
+                    modelDisplayName = "Qwen 2.5 Coder 0.5B",
+                    reason = reason,
+                    explanation = "Executed locally on device (0 tokens, instant bash/port execution)",
+                    badgeColor = Color(0xFF10B981)
+                )
+            } else {
+                val shellCloudModel = resolveCandidateModel(config.shellModel, availableModels, quotas)
+                if (shellCloudModel != null) {
+                    return SmartRoutingDecision(
+                        targetModelId = shellCloudModel.id,
+                        targetAgent = AgentKind.AGY,
+                        modelDisplayName = shellCloudModel.displayName,
+                        reason = RoutingReason.LOCAL_SHELL,
+                        explanation = "Executed via configured shell model: ${shellCloudModel.displayName}",
+                        badgeColor = Color(0xFF3B82F6)
+                    )
+                }
             }
-            return SmartRoutingDecision(
-                targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
-                targetAgent = AgentKind.LOCAL,
-                modelDisplayName = "Qwen 2.5 Coder 0.5B",
-                reason = reason,
-                explanation = "Executed locally on device (0 tokens, instant bash/port execution)",
-                badgeColor = Color(0xFF10B981)
-            )
         }
 
-        // 4. Cloud Models lookup & quota verification
-        val claudeModel = availableModels.find { it.family == ModelFamily.CLAUDE }
-            ?: availableModels.find { it.id.contains("claude", ignoreCase = true) }
-        val claudeQuota = quotas.find { it.modelId == claudeModel?.id }
-        val isClaudeAvailable = claudeModel != null && (claudeQuota == null || claudeQuota.percentage > 0)
+        // Resolving fallback model for quota protection
+        val fallbackModel = resolveCandidateModel(config.fallbackModel, availableModels, quotas)
+            ?: resolveCandidateModel("flash", availableModels, quotas)
+            ?: resolveCandidateModel("gemini", availableModels, quotas)
 
-        val flashModel = availableModels.find {
-            it.id.contains("flash", ignoreCase = true) || it.displayName.contains("flash", ignoreCase = true)
-        } ?: availableModels.find { it.family == ModelFamily.GEMINI }
-        val flashQuota = quotas.find { it.modelId == flashModel?.id }
-        val isFlashAvailable = flashModel != null && (flashQuota == null || flashQuota.percentage > 0)
-
-        // 5. Deep Reasoning / Architecture / Complex Debugging / Security Auditing
+        // 4. Security Auditing & Deep Architecture Logic
         val isSecurityAudit = cleanPrompt.contains("security audit") ||
                 cleanPrompt.contains("owasp") ||
                 cleanPrompt.contains("vulnerability") ||
@@ -167,77 +230,100 @@ object SmartModelRouter {
                 cleanPrompt.contains("csrf") ||
                 cleanPrompt.contains("hardening")
 
-        val isDeepReasoning = isSecurityAudit ||
+        val isArchitectureOrDeep = isSecurityAudit ||
                 cleanPrompt.contains("architecture") ||
                 cleanPrompt.contains("architect") ||
                 cleanPrompt.contains("design pattern") ||
-                cleanPrompt.contains("refactor") ||
                 cleanPrompt.contains("system design") ||
                 cleanPrompt.contains("plan") ||
-                cleanPrompt.contains("step by step") ||
+                cleanPrompt.contains("step by step")
+
+        if (isArchitectureOrDeep) {
+            val archCandidate = resolveCandidateModel(config.architectureModel, availableModels, quotas)
+            if (archCandidate != null) {
+                return SmartRoutingDecision(
+                    targetModelId = archCandidate.id,
+                    targetAgent = AgentKind.AGY,
+                    modelDisplayName = archCandidate.displayName,
+                    reason = if (isSecurityAudit) RoutingReason.CYBER_SECURITY else RoutingReason.DEEP_REASONING,
+                    explanation = if (isSecurityAudit) "Security Audit · ${archCandidate.displayName}" else "Architectural & Deep Logic · ${archCandidate.displayName}",
+                    badgeColor = if (isSecurityAudit) Color(0xFFEF4444) else ClaudeTerracotta
+                )
+            } else if (fallbackModel != null) {
+                return SmartRoutingDecision(
+                    targetModelId = fallbackModel.id,
+                    targetAgent = AgentKind.AGY,
+                    modelDisplayName = fallbackModel.displayName,
+                    reason = RoutingReason.QUOTA_FALLBACK,
+                    explanation = "Primary architecture model quota exhausted · Auto-switched to ${fallbackModel.displayName}",
+                    badgeColor = Color(0xFFF59E0B)
+                )
+            }
+        }
+
+        // 5. Complex Coding, Refactoring, Stacktrace & Debugging
+        val isCoding = cleanPrompt.contains("refactor") ||
                 cleanPrompt.contains("traceback") ||
                 cleanPrompt.contains("stack trace") ||
                 cleanPrompt.contains("nullpointerexception") ||
                 cleanPrompt.contains("deadlock") ||
                 cleanPrompt.contains("memory leak") ||
-                cleanPrompt.length > 700 ||
-                prompt.count { it == '\n' } > 15
+                cleanPrompt.contains("compile error") ||
+                cleanPrompt.contains("syntax error") ||
+                cleanPrompt.contains("function") ||
+                cleanPrompt.contains("class") ||
+                cleanPrompt.length > 600 ||
+                prompt.count { it == '\n' } > 12
 
-        if (isDeepReasoning) {
-            if (isClaudeAvailable && claudeModel != null) {
+        if (isCoding) {
+            val codeCandidate = resolveCandidateModel(config.codingModel, availableModels, quotas)
+            if (codeCandidate != null) {
                 return SmartRoutingDecision(
-                    targetModelId = claudeModel.id,
+                    targetModelId = codeCandidate.id,
                     targetAgent = AgentKind.AGY,
-                    modelDisplayName = claudeModel.displayName,
-                    reason = if (isSecurityAudit) RoutingReason.CYBER_SECURITY else RoutingReason.DEEP_REASONING,
-                    explanation = if (isSecurityAudit) "Security & Vulnerability Audit · Claude" else "Deep Architectural & Coding Logic · Claude Thinking",
-                    badgeColor = if (isSecurityAudit) Color(0xFFEF4444) else ClaudeTerracotta
+                    modelDisplayName = codeCandidate.displayName,
+                    reason = RoutingReason.CODING,
+                    explanation = "Coding & Debugging · ${codeCandidate.displayName}",
+                    badgeColor = Color(0xFF8B5CF6)
                 )
-            } else if (isFlashAvailable && flashModel != null) {
-                // Seamless fallback to Gemini Flash if Claude quota is exhausted
+            } else if (fallbackModel != null) {
                 return SmartRoutingDecision(
-                    targetModelId = flashModel.id,
+                    targetModelId = fallbackModel.id,
                     targetAgent = AgentKind.AGY,
-                    modelDisplayName = flashModel.displayName,
+                    modelDisplayName = fallbackModel.displayName,
                     reason = RoutingReason.QUOTA_FALLBACK,
-                    explanation = "Claude quota exhausted · Auto-routed to ${flashModel.displayName}",
+                    explanation = "Coding model limit reached · Auto-switched to ${fallbackModel.displayName}",
                     badgeColor = Color(0xFFF59E0B)
-                )
-            } else {
-                // Fallback to local Qwen
-                return SmartRoutingDecision(
-                    targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
-                    targetAgent = AgentKind.LOCAL,
-                    modelDisplayName = "Qwen 2.5 Coder 0.5B",
-                    reason = RoutingReason.QUOTA_FALLBACK,
-                    explanation = "Cloud quotas exhausted · Auto-fallback to Local Qwen",
-                    badgeColor = Color(0xFF10B981)
                 )
             }
         }
 
-        // 6. Fast Q&A & General Inquiries -> Route to Gemini Flash
-        if (isFlashAvailable && flashModel != null) {
+        // 6. Fast Q&A & General Inquiries
+        val fastQaCandidate = resolveCandidateModel(config.fastQaModel, availableModels, quotas)
+        if (fastQaCandidate != null) {
             return SmartRoutingDecision(
-                targetModelId = flashModel.id,
+                targetModelId = fastQaCandidate.id,
                 targetAgent = AgentKind.AGY,
-                modelDisplayName = flashModel.displayName,
+                modelDisplayName = fastQaCandidate.displayName,
                 reason = RoutingReason.FAST_QA,
-                explanation = "Fast Q&A & General Assistance · ${flashModel.displayName}",
+                explanation = "Fast Q&A · ${fastQaCandidate.displayName}",
                 badgeColor = GeminiBlue
-            )
-        } else if (isClaudeAvailable && claudeModel != null) {
-            return SmartRoutingDecision(
-                targetModelId = claudeModel.id,
-                targetAgent = AgentKind.AGY,
-                modelDisplayName = claudeModel.displayName,
-                reason = RoutingReason.DEEP_REASONING,
-                explanation = "Routed to available ${claudeModel.displayName}",
-                badgeColor = ClaudeTerracotta
             )
         }
 
-        // 7. Ultimate fallback: Local Qwen 2.5 Coder
+        // 7. General Cloud Fallback
+        if (fallbackModel != null) {
+            return SmartRoutingDecision(
+                targetModelId = fallbackModel.id,
+                targetAgent = AgentKind.AGY,
+                modelDisplayName = fallbackModel.displayName,
+                reason = RoutingReason.QUOTA_FALLBACK,
+                explanation = "Routed to fallback: ${fallbackModel.displayName}",
+                badgeColor = Color(0xFFF59E0B)
+            )
+        }
+
+        // 8. Ultimate on-device fallback
         return SmartRoutingDecision(
             targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
             targetAgent = AgentKind.LOCAL,

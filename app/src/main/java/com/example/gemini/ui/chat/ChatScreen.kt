@@ -92,7 +92,6 @@ import com.example.gemini.ui.settings.LocalToolsInstallDialog
 import com.example.gemini.data.local.LocalEnvironmentManager
 import com.example.gemini.ui.drawer.ChatHistoryDrawer
 import com.example.gemini.ui.models.ModelSelectorBottomSheet
-import com.example.gemini.ui.models.ThinkingSelectorBottomSheet
 import com.example.gemini.ui.settings.SettingsDialog
 import com.example.gemini.ui.components.MarkdownBlock
 import com.example.gemini.ui.components.MarkdownBlockView
@@ -260,7 +259,6 @@ fun ChatScreen(
     }
 
     var showModelSelector by remember { mutableStateOf(false) }
-    var showThinkingSelector by remember { mutableStateOf(false) }
     var showTerminalInspector by remember { mutableStateOf(false) }
     var showLocalTerminalDialog by rememberSaveable { mutableStateOf(false) }
     var showLocalToolsInstallDialog by remember { mutableStateOf(false) }
@@ -402,7 +400,6 @@ fun ChatScreen(
     }
     val inputText = textFieldValue.text
     var pendingMessageAction by remember { mutableStateOf<PendingMessageAction?>(null) }
-    val thinkingPref by viewModel.thinkingPreference.collectAsState()
     val terminatedToolDialogState by viewModel.terminatedToolDialog.collectAsState()
     val isOAuthServerListening by viewModel.isOAuthServerListening.collectAsState()
     val isOAuthServerLoading by viewModel.isOAuthServerLoading.collectAsState()
@@ -1917,7 +1914,6 @@ fun ChatScreen(
                     offlineMessage = "Server is offline. Start the server to send messages.",
                     selectedModel = currentModel,
                     quota = currentQuota,
-                    thinkingPreference = thinkingPref,
                     textFieldValue = textFieldValue,
                     onTextFieldValueChange = {
                         textFieldValue = it
@@ -1930,11 +1926,6 @@ fun ChatScreen(
                         focusManager.clearFocus(force = true)
                         keyboardController?.hide()
                         showModelSelector = true
-                    },
-                    onOpenThinkingSelector = {
-                        focusManager.clearFocus(force = true)
-                        keyboardController?.hide()
-                        showThinkingSelector = true
                     },
                     isStreaming = isActivelyRunning,
                     isBackgroundActive = isBackgroundActive,
@@ -2003,15 +1994,6 @@ fun ChatScreen(
             onRefresh = { viewModel.refreshQuotas(force = true, showToastFeedback = true) },
             onSelectModel = { modelId -> viewModel.selectModel(modelId) },
             onDismiss = { showModelSelector = false }
-        )
-    }
-
-    // Thinking Selector Bottom Sheet
-    if (showThinkingSelector) {
-        ThinkingSelectorBottomSheet(
-            currentPreference = thinkingPref,
-            onPreferenceSelected = { pref -> viewModel.setThinkingPreference(pref) },
-            onDismiss = { showThinkingSelector = false }
         )
     }
 

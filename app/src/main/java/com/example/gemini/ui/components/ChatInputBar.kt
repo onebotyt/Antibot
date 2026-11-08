@@ -156,11 +156,9 @@ fun LiveAudioWaveform(
 fun ChatInputBar(
     selectedModel: AiModel,
     quota: ModelQuota?,
-    thinkingPreference: ThinkingPreference,
     textFieldValue: TextFieldValue,
     onTextFieldValueChange: (TextFieldValue) -> Unit,
     onOpenModelSelector: () -> Unit,
-    onOpenThinkingSelector: () -> Unit,
     isStreaming: Boolean,
     isBackgroundActive: Boolean = false,
     onSendMessage: (String) -> Unit,
@@ -1302,61 +1300,14 @@ fun ChatInputBar(
                                     )
                                 }
                             }
-
-                            Spacer(modifier = Modifier.width(4.dp))
-
-                            // Sliders / Tune Button: 🎛️
-                            Surface(
-                                onClick = onOpenThinkingSelector,
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.background,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Tune,
-                                        contentDescription = "Tune & Thinking Settings",
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                            }
                         }
 
                         Spacer(modifier = Modifier.weight(1f))
 
-                        // Right Group: [Dictation] [Send / Stop / Mic]
+                        // Right Group: [Send / Stop / Mic]
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Dedicated Speech-to-Text Live Dictation Button (AGY Hub)
-                            if (!isStreaming && !isRecordingAudio) {
-                                Surface(
-                                    onClick = {
-                                        if (isLiveDictating) stopLiveDictation()
-                                        else startLiveDictation()
-                                    },
-                                    shape = CircleShape,
-                                    color = if (isLiveDictating) GeminiBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isLiveDictating) GeminiBlue.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                    ),
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.GraphicEq,
-                                            contentDescription = if (isLiveDictating) "Stop Dictation" else "Live Dictation",
-                                            tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-
                         // Send / Stop / Mic Button
                         if (isStreaming && !canSend) {
                             Surface(
@@ -1406,27 +1357,28 @@ fun ChatInputBar(
                                 }
                             }
                         } else {
-                            // Claude-style Microphone Voice Recorder Button
-                            val voiceBgColor = MaterialTheme.colorScheme.onSurface
-                            val voiceIconColor = MaterialTheme.colorScheme.background
+                            // Single Voice Input / Dictation Button
+                            val isListening = isLiveDictating || isRecordingAudio
+                            val voiceBgColor = if (isListening) GeminiBlue.copy(alpha = 0.2f) else MaterialTheme.colorScheme.onSurface
+                            val voiceIconColor = if (isListening) GeminiBlue else MaterialTheme.colorScheme.background
 
                             Surface(
                                 onClick = {
-                                    if (voiceNotesAsText) {
-                                        startAutoTranscribe()
+                                    if (isLiveDictating) {
+                                        stopLiveDictation()
                                     } else {
-                                        recordMode = AudioRecordMode.VOICE_NOTE
-                                        triggerMicClick()
+                                        startLiveDictation()
                                     }
                                 },
                                 shape = CircleShape,
                                 color = voiceBgColor,
+                                border = if (isListening) BorderStroke(1.5.dp, GeminiBlue) else null,
                                 modifier = Modifier.size(34.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Rounded.Mic,
-                                        contentDescription = if (voiceNotesAsText) "Record and transcribe" else "Record voice note",
+                                        imageVector = if (isListening) Icons.Default.Stop else Icons.Rounded.Mic,
+                                        contentDescription = if (isListening) "Stop Listening" else "Voice Input",
                                         tint = voiceIconColor,
                                         modifier = Modifier.size(19.dp)
                                     )

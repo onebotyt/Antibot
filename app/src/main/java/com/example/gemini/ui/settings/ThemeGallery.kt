@@ -29,8 +29,9 @@ import com.example.gemini.theme.BuiltInThemes
 import com.example.gemini.theme.ThemeManager
 
 /**
- * Settings → Appearance: pick the light theme and the dark theme from previews of every built-in and custom theme.
- * Light / Dark / Auto (the mode cards above) decides which of the two shows.
+ * Settings → Appearance: Unified theme gallery.
+ * Pick a theme from previews of every built-in and custom theme.
+ * Each theme supports both Auto, Dark, and Light modes.
  */
 @Composable
 fun ThemeGallery(cardBg: Color, themeMode: String, onSetThemeMode: (String) -> Unit) {
@@ -41,19 +42,16 @@ fun ThemeGallery(cardBg: Color, themeMode: String, onSetThemeMode: (String) -> U
     var toDelete by remember { mutableStateOf<AppTheme?>(null) }
 
     fun pick(t: AppTheme) {
-        // a fixed mode switches to the picked theme's side so it shows at once; Auto keeps following the system
         ThemeManager.select(t, switchMode = false)
-        val wantMode = if (t.dark) "DARK" else "LIGHT"
-        if (themeMode != "SYSTEM" && themeMode != wantMode) onSetThemeMode(wantMode)
     }
 
+    val activeSelectedId = if (ThemeManager.isDark) darkId else lightId
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        GalleryHeader("Light theme", "Used in Light mode, and by Auto when the system is light.")
-        ThemeGrid(all.filter { !it.dark }, lightId, cardBg, ::pick) { toDelete = it }
-        GalleryHeader("Dark theme", "Used in Dark mode, and by Auto when the system is dark.")
-        ThemeGrid(all.filter { it.dark }, darkId, cardBg, ::pick) { toDelete = it }
+        GalleryHeader("Theme Gallery", "Select a design. Each theme provides comprehensive Dark & Light support.")
+        ThemeGrid(all, activeSelectedId, cardBg, ::pick) { toDelete = it }
         Text(
-            "Make your own: add the Theme preset in MCP Servers (or Claude Code → MCP) and ask any chat, e.g. " +
+            "Make your own: add the Theme preset in MCP Servers and ask any chat, e.g. " +
                 "“create a neon cyberpunk dark theme and apply it”. Jarvis can switch themes by voice too.",
             fontSize = 11.5.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
@@ -108,74 +106,100 @@ internal fun ThemeCard(t: AppTheme, selected: Boolean, cardBg: Color, modifier: 
             .background(cardBg)
             .border(if (selected) 2.dp else 1.dp, if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
             .clickable { onClick() }
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(Modifier.fillMaxWidth().height(84.dp).background(col("background")).padding(8.dp)) {
-            // a card with two text lines and a button
-            Column(
-                Modifier.fillMaxWidth(0.72f).clip(RoundedCornerShape(8.dp)).background(col("card", col("surface"))).padding(7.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(Modifier.fillMaxWidth(0.8f).height(5.dp).clip(RoundedCornerShape(50)).background(col("on_background")))
-                Box(Modifier.fillMaxWidth(0.55f).height(4.dp).clip(RoundedCornerShape(50)).background(col("text_secondary", col("on_surface_variant"))))
-                Box(Modifier.width(30.dp).height(10.dp).clip(RoundedCornerShape(50)).background(col("primary")))
-            }
-            // your message bubble
-            Box(
-                Modifier.align(Alignment.TopEnd).width(34.dp).height(14.dp)
-                    .clip(RoundedCornerShape(7.dp)).background(col("user_bubble", col("surface_variant")))
-            )
-            // a code strip and the status colors
-            Row(Modifier.align(Alignment.BottomStart), verticalAlignment = Alignment.CenterVertically) {
+        // Preview box
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(84.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(col("background"))
+                .padding(8.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // simulated assistant bubble
                 Row(
-                    Modifier.clip(RoundedCornerShape(4.dp)).background(col("code_bg")).padding(horizontal = 4.dp, vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    Modifier
+                        .fillMaxWidth(0.85f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(col("card"))
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("syntax_keyword", "syntax_string", "syntax_function").forEach { k ->
-                        Box(Modifier.width(9.dp).height(3.dp).clip(RoundedCornerShape(50)).background(col(k)))
+                    Box(Modifier.size(5.dp).clip(CircleShape).background(col("primary")))
+                    Box(Modifier.height(4.dp).weight(1f).clip(RoundedCornerShape(2.dp)).background(col("on_surface").copy(alpha = 0.5f)))
+                }
+                // simulated user bubble
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(col("user_bubble"))
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Box(Modifier.height(4.dp).fillMaxWidth(0.7f).clip(RoundedCornerShape(2.dp)).background(col("on_surface").copy(alpha = 0.7f)))
                     }
                 }
-                Spacer(Modifier.width(6.dp))
-                listOf("success", "warning", "danger", "info").forEach { k ->
-                    Box(Modifier.padding(end = 3.dp).size(7.dp).clip(CircleShape).background(col(k)))
+            }
+            // miniature badge dots
+            Row(
+                Modifier.align(Alignment.BottomStart),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                listOf("syntax_keyword", "syntax_string", "syntax_number", "secondary").forEach { key ->
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(col(key)))
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(t.name, fontSize = 12.5.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface)
-                if (!t.builtIn) Text("Custom", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
-                BuiltInThemes.recommendedRank(t)?.let { rank -> RecommendedBadge(rank) }
-            }
-            if (onDelete != null) {
-                Icon(Icons.Outlined.Delete, "Delete", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                    modifier = Modifier.size(18.dp).clip(CircleShape).clickable { onDelete() })
-                Spacer(Modifier.width(4.dp))
-            }
-            if (selected) Icon(Icons.Filled.CheckCircle, "In use", tint = accent, modifier = Modifier.size(18.dp))
-        }
-    }
-}
 
-/** Marks the top built-in themes of a side: the default (rank 0) as a solid pill, the next recommended ones as a soft one. */
-@Composable
-private fun RecommendedBadge(rank: Int) {
-    val accent = MaterialTheme.colorScheme.primary
-    val isDefault = rank == 0
-    val fg = if (isDefault) MaterialTheme.colorScheme.onPrimary else accent
-    Row(
-        Modifier
-            .padding(top = 3.dp)
-            .clip(RoundedCornerShape(50))
-            .background(if (isDefault) accent else accent.copy(alpha = 0.14f))
-            .padding(horizontal = 6.dp, vertical = 1.5.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(Icons.Filled.Star, null, tint = fg, modifier = Modifier.size(10.dp))
-        Spacer(Modifier.width(3.dp))
-        Text(
-            if (isDefault) "Default · Top pick" else "Recommended",
-            fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis
-        )
+        // Title row with select indicator
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    t.name,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    if (t.builtIn) "Built-in" else "Custom",
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+            if (selected) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = accent,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else if (onDelete != null) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .clickable { onDelete() }
+                )
+            }
+        }
     }
 }

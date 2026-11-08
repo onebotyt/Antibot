@@ -1,15 +1,14 @@
 {
-  "version_code": 166,
-  "version_name": "1.0.46",
+  "version_code": 167,
+  "version_name": "1.0.47",
   "min_supported_version_code": 1,
   "changelog": [
-    "Cybernetic & Obsidian Armor Themes: Rebuilt design system around AntiBot signature obsidian armor, electric cyan visor, and neon accents with 6 unique themes",
-    "Single-Card Floating UX: Streamlined input container unifying multiline text, attachments preview, queued messages, and quick actions",
-    "Remote Server Mode & SSH Tunneling: Connect to remote host over SSH or direct TCP with auto-reconnecting port forwarding and profile switching",
-    "Termux:X11 Desktop Manager: Run Linux graphical apps, window managers, and desktops with one tap directly inside AntiBot",
-    "GitHub CLI & Git Workspace: Sign in via gh CLI, clone, manage repositories, and inspect remotes",
-    "APK Size Reduction: Streamlined from 44MB to ~13.4MB using XZ compression, arm64 ABI filter, and optimized release shrinking",
-    "In-App Changelog & Dynamic IDE: Live 'What\\'s new' changelog screen and theme-matched code editor"
+    "Consolidated Model Tiers: Grouped Gemini Flash High/Medium/Low into a single clean card with interactive mode selector chips and Active status indicator.",
+    "Smart LLM Manager: Full task-to-model routing for Architecture, Coding, Fast Q&A, and Shell tasks, with automatic Claude quota defense.",
+    "Network Interruption Recovery & Auto-Retry: Offline task recorder automatically captures pending turns when internet drops and resumes with Gemini on reconnection.",
+    "Account Profile Sign-In Card: Clean Sign In prompt in drawer when not authenticated, eliminating fallback user profiles.",
+    "Unified Theme Gallery: Streamlined appearance settings with 3 clean display modes (Auto, Dark, Light) and unified multi-mode themes.",
+    "Optimized Voice & Dictation: Single dynamic microphone button for live speech-to-text with active listening state indicator."
   ],
   "is_critical": false
 }

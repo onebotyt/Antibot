@@ -276,13 +276,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getDynamicRoutingDecision(draftText: String): com.example.gemini.domain.model.SmartRoutingDecision {
+        val config = com.example.gemini.domain.model.LlmManagerConfig(
+            architectureModel = authPrefs.getLlmManagerArchitectureModelSync(),
+            codingModel = authPrefs.getLlmManagerCodingModelSync(),
+            fastQaModel = authPrefs.getLlmManagerFastQaModelSync(),
+            shellModel = authPrefs.getLlmManagerShellModelSync(),
+            fallbackModel = authPrefs.getLlmManagerFallbackModelSync()
+        )
         return com.example.gemini.domain.model.SmartModelRouter.route(
             prompt = draftText,
             hasAttachments = store.attachments.value.isNotEmpty(),
             isOnline = isNetworkConnected() && agyBackend.systemConnectionState.value.canSend,
             availableModels = enabledModels.value,
             quotas = quotas.value,
-            currentSelectedModelId = if (_isAutoRouting.value) com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID else selectedModelId.value
+            currentSelectedModelId = if (_isAutoRouting.value) com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID else selectedModelId.value,
+            config = config
         )
     }
 
@@ -953,6 +961,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             _isNetworkConnectedState.value = true
+            checkAndResumeInterruptedTask()
         }
         override fun onLost(network: Network) {
             _isNetworkConnectedState.value = isNetworkConnected()
@@ -961,6 +970,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                 networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
             _isNetworkConnectedState.value = hasInternet
+            if (hasInternet) {
+                checkAndResumeInterruptedTask()
+            }
+        }
+    }
+
+    private fun checkAndResumeInterruptedTask() {
+        val pending = com.example.gemini.domain.model.OfflineRecoveryManager.popPendingTask() ?: return
+        viewModelScope.launch(Dispatchers.Main) {
+            android.widget.Toast.makeText(
+                getApplication(),
+                "Internet restored! Smart Manager resuming task with Gemini...",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            val conv = _conversations.value.find { it.id == pending.conversationId }
+            if (conv != null) {
+                selectConversation(conv.id)
+            }
+            agyBackend.selectModel(pending.preferredModelId)
+            sendMessage(pending.prompt)
         }
     }
 

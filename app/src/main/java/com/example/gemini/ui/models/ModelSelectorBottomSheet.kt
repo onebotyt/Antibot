@@ -31,14 +31,23 @@ import com.example.gemini.domain.model.SmartModelRouter
 import com.example.gemini.theme.*
 import kotlinx.coroutines.launch
 
-data class CompactModelItem(
-    val id: String,
-    val title: String,
-    val badge: String,
-    val badgeColor: Color,
-    val subtitle: String,
-    val isLocal: Boolean = false
-)
+sealed interface ModelItemEntry {
+    data class Single(
+        val id: String,
+        val title: String,
+        val badge: String,
+        val badgeColor: Color,
+        val isLocal: Boolean = false,
+        val isAuto: Boolean = false
+    ) : ModelItemEntry
+
+    data class TierGroup(
+        val baseName: String,
+        val badge: String,
+        val badgeColor: Color,
+        val tiers: List<AiModel>
+    ) : ModelItemEntry
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,52 +68,72 @@ fun ModelSelectorBottomSheet(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Build the clean unified list of models: Auto at top, followed by Local Qwen, followed directly by all real Cloud models
-    val allModelItems = remember(availableModels) {
-        val list = mutableListOf<CompactModelItem>()
+    // Build the clean unified list of models: Auto at top, followed by Local Qwen,
+    // followed by consolidated Cloud models (Gemini Flash as 1 card with High/Med/Low mode options)
+    val modelEntries = remember(availableModels) {
+        val list = mutableListOf<ModelItemEntry>()
 
         // 1. Smart LLM Manager (Auto Dynamic Routing)
         list.add(
-            CompactModelItem(
+            ModelItemEntry.Single(
                 id = SmartModelRouter.AUTO_MODEL_ID,
                 title = "Auto (Smart LLM Manager)",
                 badge = "Smart Auto",
                 badgeColor = Color(0xFF3B82F6),
-                subtitle = "Dynamic routing · Qwen for shell/offline, Flash for Q&A, Claude for complex logic",
-                isLocal = false
+                isAuto = true
             )
         )
 
         // 2. Single unified on-device model: Qwen 2.5 Coder 0.5B
         list.add(
-            CompactModelItem(
+            ModelItemEntry.Single(
                 id = "local-qwen-coder-0.5b",
                 title = "Qwen 2.5 Coder 0.5B",
                 badge = "Local",
                 badgeColor = Color(0xFF10B981),
-                subtitle = "On-device code engine · Fullstack, UI/UX, APIs & security (0 tokens)",
                 isLocal = true
             )
         )
 
-        // 3. All real Cloud models fetched from Antigravity server
+        // 3. Cloud models grouped by baseName to consolidate High/Medium/Low into 1 card
         val cloudModels = availableModels.filter { !LocalCodingDomain.isLocalModel(it.id) && !SmartModelRouter.isAuto(it.id) }
-        cloudModels.forEach { model ->
-            val badgeColor = when (model.family) {
+        val grouped = cloudModels.groupBy { it.baseName }
+
+        grouped.forEach { (baseName, models) ->
+            val badgeColor = when (models.first().family) {
                 ModelFamily.CLAUDE -> ClaudeTerracotta
                 ModelFamily.GEMINI -> GeminiBlue
                 else -> Color(0xFF8B5CF6)
             }
-            list.add(
-                CompactModelItem(
-                    id = model.id,
-                    title = model.displayName,
-                    badge = "Cloud",
-                    badgeColor = badgeColor,
-                    subtitle = model.description.ifBlank { "Antigravity Cloud Model · Advanced Reasoning" },
-                    isLocal = false
+
+            if (models.size > 1 && models.any { it.tier != null }) {
+                list.add(
+                    ModelItemEntry.TierGroup(
+                        baseName = baseName,
+                        badge = "Cloud",
+                        badgeColor = badgeColor,
+                        tiers = models.sortedBy { m ->
+                            when (m.tier?.lowercase()) {
+                                "high" -> 1
+                                "medium", "med" -> 2
+                                "low" -> 3
+                                else -> 4
+                            }
+                        }
+                    )
                 )
-            )
+            } else {
+                models.forEach { model ->
+                    list.add(
+                        ModelItemEntry.Single(
+                            id = model.id,
+                            title = model.displayName,
+                            badge = "Cloud",
+                            badgeColor = badgeColor
+                        )
+                    )
+                }
+            }
         }
 
         list
@@ -154,7 +183,7 @@ fun ModelSelectorBottomSheet(
                 )
             }
 
-            // Scrollable Content showing ALL models in one unified list (no expander)
+            // Scrollable Content showing models container
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -168,77 +197,163 @@ fun ModelSelectorBottomSheet(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        allModelItems.forEachIndexed { index, item ->
-                            val isSelected = when {
-                                item.id == SmartModelRouter.AUTO_MODEL_ID -> SmartModelRouter.isAuto(selectedModelId)
-                                item.isLocal -> !SmartModelRouter.isAuto(selectedModelId) && LocalCodingDomain.isLocalModel(selectedModelId)
-                                else -> !SmartModelRouter.isAuto(selectedModelId) && selectedModelId == item.id
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onSelectModel(item.id)
-                                        onDismiss()
+                        modelEntries.forEachIndexed { index, entry ->
+                            when (entry) {
+                                is ModelItemEntry.Single -> {
+                                    val isSelected = when {
+                                        entry.isAuto -> SmartModelRouter.isAuto(selectedModelId)
+                                        entry.isLocal -> !SmartModelRouter.isAuto(selectedModelId) && LocalCodingDomain.isLocalModel(selectedModelId)
+                                        else -> !SmartModelRouter.isAuto(selectedModelId) && selectedModelId == entry.id
                                     }
-                                    .padding(horizontal = 16.dp, vertical = 13.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = item.title,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontSize = 15.sp
-                                        )
 
-                                        // Badge Pill: [Local] or [Cloud]
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(item.badgeColor.copy(alpha = 0.16f))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onSelectModel(entry.id)
+                                                onDismiss()
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Text(
-                                                text = item.badge,
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = item.badgeColor
+                                                text = entry.title,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontSize = 15.sp
+                                            )
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(entry.badgeColor.copy(alpha = 0.16f))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = entry.badge,
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = entry.badgeColor
+                                                )
+                                            }
+                                        }
+
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Selected",
+                                                tint = Color(0xFF3B82F6),
+                                                modifier = Modifier.size(20.dp)
                                             )
                                         }
                                     }
-
-                                    Spacer(modifier = Modifier.height(2.dp))
-
-                                    Text(
-                                        text = item.subtitle,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
 
-                                // Blue Checkmark if selected
-                                if (isSelected) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = Color(0xFF3B82F6),
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                is ModelItemEntry.TierGroup -> {
+                                    val isGroupActive = !SmartModelRouter.isAuto(selectedModelId) && entry.tiers.any { it.id == selectedModelId }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                        border = BorderStroke(1.dp, if (isGroupActive) Color(0xFF3B82F6).copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = entry.baseName,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontSize = 15.5.sp
+                                                )
+
+                                                if (isGroupActive) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color(0xFF3B82F6).copy(alpha = 0.18f))
+                                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "Active",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF60A5FA)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(10.dp))
+
+                                            // Selectable mode chips matching media_1794123636662_b009060f.jpg
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                entry.tiers.forEach { tierModel ->
+                                                    val isTierSelected = !SmartModelRouter.isAuto(selectedModelId) && selectedModelId == tierModel.id
+                                                    val tierLabel = tierModel.tier ?: tierModel.displayName
+
+                                                    Surface(
+                                                        onClick = {
+                                                            onSelectModel(tierModel.id)
+                                                            onDismiss()
+                                                        },
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = if (isTierSelected) Color(0xFF3B82F6) else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                                        border = BorderStroke(
+                                                            1.dp,
+                                                            if (isTierSelected) Color(0xFF3B82F6) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                                        ),
+                                                        modifier = Modifier.defaultMinSize(minHeight = 36.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            if (isTierSelected) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Check,
+                                                                    contentDescription = null,
+                                                                    tint = Color.White,
+                                                                    modifier = Modifier.size(15.dp)
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = tierLabel,
+                                                                fontSize = 13.sp,
+                                                                fontWeight = if (isTierSelected) FontWeight.Bold else FontWeight.Medium,
+                                                                color = if (isTierSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
-                            if (index < allModelItems.lastIndex) {
+                            if (index < modelEntries.lastIndex) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                     thickness = 0.8.dp,
@@ -278,41 +393,21 @@ fun ModelSelectorBottomSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Dev Team Mode",
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = "Dev Team Execution Mode",
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 14.5.sp
+                            modifier = Modifier.weight(1f)
                         )
 
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF10B981).copy(alpha = 0.16f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = if (devTeamMode == "SEQUENTIAL") "Recommended" else "High-End",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF10B981)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
                         Text(
-                            text = if (devTeamMode == "PARALLEL") "Parallel (Together) >" else "Sequential (1-by-1) >",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = if (devTeamMode == "PARALLEL") "Parallel" else "Sequential",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (devTeamMode == "PARALLEL") Color(0xFF10B981) else Color(0xFF3B82F6)
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

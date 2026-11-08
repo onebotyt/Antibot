@@ -1324,105 +1324,159 @@ fun ChatHistoryDrawer(
                 )
             }
 
-            // User Profile Footer Card (Image 5)
-            Surface(
-                onClick = {
-                    if (systemConnectionState.status == com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED) {
-                        onLogin()
-                    } else {
-                        showProfileDialog = true
-                    }
-                },
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-            ) {
-                Row(
+            // User Profile Footer Card or Sign In Button
+            val isSignedIn = authInfo.isLoggedIn && (authInfo.displayName.isNotBlank() || authInfo.email.isNotBlank())
+            if (!isSignedIn) {
+                Surface(
+                    onClick = { onLogin() },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    Box(modifier = Modifier.size(36.dp)) {
-                        SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(parseProfileAvatarModel(authInfo.profilePictureUrl))
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = "Profile Picture",
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape),
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            loading = {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color(0xFF1E293B)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
-                                    Text(
-                                        text = initial,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                }
-                            },
-                            error = {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color(0xFF1E293B)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
-                                    Text(
-                                        text = initial,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                }
-                            }
-                        )
-                        // Online indicator dot
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
-                                .align(Alignment.BottomEnd)
-                                .background(MaterialTheme.colorScheme.surface, CircleShape)
-                                .padding(1.5.dp)
-                                .background(
-                                    if (systemConnectionState.isHubOnline) Color(0xFF22C55E) else systemConnectionState.status.dotColor,
-                                    CircleShape
-                                )
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Login,
+                                contentDescription = "Sign In",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Sign In",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Connect Antigravity account",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
+                }
+            } else {
+                Surface(
+                    onClick = { showProfileDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.size(36.dp)) {
+                            SubcomposeAsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(parseProfileAvatarModel(authInfo.profilePictureUrl))
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "Profile Picture",
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color(0xFF1E293B)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString()
+                                            ?: authInfo.email.firstOrNull()?.uppercaseChar()?.toString() ?: "U"
+                                        Text(
+                                            text = initial,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                },
+                                error = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color(0xFF1E293B)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val initial = authInfo.displayName.firstOrNull()?.uppercaseChar()?.toString()
+                                            ?: authInfo.email.firstOrNull()?.uppercaseChar()?.toString() ?: "U"
+                                        Text(
+                                            text = initial,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            )
+                            // Online indicator dot
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                    .padding(1.5.dp)
+                                    .background(
+                                        if (systemConnectionState.isHubOnline) Color(0xFF22C55E) else systemConnectionState.status.dotColor,
+                                        CircleShape
+                                    )
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                    val nameToShow = authInfo.displayName.ifBlank { "GIRDHAR DHAMI" }
-                    Text(
-                        text = nameToShow.uppercase(),
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                        val nameToShow = authInfo.displayName.ifBlank { authInfo.email.ifBlank { "User" } }
+                        Text(
+                            text = nameToShow.uppercase(),
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
 
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
