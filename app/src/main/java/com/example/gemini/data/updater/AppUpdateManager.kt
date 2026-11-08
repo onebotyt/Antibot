@@ -63,14 +63,29 @@ class AppUpdateManager(private val context: Context) {
         forceCheck: Boolean = false
     ): Result<AppUpdateInfo?> = withContext(Dispatchers.IO) {
         try {
-            // 1. Try GitHub Releases API first (detects every new build published to GitHub)
+            // 1. Query GitHub Releases API
             val githubResult = checkGitHubReleases()
-            if (githubResult.isSuccess && githubResult.getOrNull() != null) {
-                return@withContext githubResult
-            }
+            val githubInfo = githubResult.getOrNull()
 
-            // 2. Fallback to raw version.json if GitHub Releases returned null or was rate-limited
-            checkVersionJson(versionJsonUrl)
+            // 2. Query raw version.json
+            val jsonResult = checkVersionJson(versionJsonUrl)
+            val jsonInfo = jsonResult.getOrNull()
+
+            // Prefer newest available update info
+            when {
+                githubInfo != null && jsonInfo != null -> {
+                    val isJsonNewer = isRemoteVersionNewer(jsonInfo.versionName, githubInfo.versionName) || (jsonInfo.versionCode > githubInfo.versionCode)
+                    if (isJsonNewer) {
+                        Result.success(jsonInfo)
+                    } else {
+                        Result.success(githubInfo)
+                    }
+                }
+                githubInfo != null -> Result.success(githubInfo)
+                jsonInfo != null -> Result.success(jsonInfo)
+                githubResult.isFailure && jsonResult.isFailure -> githubResult
+                else -> Result.success(null)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to check for updates: ${e.message}", e)
             Result.failure(e)

@@ -1290,7 +1290,7 @@ class AgyChatBackend(
         startPersistentStream(convId)
 
         val lastUserPrompt = _messages.value.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
-        val promptToSend = if (trajectoryEngine.totalStepsCount > 0 || _messages.value.any { it.role == MessageRole.ASSISTANT && it.toolCalls.isNotEmpty() }) {
+        val promptToSend = if (totalStepsCount > 0 || _messages.value.any { it.role == MessageRole.ASSISTANT && it.toolCalls.isNotEmpty() }) {
             "continue"
         } else {
             lastUserPrompt.ifBlank { "continue" }

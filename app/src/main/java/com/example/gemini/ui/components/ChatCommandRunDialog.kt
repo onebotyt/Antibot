@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.gemini.theme.ClaudeTerracotta
+import com.example.gemini.theme.*
 import com.example.gemini.ui.ide.IdeExecutionRequest
 import com.example.gemini.ui.ide.IdeExecutionRunnerSheet
 

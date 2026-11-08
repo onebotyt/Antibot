@@ -1,8 +1,9 @@
 {
-  "version_code": 176,
-  "version_name": "1.0.56",
+  "version_code": 177,
+  "version_name": "1.0.57",
   "min_supported_version_code": 1,
   "changelog": [
+    "Unified 1-click update system: removed separate Sync Daemon option. One single click now updates both the app and internal daemon seamlessly.",
     "Fixed Pure Monochrome theme contrast on Dark Mode: resolved white-on-white text in buttons, dialogs, and chips with dynamic on_primary mapping.",
     "Added 10-second resilience network retry: when internet drops, displays a 10s live countdown reconnection card instead of immediately throwing an error.",
     "Seamless auto-resume: automatically continues AI task generation without user intervention as soon as internet connection returns within the 10-second window."
