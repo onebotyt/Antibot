@@ -203,6 +203,39 @@ class AppUpdateManager(private val context: Context) {
     }
 
     /**
+     * Resolves the direct GitHub API release asset URL for a given filename pattern.
+     * The GitHub API asset endpoint redirects directly to Azure Blob storage, bypassing regional 504 proxy timeouts.
+     */
+    private fun resolveAssetDirectUrl(pattern: String): String? {
+        return try {
+            val request = Request.Builder()
+                .url(GITHUB_RELEASES_URL)
+                .header("User-Agent", "AntiBot-Updater/${BuildConfig.VERSION_NAME}")
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("Cache-Control", "no-cache")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            val json = JSONObject(body)
+            val assets = json.optJSONArray("assets") ?: return null
+
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.optString("name", "")
+                if (name.contains(pattern, ignoreCase = true)) {
+                    val apiUrl = asset.optString("url", "")
+                    if (apiUrl.isNotBlank()) return apiUrl
+                }
+            }
+            null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * Downloads and dynamically updates the agy_ide_bridge binary and restarts
      * the local server without requiring an APK installation.
      */
@@ -210,86 +243,104 @@ class AppUpdateManager(private val context: Context) {
         bridgeUrl: String,
         onProgress: (Float, Long, Long) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url(bridgeUrl)
-                .header("User-Agent", "AntiBot-Updater/${BuildConfig.VERSION_NAME}")
-                .build()
-
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val hint = when (response.code) {
-                    404, 504 -> " (Release assets still building or publishing on GitHub. Retry in a moment)"
-                    403 -> " (GitHub rate limit reached, please try again shortly)"
-                    else -> ""
-                }
-                return@withContext Result.failure(Exception("Failed to download daemon binary: HTTP ${response.code}$hint"))
-            }
-
-            val body = response.body ?: return@withContext Result.failure(Exception("Empty daemon binary response"))
-            val totalBytes = body.contentLength()
-            val tempFile = File(context.cacheDir, "agy_ide_bridge_new.tmp")
-
-            body.byteStream().use { input ->
-                tempFile.outputStream().use { output ->
-                    val buffer = ByteArray(32 * 1024)
-                    var bytesRead: Int
-                    var downloaded = 0L
-
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        downloaded += bytesRead
-                        val progress = if (totalBytes > 0) (downloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
-                        withContext(Dispatchers.Main) {
-                            onProgress(progress, downloaded, totalBytes)
-                        }
-                    }
-                    output.flush()
-                }
-            }
-
-            if (tempFile.length() < 100_000) {
-                tempFile.delete()
-                return@withContext Result.failure(Exception("Downloaded bridge binary is corrupt or too small (${tempFile.length()} bytes)"))
-            }
-
-            // Set executable permissions
-            tempFile.setExecutable(true, false)
-            tempFile.setReadable(true, false)
-            try { Os.chmod(tempFile.absolutePath, 493) } catch (_: Exception) {}
-
-            // Target destination in binDir
-            val binDir = LocalEnvironmentManager.getBinDir(context)
-            binDir.mkdirs()
-            val targetBridge = File(binDir, "agy_ide_bridge")
-
-            if (targetBridge.exists()) {
-                targetBridge.delete()
-            }
-            if (!tempFile.renameTo(targetBridge)) {
-                tempFile.copyTo(targetBridge, overwrite = true)
-                tempFile.delete()
-            }
-
-            targetBridge.setExecutable(true, false)
-            targetBridge.setReadable(true, false)
-            try { Os.chmod(targetBridge.absolutePath, 493) } catch (_: Exception) {}
-
-            // Save copy to Downloads
-            try {
-                LocalServerManager.saveBridgeToDownloads(context)
-            } catch (_: Exception) {}
-
-            // Restart the server with new binary
-            try {
-                LocalServerManager.restartServer(context)
-            } catch (_: Exception) {}
-
-            Result.success(targetBridge)
-        } catch (e: Exception) {
-            Log.e(TAG, "Dynamic daemon update error: ${e.message}", e)
-            Result.failure(e)
+        val urlsToTry = mutableListOf<String>()
+        val directApiUrl = resolveAssetDirectUrl("agy_ide_bridge")
+        if (!directApiUrl.isNullOrBlank()) {
+            urlsToTry.add(directApiUrl)
         }
+        if (bridgeUrl.isNotBlank() && !urlsToTry.contains(bridgeUrl)) {
+            urlsToTry.add(bridgeUrl)
+        }
+
+        var lastError: Exception? = null
+        val tempFile = File(context.cacheDir, "agy_ide_bridge_new.tmp")
+
+        for (url in urlsToTry) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "AntiBot-Updater/${BuildConfig.VERSION_NAME}")
+                    .header("Accept", "application/octet-stream")
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    val hint = when (response.code) {
+                        404, 504 -> " (Release assets still generating on GitHub. Please retry in a moment)"
+                        403 -> " (GitHub rate limit reached, please try again shortly)"
+                        else -> ""
+                    }
+                    lastError = Exception("Failed to download daemon binary: HTTP ${response.code}$hint")
+                    continue
+                }
+
+                val body = response.body ?: continue
+                val totalBytes = body.contentLength()
+
+                body.byteStream().use { input ->
+                    tempFile.outputStream().use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        var bytesRead: Int
+                        var downloaded = 0L
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            downloaded += bytesRead
+                            val progress = if (totalBytes > 0) (downloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+                            withContext(Dispatchers.Main) {
+                                onProgress(progress, downloaded, totalBytes)
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+
+                if (tempFile.length() < 100_000) {
+                    tempFile.delete()
+                    lastError = Exception("Downloaded bridge binary is corrupt or too small (${tempFile.length()} bytes)")
+                    continue
+                }
+
+                // Set executable permissions
+                tempFile.setExecutable(true, false)
+                tempFile.setReadable(true, false)
+                try { Os.chmod(tempFile.absolutePath, 493) } catch (_: Exception) {}
+
+                // Target destination in binDir
+                val binDir = LocalEnvironmentManager.getBinDir(context)
+                binDir.mkdirs()
+                val targetBridge = File(binDir, "agy_ide_bridge")
+
+                if (targetBridge.exists()) {
+                    targetBridge.delete()
+                }
+                if (!tempFile.renameTo(targetBridge)) {
+                    tempFile.copyTo(targetBridge, overwrite = true)
+                    tempFile.delete()
+                }
+
+                targetBridge.setExecutable(true, false)
+                targetBridge.setReadable(true, false)
+                try { Os.chmod(targetBridge.absolutePath, 493) } catch (_: Exception) {}
+
+                // Save copy to Downloads
+                try {
+                    LocalServerManager.saveBridgeToDownloads(context)
+                } catch (_: Exception) {}
+
+                // Restart the server with new binary
+                try {
+                    LocalServerManager.restartServer(context)
+                } catch (_: Exception) {}
+
+                return@withContext Result.success(targetBridge)
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Attempt failed for $url: ${e.message}")
+            }
+        }
+
+        Result.failure(lastError ?: Exception("Failed to download daemon binary after multiple attempts"))
     }
 
     /**
@@ -299,56 +350,78 @@ class AppUpdateManager(private val context: Context) {
         downloadUrl: String,
         onProgress: (Float, Long, Long) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url(downloadUrl)
-                .header("User-Agent", "AntiBot-Updater/${BuildConfig.VERSION_NAME}")
-                .build()
-
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val hint = when (response.code) {
-                    404, 504 -> " (APK still building on GitHub Actions. Please retry shortly)"
-                    403 -> " (GitHub rate limit reached, please try again shortly)"
-                    else -> ""
-                }
-                return@withContext Result.failure(Exception("Download failed: HTTP ${response.code}$hint"))
-            }
-
-            val body = response.body ?: return@withContext Result.failure(Exception("Empty download body"))
-            val totalBytes = body.contentLength()
-
-            val targetDir = context.externalCacheDir ?: context.cacheDir
-            val targetFile = File(targetDir, "antibot_update_${System.currentTimeMillis()}.apk")
-
-            body.byteStream().use { input ->
-                targetFile.outputStream().use { output ->
-                    val buffer = ByteArray(32 * 1024)
-                    var bytesRead: Int
-                    var downloadedBytes = 0L
-
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        downloadedBytes += bytesRead
-
-                        val progress = if (totalBytes > 0) {
-                            (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-                        } else {
-                            0f
-                        }
-                        withContext(Dispatchers.Main) {
-                            onProgress(progress, downloadedBytes, totalBytes)
-                        }
-                    }
-                    output.flush()
-                }
-            }
-
-            Result.success(targetFile)
-        } catch (e: Exception) {
-            Log.e(TAG, "Download APK error: ${e.message}", e)
-            Result.failure(e)
+        val urlsToTry = mutableListOf<String>()
+        val directApiUrl = resolveAssetDirectUrl(".apk")
+        if (!directApiUrl.isNullOrBlank()) {
+            urlsToTry.add(directApiUrl)
         }
+        if (downloadUrl.isNotBlank() && !urlsToTry.contains(downloadUrl)) {
+            urlsToTry.add(downloadUrl)
+        }
+
+        var lastError: Exception? = null
+        val targetDir = context.externalCacheDir ?: context.cacheDir
+        val targetFile = File(targetDir, "antibot_update_${System.currentTimeMillis()}.apk")
+
+        for (url in urlsToTry) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "AntiBot-Updater/${BuildConfig.VERSION_NAME}")
+                    .header("Accept", "application/octet-stream")
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    val hint = when (response.code) {
+                        404, 504 -> " (APK still generating on GitHub Actions. Please retry shortly)"
+                        403 -> " (GitHub rate limit reached, please try again shortly)"
+                        else -> ""
+                    }
+                    lastError = Exception("Download failed: HTTP ${response.code}$hint")
+                    continue
+                }
+
+                val body = response.body ?: continue
+                val totalBytes = body.contentLength()
+
+                body.byteStream().use { input ->
+                    targetFile.outputStream().use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        var bytesRead: Int
+                        var downloadedBytes = 0L
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            downloadedBytes += bytesRead
+
+                            val progress = if (totalBytes > 0) {
+                                (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                            } else {
+                                0f
+                            }
+                            withContext(Dispatchers.Main) {
+                                onProgress(progress, downloadedBytes, totalBytes)
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+
+                if (targetFile.length() < 1_000_000) {
+                    targetFile.delete()
+                    lastError = Exception("Downloaded APK is too small or incomplete")
+                    continue
+                }
+
+                return@withContext Result.success(targetFile)
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Attempt failed for $url: ${e.message}")
+            }
+        }
+
+        Result.failure(lastError ?: Exception("Download failed after multiple attempts"))
     }
 
     /**
