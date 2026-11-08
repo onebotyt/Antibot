@@ -14,6 +14,8 @@ object PromptExpansion {
     private val TOKEN = Regex("(?<=^|\\s)/(plu:[A-Za-z0-9_-]+(?::[A-Za-z0-9._-]*)?|[A-Za-z0-9][A-Za-z0-9_-]{0,47})(?=\\s|$)")
     private val BLOCK = Regex("<$TAG command=\"([^\"]*)\">[\\s\\S]*?</$TAG>")
 
+    fun hidden(text: String): String = if (text.isBlank()) "" else "[Context: $text]\n\n"
+
     fun expand(text: String): String {
         if (!text.contains('/')) return text
         val out = StringBuilder()

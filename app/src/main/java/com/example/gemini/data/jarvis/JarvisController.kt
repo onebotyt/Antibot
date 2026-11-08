@@ -22,7 +22,6 @@ import com.example.gemini.domain.model.ChoiceQuestion
 import com.example.gemini.domain.model.ChoiceQuestionnaire
 import com.example.gemini.data.remote.dto.AskQuestionOptionDto
 import com.example.gemini.data.remote.dto.AskQuestionResponseItemDto
-import com.example.gemini.data.agent.ChatCompletionMonitor
 import com.example.gemini.domain.model.MessageRole
 import com.example.gemini.domain.model.ToolCall
 import com.example.gemini.domain.model.ToolType
@@ -206,7 +205,17 @@ object JarvisController {
         scope.launch { sendLoop() }
         scope.launch { permissionLoop() }
         scope.launch { questionLoop() }
-        scope.launch { ChatCompletionMonitor.events.collect { c -> runCatching { onChatDone(c) } } }
+        scope.launch {
+            var prevRunning = emptySet<String>()
+            vm.conversations.collect { list ->
+                val currRunning = list.filter { it.isRunning }.map { it.id }.toSet()
+                val finished = prevRunning - currRunning
+                prevRunning = currRunning
+                for (id in finished) {
+                    list.find { it.id == id }?.let { runCatching { onChatDone(it) } }
+                }
+            }
+        }
     }
 
     /** Turns Jarvis on or off (Settings). */
@@ -341,7 +350,7 @@ object JarvisController {
         val id = JarvisPreferences.currentChatId.value
         if (id.isBlank()) return false
         return if (JarvisPreferences.currentChatAgent.value == AgentKind.LOCAL.name) {
-            vm.localBackend.isStreaming.value
+            vm.localBackend.conversations.value.find { it.id == id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == id)
         } else {
             System.currentTimeMillis() < agyBusyUntil ||
                 vm.agyBackend.conversations.value.any { it.id == id && it.isRunning }
@@ -539,10 +548,10 @@ object JarvisController {
                     summary += s
                 }
                 if (skipped) {
-                    q.backend.skipChoices(q.call)
+                    vm.rejectTerminalTool(q.call, q.chatId, "Skipped by user")
                     speakOut("Okay, I told it to use its best judgement.")
                 } else {
-                    q.backend.submitChoices(q.call, responses, summary.joinToString(" · "))
+                    vm.approveAndExecuteTerminalTool(q.call, q.chatId)
                     speakOut("Got it.")
                 }
             } catch (e: Exception) {
@@ -625,12 +634,12 @@ object JarvisController {
 
     private fun checkUsageLow() {
         if (!JarvisPreferences.enabled.value || !JarvisPreferences.announceUsageLow.value) return
-        val w = vm.claudeBackend.rateLimits.value["five_hour"] ?: return
-        val left = 1.0 - w.utilization
-        val window = w.resetsAt ?: 0L
-        if (left <= 0.15 && window != usageWarnedFor && !listening.value) {
+        val lowQuota = vm.agyBackend.quotas.value.firstOrNull { it.percentageUsed >= 85 } ?: return
+        val left = (100 - lowQuota.percentageUsed).coerceAtLeast(0)
+        val window = System.currentTimeMillis() / (1000 * 60 * 30)
+        if (window != usageWarnedFor && !listening.value) {
             usageWarnedFor = window
-            scope.launch { speakOut("Heads up, only about ${Math.round(left * 100).coerceAtLeast(0)} percent of your five hour usage is left.") }
+            scope.launch { speakOut("Heads up, only about $left percent of your ${lowQuota.modelName} quota is left.") }
         }
     }
 

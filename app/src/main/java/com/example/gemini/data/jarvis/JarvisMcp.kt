@@ -1,7 +1,6 @@
 package com.example.gemini.data.jarvis
 
 import android.content.Context
-import com.example.gemini.data.agent.ChatCompletionMonitor
 import com.example.gemini.data.daemon.IdeApiClient
 import com.example.gemini.data.daemon.FileNode
 import com.example.gemini.data.daemon.ProjectItem
@@ -667,19 +666,18 @@ object JarvisMcp {
         if (t.result.isNotBlank()) o.put("result", t.result)
         val pending = JarvisController.allPending().filter { it.chatId == t.id }
         if (pending.isNotEmpty()) o.put("waiting_approvals", JSONArray().apply { pending.forEach { put(JSONObject().put("key", it.key).put("what", it.summary).put("risk", it.risk.name.lowercase())) } })
-        JarvisTasks.pendingQuestion(t.id)?.second?.questionnaire?.questions?.firstOrNull()?.let { q ->
-            o.put("question", JSONObject().put("text", q.prompt).put("options", JSONArray(q.options.filter { !it.isCustomInput }.map { it.label })))
-        }
         if (n > 0) {
-            val msgs = (JarvisTasks.backendOf(t.id)?.messages?.value?.takeIf { it.isNotEmpty() } ?: runCatching { JarvisController.readChat(t.id) }.getOrDefault(emptyList()))
+            val msgs = runCatching { JarvisController.readChat(t.id) }.getOrDefault(emptyList())
                 .filter { it.content.isNotBlank() || it.toolCalls.isNotEmpty() }.takeLast(n)
-            o.put("latest", JSONArray().apply {
-                msgs.forEach { m ->
-                    put(JSONObject().put("role", roleName(m)).put("text", cleanText(m.content, 500)).apply {
-                        m.toolCalls.lastOrNull()?.let { tc -> put("last_tool", "${tc.name} ${tc.command.take(80)} (${tc.status.lowercase()})".trim()) }
-                    })
-                }
-            })
+            if (msgs.isNotEmpty()) {
+                o.put("latest", JSONArray().apply {
+                    msgs.forEach { m ->
+                        put(JSONObject().put("role", roleName(m)).put("text", cleanText(m.content, 500)).apply {
+                            m.toolCalls.lastOrNull()?.let { tc -> put("last_tool", "${tc.name} ${tc.command.take(80)} (${tc.status.lowercase()})".trim()) }
+                        })
+                    }
+                })
+            }
         }
         return json(o)
     }
