@@ -978,11 +978,11 @@ fun LocalToolsInstallDialog(
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                                colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary)
                             ) {
                                 Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Confirm & Download", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Confirm & Download", color = AppColors.onPrimary, fontWeight = FontWeight.Bold)
                             }
 
                             OutlinedButton(
@@ -1012,11 +1012,11 @@ fun LocalToolsInstallDialog(
                             onClick = onDismiss,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary)
                         ) {
                             Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Done", color = AppColors.onPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1039,11 +1039,11 @@ fun LocalToolsInstallDialog(
                                     },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary)
                                 ) {
                                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Retry", color = Color.White, fontSize = 12.5.sp)
+                                    Text("Retry", color = AppColors.onPrimary, fontSize = 12.5.sp)
                                 }
 
                                 OutlinedButton(

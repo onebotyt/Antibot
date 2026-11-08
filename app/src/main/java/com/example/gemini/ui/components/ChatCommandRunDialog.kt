@@ -156,12 +156,12 @@ private fun CommandConfirmCard(initial: String, onCancel: () -> Unit, onRun: (St
                 Button(
                     onClick = run,
                     enabled = canRun,
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary),
                     contentPadding = PaddingValues(horizontal = 16.dp)
                 ) {
-                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(18.dp), tint = AppColors.onPrimary)
                     Spacer(Modifier.width(4.dp))
-                    Text("Run")
+                    Text("Run", color = AppColors.onPrimary)
                 }
             }
         }

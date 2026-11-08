@@ -77,6 +77,7 @@ import com.example.gemini.data.local.LocalServerStatus
 import com.example.gemini.data.preferences.AuthPreferences
 import com.example.gemini.data.remote.RemoteServerManager
 import com.example.gemini.data.ssh.SshSessionFactory
+import com.example.gemini.theme.AppColors
 import com.example.gemini.theme.ClaudeTerracotta
 import com.example.gemini.theme.QuotaGreen
 import kotlinx.coroutines.Dispatchers
@@ -346,7 +347,7 @@ internal fun ServersSubScreen(
             confirmButton = {
                 Button(
                     onClick = { showUnsavedDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta),
+                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary),
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("Keep Editing", fontWeight = FontWeight.Bold) }
             },
@@ -404,7 +405,7 @@ internal fun ServersSubScreen(
                             Runtime.getRuntime().exit(0)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta),
+                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary),
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("Reopen Now", fontWeight = FontWeight.Bold) }
             },
@@ -513,7 +514,7 @@ internal fun ServersSubScreen(
                         showSaveProfile = false; profileTick++
                         saveFeedback = "Profile \"${profileName.trim()}\" saved on this phone."; saveIsError = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta), shape = RoundedCornerShape(8.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary), shape = RoundedCornerShape(8.dp)
                 ) { Text("Save", fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { showSaveProfile = false }) { Text("Cancel") } },
@@ -542,7 +543,7 @@ internal fun ServersSubScreen(
                         profileToUpdate = null; profileTick++
                         saveFeedback = "Profile \"$uName\" updated."; saveIsError = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta), shape = RoundedCornerShape(8.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary), shape = RoundedCornerShape(8.dp)
                 ) { Text("Update", fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { profileToUpdate = null }) { Text("Cancel") } },
@@ -1133,7 +1134,7 @@ internal fun ServersSubScreen(
                 showRestartDialog = true
             },
             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary)
         ) {
             Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
@@ -1270,7 +1271,7 @@ private fun PortForwardsCard(cardBg: Color, cardBorder: BorderStroke, subtle: Co
                             serverPort = ""; localPort = ""; name = ""
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta), shape = RoundedCornerShape(8.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary), shape = RoundedCornerShape(8.dp)
                 ) { Text("Add", fontWeight = FontWeight.Bold) }
             }
             error?.let { Text(it, fontSize = 11.5.sp, color = Color.Red, modifier = Modifier.padding(top = 6.dp)) }

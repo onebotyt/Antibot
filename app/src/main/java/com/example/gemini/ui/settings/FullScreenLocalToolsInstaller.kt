@@ -979,11 +979,11 @@ fun FullScreenLocalToolsInstaller(
                             .fillMaxWidth()
                             .height(50.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = AppColors.onPrimary)
                     ) {
                         Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Get Started", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Get Started", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppColors.onPrimary)
                     }
                 }
 
@@ -1007,11 +1007,11 @@ fun FullScreenLocalToolsInstaller(
                                 .fillMaxWidth()
                                 .height(48.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary)
                         ) {
                             Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Retry Installation", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Retry Installation", fontWeight = FontWeight.Bold, color = AppColors.onPrimary)
                         }
 
                         Row(

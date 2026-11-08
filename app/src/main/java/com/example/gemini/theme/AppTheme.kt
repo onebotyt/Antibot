@@ -435,7 +435,8 @@ object BuiltInThemes {
         id = PURE_MONOCHROME_DARK, name = "Pure Monochrome", about = "Solid 100% OLED black with clean white text and neutral gray accents. Zero neon.", dark = true,
         bg = 0xFF000000, surface = 0xFF0A0A0A, card = 0xFF121212, variant = 0xFF1C1C1E, text = 0xFFF5F5F7, muted = 0xFF8E8E93,
         primary = 0xFFFFFFFF, secondary = 0xFFE5E5EA, tertiary = 0xFFD1D1D6, success = 0xFF34C759, warning = 0xFFFF9F0A, danger = 0xFFFF453A, info = 0xFF64D2FF,
-        codeBg = 0xFF000000, syntax = listOf(0xFFFFFFFF, 0xFFE5E5EA, 0xFFA1A1AA, 0xFFD4D4D8, 0xFF71717A, 0xFFE4E4E7, 0xFFD1D1D6, 0xFFF5F5F7)
+        codeBg = 0xFF000000, syntax = listOf(0xFFFFFFFF, 0xFFE5E5EA, 0xFFA1A1AA, 0xFFD4D4D8, 0xFF71717A, 0xFFE4E4E7, 0xFFD1D1D6, 0xFFF5F5F7),
+        onPrimary = 0xFF000000L
     )
 
     /** Pure Solid 100% crisp paper white with deep black text. Zero neon, maximum clarity. */
@@ -443,7 +444,8 @@ object BuiltInThemes {
         id = PURE_MONOCHROME_LIGHT, name = "Pure Monochrome", about = "Solid 100% crisp pure white with deep black text and neutral slate borders. Zero neon.", dark = false,
         bg = 0xFFFFFFFF, surface = 0xFFFFFFFF, card = 0xFFF8F9FA, variant = 0xFFF1F3F5, text = 0xFF09090B, muted = 0xFF64748B,
         primary = 0xFF09090B, secondary = 0xFF27272A, tertiary = 0xFF52525B, success = 0xFF16A34A, warning = 0xFFD97706, danger = 0xFFDC2626, info = 0xFF0284C7,
-        codeBg = 0xFF18181B, syntax = listOf(0xFF09090B, 0xFF27272A, 0xFF475569, 0xFF52525B, 0xFF94A3B8, 0xFF18181B, 0xFF3F3F46, 0xFF09090B)
+        codeBg = 0xFF18181B, syntax = listOf(0xFF09090B, 0xFF27272A, 0xFF475569, 0xFF52525B, 0xFF94A3B8, 0xFF18181B, 0xFF3F3F46, 0xFF09090B),
+        onPrimary = 0xFFFFFFFFL
     )
 
     /** A full theme from a few colors; everything else is worked out ([ThemeTokens.derive]). */
@@ -451,13 +453,15 @@ object BuiltInThemes {
         id: String, name: String, about: String, dark: Boolean,
         bg: Long, surface: Long, card: Long, variant: Long, text: Long, muted: Long,
         primary: Long, secondary: Long, tertiary: Long, success: Long, warning: Long, danger: Long, info: Long,
-        codeBg: Long, syntax: List<Long>
+        codeBg: Long, syntax: List<Long>,
+        onPrimary: Long? = null
     ): AppTheme {
         val m = mutableMapOf(
             "background" to bg, "surface" to surface, "card" to card, "surface_variant" to variant,
             "on_background" to text, "on_surface_variant" to muted, "primary" to primary, "secondary" to secondary,
             "tertiary" to tertiary, "success" to success, "warning" to warning, "danger" to danger, "info" to info, "code_bg" to codeBg
         )
+        if (onPrimary != null) m["on_primary"] = onPrimary
         syntaxKeys.zip(syntax).forEach { (k, v) -> m[k] = v }
         ThemeTokens.derive(m, m.keys.toSet(), dark)
         return AppTheme(id = id, name = name, dark = dark, about = about, builtIn = true, colors = m)

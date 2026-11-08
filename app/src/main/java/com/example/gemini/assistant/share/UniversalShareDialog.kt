@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.gemini.theme.AppColors
 import com.example.gemini.theme.ClaudeTerracotta
 import java.io.File
 
@@ -364,7 +365,7 @@ fun UniversalShareDialog(
                                             context.startActivity(chooser)
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta, contentColor = AppColors.onPrimary),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Icon(Icons.Default.BluetoothSearching, contentDescription = null, modifier = Modifier.size(16.dp))

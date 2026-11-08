@@ -68,6 +68,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.gemini.R
 import com.example.gemini.data.preferences.TerminalLauncherManager
+import com.example.gemini.theme.AppColors
 import com.example.gemini.theme.ClaudeTerracotta
 
 @Composable
@@ -464,7 +465,10 @@ fun TerminalLauncherOnboardingDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ClaudeTerracotta,
+                        contentColor = AppColors.onPrimary
+                    ),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Icon(
@@ -477,7 +481,7 @@ fun TerminalLauncherOnboardingDialog(
                         text = "Save & Continue",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = AppColors.onPrimary
                     )
                 }
 

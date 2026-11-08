@@ -297,10 +297,14 @@ class ThemeColors(scheme: ColorScheme, map: Map<String, Long>) {
     private fun c(map: Map<String, Long>, k: String, d: Color) = map[k]?.let { Color(it.toInt()) } ?: d
 
     val primary = scheme.primary
+    val onPrimary = scheme.onPrimary
     val secondary = scheme.secondary
+    val onSecondary = scheme.onSecondary
     val tertiary = scheme.tertiary
+    val onTertiary = scheme.onTertiary
     val background = scheme.background
     val surface = scheme.surface
+    val onSurface = scheme.onSurface
     val onBackground = scheme.onBackground
     val card = c(map, "card", scheme.surfaceContainer)
     val textSecondary = c(map, "text_secondary", scheme.onSurfaceVariant)
@@ -361,10 +365,14 @@ class ThemeColors(scheme: ColorScheme, map: Map<String, Long>) {
  */
 object AppColors {
     val primary: Color get() = ThemeManager.colors.primary
+    val onPrimary: Color get() = ThemeManager.colors.onPrimary
     val secondary: Color get() = ThemeManager.colors.secondary
+    val onSecondary: Color get() = ThemeManager.colors.onSecondary
     val tertiary: Color get() = ThemeManager.colors.tertiary
+    val onTertiary: Color get() = ThemeManager.colors.onTertiary
     val background: Color get() = ThemeManager.colors.background
     val surface: Color get() = ThemeManager.colors.surface
+    val onSurface: Color get() = ThemeManager.colors.onSurface
     val onBackground: Color get() = ThemeManager.colors.onBackground
     val card: Color get() = ThemeManager.colors.card
     val textSecondary: Color get() = ThemeManager.colors.textSecondary

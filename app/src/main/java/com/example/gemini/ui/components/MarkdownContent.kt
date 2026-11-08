@@ -129,6 +129,11 @@ sealed class MarkdownBlock {
         val rawJson: String = ""
     ) : MarkdownBlock()
     @androidx.compose.runtime.Immutable
+    data class NetworkWaiting(
+        val secondsRemaining: Int = 10,
+        val message: String = ""
+    ) : MarkdownBlock()
+    @androidx.compose.runtime.Immutable
     data class Header(val level: Int, val text: String) : MarkdownBlock()
     @androidx.compose.runtime.Immutable
     data class Bullet(val indent: Int, val text: String) : MarkdownBlock()
@@ -197,6 +202,9 @@ fun MarkdownBlockView(
         }
         is MarkdownBlock.AgentError -> {
             AgentErrorCard(error = block, modifier = modifier)
+        }
+        is MarkdownBlock.NetworkWaiting -> {
+            NetworkWaitingCard(block = block, modifier = modifier)
         }
         is MarkdownBlock.InteractiveUi -> {
             InteractiveUiView(htmlCode = block.htmlCode, title = block.title, modifier = modifier)
@@ -1324,6 +1332,88 @@ fun MarkdownDetailsView(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Polished Network Recovery Card shown when internet connection drops.
+ * Displays a countdown timer (up to 10s) and progress bar while waiting for internet to reconnect.
+ */
+@Composable
+fun NetworkWaitingCard(
+    block: MarkdownBlock.NetworkWaiting,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isAppInDarkTheme()
+    val warningColor = if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706)
+    val cardBg = if (isDark) Color(0xFF1E170A) else Color(0xFFFEF9C3)
+    val cardBorder = if (isDark) Color(0xFF785412) else Color(0xFFFDE047)
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = cardBg,
+        border = BorderStroke(1.dp, cardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = warningColor,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Connection Lost — Reconnecting...",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = warningColor
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = warningColor.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "${block.secondsRemaining}s remaining",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = warningColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "Waiting up to 10s for internet connection to return. AI will automatically resume once back online.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { ((10 - block.secondsRemaining).coerceIn(0, 10)) / 10f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = warningColor,
+                trackColor = warningColor.copy(alpha = 0.2f),
+            )
         }
     }
 }
@@ -3027,6 +3117,8 @@ private val THOUGHT_START_REGEX = Regex("<(?:!--\\s*)?thought(?:[:\\s]+(streamin
 private val THOUGHT_END_REGEX = Regex("<(?:!--\\s*)?/thought(?:\\s*--)?>", RegexOption.IGNORE_CASE)
 private val ERROR_START_REGEX = Regex("<(?:!--\\s*)?error(?:[:\\s]+([a-zA-Z0-9_-]+))?(?:\\s*--)?>", RegexOption.IGNORE_CASE)
 private val ERROR_END_REGEX = Regex("<(?:!--\\s*)?/error(?:\\s*--)?>", RegexOption.IGNORE_CASE)
+private val NETWORK_WAITING_START_REGEX = Regex("<(?:!--\\s*)?network_waiting(?:[:\\s]+([0-9]+))?(?:\\s*--)?>", RegexOption.IGNORE_CASE)
+private val NETWORK_WAITING_END_REGEX = Regex("<(?:!--\\s*)?/network_waiting(?:\\s*--)?>", RegexOption.IGNORE_CASE)
 private val TOOL_TAG_PATTERN = Regex("<\\s*(tool_call|execute_command|web_search|read_url|ask_choices|user_choice|tool_|execute_|web_|read_|ask_|user_)", RegexOption.IGNORE_CASE)
 private val TOOL_MARKER_REGEX = Regex("<!--\\s*tool_call:([a-zA-Z0-9_-]+)\\s*-->")
 private val UNIFIED_TOOL_REGEX = Regex("<tool_call\\s+name=[\"']?([a-zA-Z0-9_-]+)[\"']?\\s*>([\\s\\S]*?)</tool_call>", RegexOption.IGNORE_CASE)
@@ -3097,6 +3189,36 @@ fun parseMarkdownBlocks(
 
         // Fast-path for tool tags, errors & thoughts
         if (line.contains('<')) {
+            // -0.25. Network Waiting Block <!-- network_waiting:10 -->...<!-- /network_waiting -->
+            val netWaitStartMatch = NETWORK_WAITING_START_REGEX.find(line)
+            if (netWaitStartMatch != null) {
+                val sec = netWaitStartMatch.groupValues.getOrNull(1)?.toIntOrNull() ?: 10
+                val netWaitLines = mutableListOf<String>()
+                if (line.contains("</network_waiting>", ignoreCase = true) || line.contains("<!-- /network_waiting -->", ignoreCase = true)) {
+                    val raw = line.replace(NETWORK_WAITING_START_REGEX, "").replace(NETWORK_WAITING_END_REGEX, "").trim()
+                    result.add(MarkdownBlock.NetworkWaiting(sec, raw.ifBlank { "Internet connection lost. Waiting up to 10s for connection to restore..." }))
+                    i++
+                    continue
+                }
+                val firstLine = line.replace(NETWORK_WAITING_START_REGEX, "").trim()
+                if (firstLine.isNotBlank()) netWaitLines.add(firstLine)
+                i++
+                while (i < lines.size) {
+                    val curr = lines[i]
+                    if (curr.contains("</network_waiting>", ignoreCase = true) || curr.contains("<!-- /network_waiting -->", ignoreCase = true)) {
+                        val endContent = curr.replace(NETWORK_WAITING_END_REGEX, "").trim()
+                        if (endContent.isNotBlank()) netWaitLines.add(endContent)
+                        i++
+                        break
+                    }
+                    netWaitLines.add(curr)
+                    i++
+                }
+                val finalPayload = netWaitLines.joinToString("\n").trim()
+                result.add(MarkdownBlock.NetworkWaiting(sec, finalPayload.ifBlank { "Internet connection lost. Waiting up to 10s for connection to restore..." }))
+                continue
+            }
+
             // -0.5. Structured Agent Error Block <!-- error -->...<!-- /error -->
             val errorStartMatch = ERROR_START_REGEX.find(line)
             if (errorStartMatch != null) {

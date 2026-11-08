@@ -1792,7 +1792,7 @@ private fun AppearanceSubScreen(
                                     text = label,
                                     fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                    color = if (isSelected) ClaudeTerracottaOnPrimary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -2120,7 +2120,7 @@ private fun AppearanceSubScreen(
                                         text = label,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                        color = if (isSelected) ClaudeTerracottaOnPrimary else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -4398,7 +4398,7 @@ private fun AddEditMcpServerDialog(
                                     text = label,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                    color = if (isSelected) ClaudeTerracottaOnPrimary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -5007,7 +5007,7 @@ private fun TerminalSubScreen(
                             border = BorderStroke(1.dp, if (isSel) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                         ) {
                             Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                Text(text = label, fontSize = 11.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurface)
+                                Text(text = label, fontSize = 11.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = if (isSel) ClaudeTerracottaOnPrimary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -5043,7 +5043,7 @@ private fun TerminalSubScreen(
                             border = BorderStroke(1.dp, if (isSel) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                         ) {
                             Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                Text(text = label, fontSize = 11.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurface)
+                                Text(text = label, fontSize = 11.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = if (isSel) ClaudeTerracottaOnPrimary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -9426,12 +9426,15 @@ private fun AboutSubScreen(
                         enabled = !isCheckingUpdate && !isQuickSyncingDaemon,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ClaudeTerracotta,
+                            contentColor = ClaudeTerracottaOnPrimary
+                        )
                     ) {
                         if (isCheckingUpdate) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = Color.White,
+                                color = ClaudeTerracottaOnPrimary,
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(6.dp))

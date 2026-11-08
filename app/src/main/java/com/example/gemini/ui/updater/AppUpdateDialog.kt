@@ -501,7 +501,7 @@ fun AppUpdateDialog(
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = primaryColor,
-                                contentColor = Color.White
+                                contentColor = MaterialTheme.colorScheme.onPrimary
                             ),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.height(38.dp)

@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 // The app's palette names, live views of the active theme on screen (ThemeManager / AppColors)
 val ClaudeTerracotta: Color get() = AppColors.primary
+val ClaudeTerracottaOnPrimary: Color get() = AppColors.onPrimary
 val ClaudeTerracottaDark: Color get() = AppColors.secondary
 val ClaudeCream: Color get() = AppColors.background
 val ClaudeWarmSurface: Color get() = AppColors.background

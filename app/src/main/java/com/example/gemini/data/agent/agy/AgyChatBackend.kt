@@ -510,6 +510,9 @@ class AgyChatBackend(
 
     private var streamingJob: Job? = null
     private var persistentStreamJob: Job? = null
+    private var networkRecoveryJob: Job? = null
+    @Volatile private var isNetworkRecoveryActive: Boolean = false
+    @Volatile private var networkRecoveryRemainingSeconds: Int = 10
     @Volatile private var activeStreamConversationId: String? = null
     @Volatile private var currentTurnStartStep: Int = 0
     @Volatile private var totalStepsCount: Int = 0
@@ -905,6 +908,9 @@ class AgyChatBackend(
 
         persistentStreamJob?.cancel()
         persistentStreamJob = null
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
+        isNetworkRecoveryActive = false
         activeStreamConversationId = id
         currentAssistantMsgId = null
         currentTurnStartStep = 0
@@ -993,17 +999,27 @@ class AgyChatBackend(
                         val turns = if (update != null) trajectoryEngine.ingestAgentStateUpdate(update) else emptyList()
                         val msgs = trajectoryEngine.toChatMessages(conversationId)
 
+                        val lastAsstMsg = msgs.lastOrNull { it.role == MessageRole.ASSISTANT }
+                        val rawContent = lastAsstMsg?.content ?: ""
+                        val hasNetworkDisconnection = lastAsstMsg != null && isNetworkDisconnectionError(rawContent)
+
+                        if (hasNetworkDisconnection && !trajectoryEngine.isRunning) {
+                            if (!isNetworkRecoveryActive) {
+                                launchNetworkRecovery(conversationId, rawContent)
+                            }
+                        }
 
                         withContext(Dispatchers.Main) {
                             if (activeStreamConversationId != conversationId) return@withContext
-                            _isServerOnline.value = true
+                            val inRecovery = isNetworkRecoveryActive || hasNetworkDisconnection
+                            _isServerOnline.value = !inRecovery
                             _conversationError.value = null
                             _isLoadingConversation.value = false
-                            _isReconnecting.value = false
+                            _isReconnecting.value = inRecovery
 
                             val isRunning = trajectoryEngine.isRunning
                             val isWaiting = trajectoryEngine.isWaitingInteraction
-                            _isStreaming.value = isRunning && !isWaiting
+                            _isStreaming.value = (isRunning && !isWaiting) || inRecovery
 
                             val runningTool = msgs.lastOrNull()?.toolCalls?.lastOrNull { it.status == "RUNNING" || it.status == "EXECUTING" }
                             if (runningTool != null) {
@@ -1012,13 +1028,29 @@ class AgyChatBackend(
                                     runningTool.name,
                                     runningTool.command.ifBlank { runningTool.name }
                                 )
-                            } else if (!isRunning && !isWaiting && msgs.isNotEmpty()) {
+                            } else if (!isRunning && !isWaiting && msgs.isNotEmpty() && !inRecovery) {
                                 com.example.gemini.domain.context.TaskFlightRecorder.recordTurnCompleted(conversationId)
                             }
 
-                            Log.d("CHAT_OPEN_DEBUG", "✨ [ChatViewModel State Update] convId=$conversationId, turnsCount=${turns.size}, msgsCount=${msgs.size}, isRunning=$isRunning, isWaiting=$isWaiting")
+                            Log.d("CHAT_OPEN_DEBUG", "✨ [ChatViewModel State Update] convId=$conversationId, turnsCount=${turns.size}, msgsCount=${msgs.size}, isRunning=$isRunning, isWaiting=$isWaiting, inRecovery=$inRecovery")
 
-                            _messages.value = msgs
+                            val displayMsgs = if (inRecovery) {
+                                val remaining = networkRecoveryRemainingSeconds.coerceIn(1, 10)
+                                val waitingTag = "<!-- network_waiting:$remaining -->\n⏳ Internet connection lost. Waiting up to 10s for connection to restore (${remaining}s)...\n<!-- /network_waiting -->"
+                                val cleaned = cleanNetworkWaitingAndErrorBlocks(rawContent)
+                                val newContent = if (cleaned.isNotBlank()) "$cleaned\n\n$waitingTag" else waitingTag
+                                msgs.map { msg ->
+                                    if (lastAsstMsg != null && msg.id == lastAsstMsg.id) {
+                                        msg.copy(content = newContent, isStreaming = true)
+                                    } else {
+                                        msg
+                                    }
+                                }
+                            } else {
+                                msgs
+                            }
+
+                            _messages.value = displayMsgs
                             if (msgs.isNotEmpty()) {
                                 com.example.gemini.ui.chat.ChatFeedCache.prewarm(msgs)
 
@@ -1062,7 +1094,11 @@ class AgyChatBackend(
                                 isPromptInFlight = false
                                 _isStreaming.value = false
                                 trajectoryEngine.cancelRunning()
-                                markLastAssistantMessageDisconnected(conversationId)
+                                if (!isNetworkConnected() && !isNetworkRecoveryActive) {
+                                    launchNetworkRecovery(conversationId, "Stream disconnected unexpectedly")
+                                } else if (!isNetworkRecoveryActive) {
+                                    markLastAssistantMessageDisconnected(conversationId)
+                                }
                             }
                         }
                         break
@@ -1074,6 +1110,10 @@ class AgyChatBackend(
                     Log.e("CHAT_OPEN_DEBUG", "❌ [ChatViewModel Stream Exception] convId=$conversationId: ${e.message}", e)
                     Log.w("ChatViewModel", "Persistent stream error ($conversationId): ${e.message}")
                     val rawErr = e.localizedMessage ?: e.message ?: e.toString()
+                    if (isNetworkDisconnectionError(rawErr) && !isNetworkRecoveryActive) {
+                        launchNetworkRecovery(conversationId, rawErr)
+                        break
+                    }
                     val helpfulMsg = if (rawErr.contains("Connect", ignoreCase = true) || rawErr.contains("Failed to connect", ignoreCase = true)) {
                         "Cannot connect to Antigravity. Make sure Antigravity is running and tap Retry."
                     } else {
@@ -1091,7 +1131,9 @@ class AgyChatBackend(
                             isPromptInFlight = false
                             _isStreaming.value = false
                             trajectoryEngine.cancelRunning()
-                            markLastAssistantMessageDisconnected(conversationId)
+                            if (!isNetworkRecoveryActive) {
+                                markLastAssistantMessageDisconnected(conversationId)
+                            }
                         }
                     }
                     break
@@ -1100,7 +1142,232 @@ class AgyChatBackend(
         }
     }
 
+    fun isNetworkDisconnectionError(text: String): Boolean {
+        if (text.isBlank()) return false
+        val lower = text.lowercase()
+        return lower.contains("connection abort") ||
+                lower.contains("connection reset") ||
+                lower.contains("stream reading error") ||
+                lower.contains("read tcp") ||
+                lower.contains("software caused connection abort") ||
+                lower.contains("network / server connection error") ||
+                lower.contains("broken pipe") ||
+                lower.contains("no such host") ||
+                lower.contains("unknownhostexception") ||
+                lower.contains("socketexception") ||
+                lower.contains("sockettimeoutexception") ||
+                lower.contains("connectexception") ||
+                lower.contains("network is unreachable") ||
+                lower.contains("network unreachable") ||
+                lower.contains("failed to connect") ||
+                lower.contains("internet disconnected")
+    }
+
+    fun cleanNetworkWaitingAndErrorBlocks(text: String): String {
+        var result = text
+        result = result.replace(Regex("<!-- network_waiting:\\d+ -->[\\s\\S]*?<!-- /network_waiting -->"), "")
+        result = result.replace(Regex("<!-- error(:\\d+)? -->[\\s\\S]*?<!-- /error -->"), "")
+        return result.trim()
+    }
+
+    private suspend fun isInternetAvailable(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (isNetworkConnected()) return@withContext true
+        } catch (_: Throwable) {}
+        try {
+            java.net.Socket().use { socket ->
+                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 600)
+                true
+            }
+        } catch (_: Throwable) {
+            try {
+                java.net.Socket().use { socket ->
+                    socket.connect(java.net.InetSocketAddress("1.1.1.1", 53), 600)
+                    true
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    private fun launchNetworkRecovery(convId: String, originalError: String) {
+        if (isNetworkRecoveryActive || networkRecoveryJob?.isActive == true) {
+            Log.d("ChatViewModel", "Network recovery already active for $convId, skipping duplicate launch")
+            return
+        }
+
+        networkRecoveryJob = backendScope.launch {
+            isNetworkRecoveryActive = true
+            networkRecoveryRemainingSeconds = 10
+            Log.w("ChatViewModel", "⏳ [NetworkRecovery] Disconnection detected for convId=$convId. Starting 10-second resilience retry window.")
+
+            withContext(Dispatchers.Main) {
+                _isServerOnline.value = false
+                _isReconnecting.value = true
+            }
+
+            var recovered = false
+            for (remaining in 10 downTo 1) {
+                networkRecoveryRemainingSeconds = remaining
+                if (!isActive || activeStreamConversationId != convId) {
+                    Log.d("ChatViewModel", "[NetworkRecovery] Cancelled or conversation changed.")
+                    isNetworkRecoveryActive = false
+                    return@launch
+                }
+
+                withContext(Dispatchers.Main) {
+                    val currentMsgs = _messages.value.toMutableList()
+                    val lastIdx = currentMsgs.indexOfLast { it.role == MessageRole.ASSISTANT }
+                    val waitingTag = "<!-- network_waiting:$remaining -->\n⏳ Internet connection lost. Waiting up to 10s for connection to restore (${remaining}s)...\n<!-- /network_waiting -->"
+
+                    if (lastIdx >= 0) {
+                        val existingMsg = currentMsgs[lastIdx]
+                        val cleanedContent = cleanNetworkWaitingAndErrorBlocks(existingMsg.content)
+                        val newContent = if (cleanedContent.isNotBlank()) "$cleanedContent\n\n$waitingTag" else waitingTag
+                        currentMsgs[lastIdx] = existingMsg.copy(
+                            content = newContent,
+                            isStreaming = true
+                        )
+                        _messages.value = currentMsgs
+                    } else {
+                        val newMsg = ChatMessage(
+                            id = "asst_recovering_${System.currentTimeMillis()}",
+                            conversationId = convId,
+                            role = MessageRole.ASSISTANT,
+                            content = waitingTag,
+                            isStreaming = true
+                        )
+                        currentMsgs.add(newMsg)
+                        _messages.value = currentMsgs
+                    }
+                }
+
+                if (isInternetAvailable()) {
+                    Log.i("ChatViewModel", "🌐 [NetworkRecovery] Internet connection restored after ${10 - remaining}s!")
+                    recovered = true
+                    break
+                }
+
+                delay(1000L)
+            }
+
+            if (recovered) {
+                handleNetworkRecoverySuccess(convId)
+            } else {
+                handleNetworkRecoveryTimeout(convId, originalError)
+            }
+        }
+    }
+
+    private suspend fun handleNetworkRecoverySuccess(convId: String) {
+        Log.i("ChatViewModel", "🚀 [NetworkRecovery] Resuming AI execution for convId=$convId")
+        isNetworkRecoveryActive = false
+        networkRecoveryJob = null
+
+        withContext(Dispatchers.Main) {
+            val currentMsgs = _messages.value.toMutableList()
+            val lastIdx = currentMsgs.indexOfLast { it.role == MessageRole.ASSISTANT }
+            val resumingTag = "🌐 **Internet connection restored!** Resuming AI..."
+            if (lastIdx >= 0) {
+                val existing = currentMsgs[lastIdx]
+                val cleaned = cleanNetworkWaitingAndErrorBlocks(existing.content)
+                val newContent = if (cleaned.isNotBlank()) "$cleaned\n\n$resumingTag" else resumingTag
+                currentMsgs[lastIdx] = existing.copy(
+                    content = newContent,
+                    isStreaming = true
+                )
+                _messages.value = currentMsgs
+            }
+            _isServerOnline.value = true
+            _isReconnecting.value = false
+            _isStreaming.value = true
+        }
+
+        delay(300L)
+
+        // Ensure persistent stream is connected to receive updates
+        startPersistentStream(convId)
+
+        val lastUserPrompt = _messages.value.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
+        val promptToSend = if (trajectoryEngine.totalStepsCount > 0 || _messages.value.any { it.role == MessageRole.ASSISTANT && it.toolCalls.isNotEmpty() }) {
+            "continue"
+        } else {
+            lastUserPrompt.ifBlank { "continue" }
+        }
+
+        val hubUrl = AuthPreferences.currentHubUrl
+        val currentAutoExecPolicy = authPrefs.commandAutoExecutionPolicy.firstOrNull() ?: "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER"
+        val modelEnum = _selectedModelId.value.ifBlank { "MODEL_GEMINI_3_8_FLASH_HIGH" }
+
+        Log.i("ChatViewModel", "📡 [NetworkRecovery] Sending '$promptToSend' to resume cascade for $convId")
+        val res = agyHubClient.sendUserPrompt(
+            cascadeId = convId,
+            text = promptToSend,
+            modelEnum = modelEnum,
+            thinkingBudget = 0,
+            autoExecutionPolicy = currentAutoExecPolicy,
+            media = emptyList(),
+            hubUrl = hubUrl
+        )
+
+        if (res.isFailure) {
+            val err = res.exceptionOrNull()?.message ?: "Failed to resume AI"
+            Log.e("ChatViewModel", "❌ [NetworkRecovery] Failed to resume AI: $err")
+            withContext(Dispatchers.Main) {
+                _isStreaming.value = false
+                trajectoryEngine.cancelRunning()
+            }
+        } else {
+            Log.i("ChatViewModel", "✅ [NetworkRecovery] AI successfully resumed for $convId")
+        }
+    }
+
+    private suspend fun handleNetworkRecoveryTimeout(convId: String, originalError: String) {
+        Log.w("ChatViewModel", "⏰ [NetworkRecovery] Timeout reached (10s). Internet connection still unavailable.")
+        isNetworkRecoveryActive = false
+        networkRecoveryJob = null
+
+        val lastUserPrompt = _messages.value.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
+        if (lastUserPrompt.isNotBlank()) {
+            com.example.gemini.domain.model.OfflineRecoveryManager.recordInterruptedTask(
+                conversationId = convId,
+                prompt = lastUserPrompt,
+                preferredModelId = "MODEL_GEMINI_3_8_FLASH_HIGH",
+                reason = "Internet disconnected (timeout after 10s)"
+            )
+        }
+
+        withContext(Dispatchers.Main) {
+            _isServerOnline.value = false
+            _isReconnecting.value = false
+            _isStreaming.value = false
+            isPromptInFlight = false
+            trajectoryEngine.cancelRunning()
+
+            val currentMsgs = _messages.value.toMutableList()
+            val lastIdx = currentMsgs.indexOfLast { it.role == MessageRole.ASSISTANT }
+            val formattedErr = formatStructuredErrorMessage(
+                title = "Internet Disconnected",
+                userMessage = "Internet connection was lost and did not return within 10 seconds. AntiBot Smart Manager saved your task as an offline checkpoint. When internet returns, Gemini will automatically resume.",
+                shortError = "Offline Checkpoint Saved (10s timeout)",
+                fullError = originalError
+            )
+            if (lastIdx >= 0) {
+                val existing = currentMsgs[lastIdx]
+                val cleaned = cleanNetworkWaitingAndErrorBlocks(existing.content)
+                val finalContent = if (cleaned.isNotBlank()) "$cleaned\n\n$formattedErr" else formattedErr
+                currentMsgs[lastIdx] = existing.copy(
+                    content = finalContent,
+                    isStreaming = false
+                )
+                _messages.value = currentMsgs
+            }
+        }
+    }
+
     private fun markLastAssistantMessageDisconnected(convId: String = "") {
+        if (isNetworkRecoveryActive) return
         val list = _messages.value.toMutableList()
         var updated = false
         val lastUserPrompt = list.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
@@ -1711,17 +1978,11 @@ class AgyChatBackend(
                 } else {
                     val err = sendRes.exceptionOrNull()?.message ?: "Failed to send message"
                     Log.e("ChatViewModel", "sendUserPrompt final error: $err")
-                    val isOffline = isNetworkIssue || err.contains("connect", ignoreCase = true) ||
-                            err.contains("network", ignoreCase = true) || err.contains("abort", ignoreCase = true) ||
-                            err.contains("no such host", ignoreCase = true)
+                    val isOffline = isNetworkIssue || isNetworkDisconnectionError(err)
 
                     if (isOffline) {
-                        com.example.gemini.domain.model.OfflineRecoveryManager.recordInterruptedTask(
-                            conversationId = conv.id,
-                            prompt = userPrompt,
-                            preferredModelId = "MODEL_GEMINI_3_8_FLASH_HIGH",
-                            reason = "Internet disconnected"
-                        )
+                        launchNetworkRecovery(conv.id, err)
+                        return@launch
                     }
 
                     val formattedErr = formatStructuredErrorMessage(
@@ -1870,6 +2131,9 @@ class AgyChatBackend(
     override fun stopStreaming() {
         val conv = _currentConversation.value
         streamingJob?.cancel()
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
+        isNetworkRecoveryActive = false
         isPromptInFlight = false
         _isStreaming.value = false
         hasStartedRunning = false
