@@ -250,6 +250,7 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val authPrefs = remember(context) { AuthPreferences(context) }
     var currentSection by remember { mutableStateOf(SettingsSection.MAIN) }
     // Hoisted so the main list keeps its position while a sub-section is open
     val mainMenuScrollState = rememberScrollState()

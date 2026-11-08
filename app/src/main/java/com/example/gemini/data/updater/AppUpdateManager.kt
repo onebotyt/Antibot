@@ -48,8 +48,10 @@ sealed class DownloadState {
 class AppUpdateManager(private val context: Context) {
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
 
     /**
@@ -216,7 +218,12 @@ class AppUpdateManager(private val context: Context) {
 
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                return@withContext Result.failure(Exception("Failed to download daemon binary: HTTP ${response.code}"))
+                val hint = when (response.code) {
+                    404, 504 -> " (Release assets still building or publishing on GitHub. Retry in a moment)"
+                    403 -> " (GitHub rate limit reached, please try again shortly)"
+                    else -> ""
+                }
+                return@withContext Result.failure(Exception("Failed to download daemon binary: HTTP ${response.code}$hint"))
             }
 
             val body = response.body ?: return@withContext Result.failure(Exception("Empty daemon binary response"))
@@ -300,7 +307,12 @@ class AppUpdateManager(private val context: Context) {
 
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                return@withContext Result.failure(Exception("Download failed: HTTP ${response.code}"))
+                val hint = when (response.code) {
+                    404, 504 -> " (APK still building on GitHub Actions. Please retry shortly)"
+                    403 -> " (GitHub rate limit reached, please try again shortly)"
+                    else -> ""
+                }
+                return@withContext Result.failure(Exception("Download failed: HTTP ${response.code}$hint"))
             }
 
             val body = response.body ?: return@withContext Result.failure(Exception("Empty download body"))
