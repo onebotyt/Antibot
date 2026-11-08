@@ -1,13 +1,12 @@
 {
-  "version_code": 170,
-  "version_name": "1.0.50",
+  "version_code": 171,
+  "version_name": "1.0.51",
   "min_supported_version_code": 1,
   "changelog": [
-    "Bottom Navigation Polish: Removed redundant Agents tab from bottom dock for clean 4-tab navigation (Chat, Projects, Terminal, Settings).",
-    "Streamlined Model Selector Pill: Reduced height to match 32dp attachment button, fixed capsule proportions, and expanded width so model names are never clipped.",
-    "UI Layout Optimization: Polished bottom action row inside chat card for balanced spacing and clean touch targets.",
-    "Consolidated Model Tiers: Grouped Gemini Flash High/Medium/Low into a single clean card with interactive mode selector chips and Active status indicator.",
-    "Smart LLM Manager: Full task-to-model routing for Architecture, Coding, Fast Q&A, and Shell tasks, with automatic Claude quota defense."
+    "Resolved CSRF Token Error: Automatically fetch and transmit x-codeium-csrf-token headers on all hub calls.",
+    "Added Pure Monochrome Solid White & Solid Black Theme: 100% OLED pitch black and crisp pure white with zero neon.",
+    "Unified Theme Templates: Each template now holds matching Dark & Light modes together, dynamically updating when toggling display modes.",
+    "Quick Theme Picker: Floating panel updated to display unified theme templates with real-time mode-aware color previews."
   ],
   "is_critical": false
 }

@@ -44,13 +44,23 @@ object AgyOkHttpClient {
                         }
                     } catch (_: Exception) {}
                 }
+                if (token.isBlank()) {
+                    token = AgyCsrfManager.instance.fetchCsrfTokenDirectly(hubUrl)
+                }
 
-                val request = chain.request().newBuilder()
+                val requestBuilder = chain.request().newBuilder()
                     .header("User-Agent", "antiGem-Android-Native")
                     .header("X-Grpc-Web", "1")
-                    .header(AuthPreferences.currentFramedHeader, token.ifBlank { "true" })
-                    .build()
 
+                if (token.isNotBlank()) {
+                    requestBuilder.header("x-codeium-csrf-token", token)
+                    requestBuilder.header("X-Codeium-Csrf-Token", token)
+                    requestBuilder.header(AuthPreferences.currentFramedHeader, token)
+                } else {
+                    requestBuilder.header(AuthPreferences.currentFramedHeader, "true")
+                }
+
+                val request = requestBuilder.build()
                 val response = chain.proceed(request)
 
                 // Check for CSRF expiry (HTTP 401/403 or gRPC status 16 UNAUTHENTICATED)

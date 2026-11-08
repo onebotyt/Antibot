@@ -35,6 +35,8 @@ object ThemeManager {
         private set
     var darkId by mutableStateOf(BuiltInThemes.DARK_DEFAULT)
         private set
+    var selectedTemplateId by mutableStateOf("antibot")
+        private set
     /** Whether the screen shows the dark side right now (set by GeminiTheme). */
     var isDark by mutableStateOf(true)
         private set
@@ -52,6 +54,10 @@ object ThemeManager {
         customThemes = runCatching { parseList(p.getString("custom", null)) }.getOrDefault(emptyList())
         lightId = p.getString("light_id", null) ?: BuiltInThemes.LIGHT_DEFAULT
         darkId = p.getString("dark_id", null) ?: BuiltInThemes.DARK_DEFAULT
+        selectedTemplateId = p.getString("selected_template_id", null)
+            ?: BuiltInThemes.templates.firstOrNull { it.darkThemeId == darkId }?.id
+            ?: BuiltInThemes.templates.firstOrNull { it.lightThemeId == lightId }?.id
+            ?: "antibot"
         // the mode decides which side shows before the first frame (the UI corrects it if the system says otherwise)
         isDark = p.getString("last_dark", null)?.let { it == "1" } ?: true
     }
@@ -167,12 +173,39 @@ object ThemeManager {
     fun select(theme: AppTheme, switchMode: Boolean = true): String? {
         if (theme.dark) darkId = theme.id else lightId = theme.id
         prefs?.edit()?.putString(if (theme.dark) "dark_id" else "light_id", theme.id)?.apply()
+        BuiltInThemes.templates.firstOrNull { it.darkThemeId == darkId || it.lightThemeId == lightId }?.let {
+            selectedTemplateId = it.id
+            prefs?.edit()?.putString("selected_template_id", it.id)?.apply()
+        }
         if (switchMode && isDark != theme.dark) {
             val mode = if (theme.dark) "DARK" else "LIGHT"
             setMode(mode)
             return mode
         }
         return null
+    }
+
+    fun activeTemplate(): ThemeTemplate {
+        return BuiltInThemes.templates.firstOrNull { it.id == selectedTemplateId }
+            ?: BuiltInThemes.templates.firstOrNull { it.darkThemeId == darkId }
+            ?: BuiltInThemes.templates.firstOrNull { it.lightThemeId == lightId }
+            ?: BuiltInThemes.templates.first()
+    }
+
+    fun selectTemplate(template: ThemeTemplate) {
+        selectedTemplateId = template.id
+        darkId = template.darkThemeId
+        lightId = template.lightThemeId
+        prefs?.edit()
+            ?.putString("selected_template_id", template.id)
+            ?.putString("dark_id", darkId)
+            ?.putString("light_id", lightId)
+            ?.apply()
+    }
+
+    fun themeForTemplate(template: ThemeTemplate, dark: Boolean = isDark): AppTheme {
+        val themeId = if (dark) template.darkThemeId else template.lightThemeId
+        return find(themeId) ?: BuiltInThemes.default(dark)
     }
 
     /** The app's theme mode: "SYSTEM", "LIGHT" or "DARK" (the same setting as Settings → Appearance). */

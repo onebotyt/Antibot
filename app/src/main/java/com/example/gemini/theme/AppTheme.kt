@@ -27,6 +27,18 @@ data class AppTheme(
     val colors: Map<String, Long> = emptyMap()
 )
 
+/**
+ * A unified theme template that pairs matching dark and light mode color schemes together.
+ * When the user switches display mode (Dark / Light / Auto), the active template automatically adjusts its colors.
+ */
+data class ThemeTemplate(
+    val id: String,
+    val name: String,
+    val about: String,
+    val darkThemeId: String,
+    val lightThemeId: String
+)
+
 /** Every color a theme can set, with what it is used for. */
 object ThemeTokens {
     class Token(val key: String, val group: String, val about: String)
@@ -309,6 +321,8 @@ object ThemeTokens {
 object BuiltInThemes {
     const val LIGHT_DEFAULT = "antibot_titanium_light"
     const val DARK_DEFAULT = "antibot_cybernetic"
+    const val PURE_MONOCHROME_LIGHT = "pure_monochrome_light"
+    const val PURE_MONOCHROME_DARK = "pure_monochrome_dark"
 
     /** How many themes at the top of each side's list are marked as recommended (the first is the default). */
     const val RECOMMENDED_COUNT = 4
@@ -416,6 +430,22 @@ object BuiltInThemes {
         codeBg = 0xFF000000, syntax = listOf(0xFF00F0FF, 0xFF94A3B8, 0xFF22C55E, 0xFFF59E0B, 0xFF555555, 0xFF6366F1, 0xFF38BDF8, 0xFFD4D4D4)
     )
 
+    /** Pure Solid 100% OLED black with neutral crisp white accents. Zero neon, maximum clarity. */
+    private fun pureMonochromeDark() = seeded(
+        id = PURE_MONOCHROME_DARK, name = "Pure Monochrome", about = "Solid 100% OLED black with clean white text and neutral gray accents. Zero neon.", dark = true,
+        bg = 0xFF000000, surface = 0xFF0A0A0A, card = 0xFF121212, variant = 0xFF1C1C1E, text = 0xFFF5F5F7, muted = 0xFF8E8E93,
+        primary = 0xFFFFFFFF, secondary = 0xFFE5E5EA, tertiary = 0xFFD1D1D6, success = 0xFF34C759, warning = 0xFFFF9F0A, danger = 0xFFFF453A, info = 0xFF64D2FF,
+        codeBg = 0xFF000000, syntax = listOf(0xFFFFFFFF, 0xFFE5E5EA, 0xFFA1A1AA, 0xFFD4D4D8, 0xFF71717A, 0xFFE4E4E7, 0xFFD1D1D6, 0xFFF5F5F7)
+    )
+
+    /** Pure Solid 100% crisp paper white with deep black text. Zero neon, maximum clarity. */
+    private fun pureMonochromeLight() = seeded(
+        id = PURE_MONOCHROME_LIGHT, name = "Pure Monochrome", about = "Solid 100% crisp pure white with deep black text and neutral slate borders. Zero neon.", dark = false,
+        bg = 0xFFFFFFFF, surface = 0xFFFFFFFF, card = 0xFFF8F9FA, variant = 0xFFF1F3F5, text = 0xFF09090B, muted = 0xFF64748B,
+        primary = 0xFF09090B, secondary = 0xFF27272A, tertiary = 0xFF52525B, success = 0xFF16A34A, warning = 0xFFD97706, danger = 0xFFDC2626, info = 0xFF0284C7,
+        codeBg = 0xFF18181B, syntax = listOf(0xFF09090B, 0xFF27272A, 0xFF475569, 0xFF52525B, 0xFF94A3B8, 0xFF18181B, 0xFF3F3F46, 0xFF09090B)
+    )
+
     /** A full theme from a few colors; everything else is worked out ([ThemeTokens.derive]). */
     private fun seeded(
         id: String, name: String, about: String, dark: Boolean,
@@ -435,7 +465,8 @@ object BuiltInThemes {
 
     val all: List<AppTheme> by lazy {
         listOf(
-            // Light themes: Top pick is AntiBot Titanium Frost
+            // Light themes: Top picks are Pure Monochrome and AntiBot Titanium Frost
+            pureMonochromeLight(),
             antibotTitaniumLight(),
             seeded("lavender", "Lavender", "Soft lilac with a violet accent", false,
                 0xFFF8F6FD, 0xFFF8F6FD, 0xFFFFFFFF, 0xFFECE7F8, 0xFF241B3A, 0xFF655B7F,
@@ -466,6 +497,7 @@ object BuiltInThemes {
                 0xFF268BD2, 0xFF2AA198, 0xFF6C71C4, 0xFF859900, 0xFFB58900, 0xFFDC322F, 0xFF268BD2,
                 0xFF002B36, listOf(0xFF859900, 0xFFB58900, 0xFF2AA198, 0xFFD33682, 0xFF657B83, 0xFF268BD2, 0xFFCB4B16, 0xFF93A1A1)),
             // Dark themes: Unique AntiBot line-up first
+            pureMonochromeDark(),
             antibotCybernetic(),
             neonCyberpunk(),
             midnightSapphire(),
@@ -532,6 +564,78 @@ object BuiltInThemes {
                 0xFF002B36, 0xFF002B36, 0xFF073642, 0xFF0B4452, 0xFFEEE8D5, 0xFF93A1A1,
                 0xFF268BD2, 0xFF2AA198, 0xFF6C71C4, 0xFF859900, 0xFFB58900, 0xFFDC322F, 0xFF2AA198,
                 0xFF00212B, listOf(0xFF859900, 0xFFB58900, 0xFF2AA198, 0xFFD33682, 0xFF6C8288, 0xFF268BD2, 0xFFCB4B16, 0xFF93A1A1))
+        )
+    }
+
+    /**
+     * Unified theme templates: each template holds both Dark and Light variants together.
+     * Choosing a template applies both modes automatically, reacting to the active display mode.
+     */
+    val templates: List<ThemeTemplate> by lazy {
+        listOf(
+            ThemeTemplate(
+                id = "monochrome",
+                name = "Pure Monochrome",
+                about = "Solid 100% OLED black & crisp pure white. Zero neon, maximum clarity.",
+                darkThemeId = PURE_MONOCHROME_DARK,
+                lightThemeId = PURE_MONOCHROME_LIGHT
+            ),
+            ThemeTemplate(
+                id = "antibot",
+                name = "AntiBot Studio",
+                about = "Signature look: deep obsidian armor in Dark, clean brushed titanium in Light.",
+                darkThemeId = DARK_DEFAULT,
+                lightThemeId = LIGHT_DEFAULT
+            ),
+            ThemeTemplate(
+                id = "sapphire",
+                name = "Midnight & Sky",
+                about = "Deep ocean navy in Dark mode, airy crisp sky blue in Light mode.",
+                darkThemeId = "midnight_sapphire",
+                lightThemeId = "sky"
+            ),
+            ThemeTemplate(
+                id = "emerald",
+                name = "Matrix & Mint",
+                about = "Retro terminal emerald in Dark mode, fresh crisp mint in Light mode.",
+                darkThemeId = "matrix_emerald",
+                lightThemeId = "mint"
+            ),
+            ThemeTemplate(
+                id = "amethyst",
+                name = "Cosmic & Lavender",
+                about = "Deep cosmic nebula purple in Dark mode, soft lilac in Light mode.",
+                darkThemeId = "cosmic_amethyst",
+                lightThemeId = "lavender"
+            ),
+            ThemeTemplate(
+                id = "nordic",
+                name = "Nordic & Paper",
+                about = "Calm arctic slate in Dark mode, low-glare warm paper in Light mode.",
+                darkThemeId = "nord",
+                lightThemeId = "paper"
+            ),
+            ThemeTemplate(
+                id = "amber_linen",
+                name = "Amber & Linen",
+                about = "Warm charcoal amber in Dark mode, warm minimal linen in Light mode.",
+                darkThemeId = "graphite",
+                lightThemeId = "linen"
+            ),
+            ThemeTemplate(
+                id = "solarized",
+                name = "Solarized Contrast",
+                about = "High-contrast dark palette with yellow accents, classic solarized cream in Light.",
+                darkThemeId = "high_contrast",
+                lightThemeId = "solarized_light"
+            ),
+            ThemeTemplate(
+                id = "cyberpunk",
+                name = "Neon & Sakura",
+                about = "High-contrast electric neon in Dark mode, soft cherry blossom in Light mode.",
+                darkThemeId = "neon_cyberpunk",
+                lightThemeId = "sakura"
+            )
         )
     }
 

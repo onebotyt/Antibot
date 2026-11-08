@@ -391,6 +391,7 @@ class AgyChatBackend(
             // 2. Kick off login RPC on daemon (Login RPC opens browser / triggers auth flow)
             launch {
                 try {
+                    com.example.gemini.data.remote.core.AgyCsrfManager.instance.getCsrfTokenSync(hubUrl, forceRefresh = true)
                     val loginRes = agyHubClient.login(hubUrl)
                     if (loginRes.isFailure) {
                         val err = loginRes.exceptionOrNull()?.message ?: "Login request failed"

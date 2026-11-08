@@ -28,25 +28,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.gemini.theme.BuiltInThemes
 import com.example.gemini.theme.ThemeManager
+import com.example.gemini.theme.ThemeTemplate
 
 /**
  * A floating theme picker (opened from the sidebar). It covers only the bottom of the screen and takes no touches
  * outside itself, so the sidebar and the chat stay visible (and usable) behind it: a tap on a theme applies it at once
- * and the whole app shows it right away. It lists the themes of the side on screen (light or dark); the mode row
- * switches sides. Back or ✕ closes it.
+ * and the whole app shows it right away. It lists unified templates holding both Dark and Light modes.
  */
 @Composable
 fun ThemeQuickPanel(themeMode: String, onSetThemeMode: (String) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(onBack = onClose)
-    val dark = ThemeManager.isDark
-    val selectedId = if (dark) ThemeManager.darkId else ThemeManager.lightId
-    val custom = ThemeManager.customThemes
-    val themes = remember(custom, dark) { ThemeManager.all().filter { it.dark == dark } }
+    val templates = remember { BuiltInThemes.templates }
+    val activeTemplate = ThemeManager.activeTemplate()
     val listState = rememberLazyListState()
-    // show the theme in use (with one neighbour before it) when the panel opens or the side changes
-    LaunchedEffect(dark) {
-        val i = themes.indexOfFirst { it.id == selectedId }
+    LaunchedEffect(activeTemplate.id) {
+        val i = templates.indexOfFirst { it.id == activeTemplate.id }
         if (i > 0) listState.scrollToItem(i - 1)
     }
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -73,7 +71,7 @@ fun ThemeQuickPanel(themeMode: String, onSetThemeMode: (String) -> Unit, onClose
                 }
             }
             Text(
-                "Tap a theme to try it: the app changes behind this panel.",
+                "Tap a template to try it: changes dynamically with Light / Dark mode.",
                 fontSize = 11.sp, color = onSurface.copy(alpha = 0.6f),
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp)
             )
@@ -82,10 +80,13 @@ fun ThemeQuickPanel(themeMode: String, onSetThemeMode: (String) -> Unit, onClose
                 contentPadding = PaddingValues(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(themes, key = { it.id }) { t ->
-                    ThemeCard(
-                        t, t.id == selectedId, MaterialTheme.colorScheme.surface, Modifier.width(138.dp),
-                        onClick = { ThemeManager.select(t, switchMode = false) }, onDelete = null
+                items(templates, key = { it.id }) { template ->
+                    ThemeTemplateCard(
+                        template = template,
+                        selected = template.id == activeTemplate.id,
+                        cardBg = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.width(148.dp),
+                        onClick = { ThemeManager.selectTemplate(template) }
                     )
                 }
             }
