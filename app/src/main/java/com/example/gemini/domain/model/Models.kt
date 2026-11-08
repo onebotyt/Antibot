@@ -289,7 +289,16 @@ data class ModelQuota(
     val weeklyResetCountdown: String? = null
 ) {
     val percentage: Int
-        get() = remainingFraction?.let { (it * 100).toInt() } ?: 0
+        get() {
+            if (remainingFraction != null) {
+                return (remainingFraction * 100).toInt().coerceIn(0, 100)
+            }
+            val used = usedPercentage?.replace("%", "")?.trim()?.toIntOrNull()
+            if (used != null) {
+                return (100 - used).coerceIn(0, 100)
+            }
+            return 0
+        }
 }
 
 @Serializable

@@ -708,7 +708,16 @@ fun ChatScreen(
         }
         else -> AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
     }
-    val currentQuota = quotas.find { it.modelId == selectedModelId }
+    val currentQuota = remember(quotas, selectedModelId, currentModel) {
+        quotas.find { it.modelId.equals(selectedModelId, ignoreCase = true) }
+            ?: quotas.find { it.modelId.startsWith(selectedModelId, ignoreCase = true) || selectedModelId.startsWith(it.modelId, ignoreCase = true) }
+            ?: quotas.find {
+                val isClaude = currentModel.family == com.example.gemini.domain.model.ModelFamily.CLAUDE
+                if (isClaude) it.modelId.contains("claude", ignoreCase = true)
+                else (it.modelId.contains("gemini", ignoreCase = true) || it.modelId.contains("flash", ignoreCase = true) || it.modelId.contains("pro", ignoreCase = true))
+            }
+            ?: quotas.firstOrNull { it.remainingFraction != null || !it.usedPercentage.isNullOrBlank() }
+    }
 
     val activeChatProject by TermuxDaemonManager.activeProject.collectAsState()
     val usedProjects by TermuxDaemonManager.projects.collectAsState()
