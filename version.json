@@ -6,7 +6,7 @@
     "Restored hands-free Jarvis voice assistant: voice orb overlay, wake phrase, task management, and tile service adapted for AGY and Local models.",
     "Integrated Jarvis MCP preset and bridge server routing for voice-controlled app operations.",
     "Added intelligent message queue: messages sent while AI is working are queued and auto-sent when generation finishes.",
-    "Queue action controls: ✏️ Edit (removes from queue into text box), ⚡ Send Immediately (interrupts with smart continuation vs new task reasoning directive), and ✕ Delete."
+    "Queue action controls: \u270f\ufe0f Edit (removes from queue into text box), \u26a1 Send Immediately (interrupts with smart continuation vs new task reasoning directive), and \u2715 Delete."
   ],
   "is_critical": false
 }
