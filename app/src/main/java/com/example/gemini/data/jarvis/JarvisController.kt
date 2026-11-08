@@ -634,12 +634,12 @@ object JarvisController {
 
     private fun checkUsageLow() {
         if (!JarvisPreferences.enabled.value || !JarvisPreferences.announceUsageLow.value) return
-        val lowQuota = vm.agyBackend.quotas.value.firstOrNull { it.percentageUsed >= 85 } ?: return
-        val left = (100 - lowQuota.percentageUsed).coerceAtLeast(0)
+        val lowQuota = vm.agyBackend.quotas.value.firstOrNull { (it.remainingFraction ?: 1.0f) <= 0.15f } ?: return
+        val left = Math.round((lowQuota.remainingFraction ?: 1.0f) * 100).coerceAtLeast(0)
         val window = System.currentTimeMillis() / (1000 * 60 * 30)
         if (window != usageWarnedFor && !listening.value) {
             usageWarnedFor = window
-            scope.launch { speakOut("Heads up, only about $left percent of your ${lowQuota.modelName} quota is left.") }
+            scope.launch { speakOut("Heads up, only about $left percent of your ${lowQuota.modelId} quota is left.") }
         }
     }
 
