@@ -1034,7 +1034,6 @@ object JarvisMcp {
             }),
             bool("group_chats_by_workspace", "Group the chat list by project", false, { vm.groupChatsByWorkspace.value }, { vm.setGroupChatsByWorkspace(it) }),
             bool("floating_bubble", "Floating chat bubble over other apps", false, { vm.isFloatingBubbleEnabled.value }, { vm.setFloatingBubbleEnabled(it) }),
-            bool("vibrate_when_chat_done", "A light buzz when a chat finishes", false, { ChatCompletionMonitor.vibrate.value }, { ChatCompletionMonitor.setVibrate(it) }),
             Setting("new_chat_agent", "Agent of new chats", "agy|local", false, get = { vm.newChatAgent.value.name.lowercase() }, set = { v ->
                 val a = when (v.trim().lowercase()) { "local" -> AgentKind.LOCAL; "agy", "antigravity" -> AgentKind.AGY; else -> null }
                 when {

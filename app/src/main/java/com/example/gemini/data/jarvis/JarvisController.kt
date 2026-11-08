@@ -1325,7 +1325,7 @@ object JarvisController {
     /** Sets the model of a chat that is not on screen. Applies to its next message. */
     suspend fun setChatModel(id: String, kind: AgentKind, modelId: String) {
         when (kind) {
-            AgentKind.AGY -> vm.agyBackend.rememberChatModel(id, modelId)
+            AgentKind.AGY -> JarvisTasks.rememberChatModel(id, modelId)
             AgentKind.LOCAL -> vm.localBackend.selectModel(modelId)
         }
     }

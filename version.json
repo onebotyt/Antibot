@@ -1,6 +1,6 @@
 {
-  "version_code": 172,
-  "version_name": "1.0.52",
+  "version_code": 173,
+  "version_name": "1.0.53",
   "min_supported_version_code": 1,
   "changelog": [
     "Restored hands-free Jarvis voice assistant: voice orb overlay, wake phrase, task management, and tile service adapted for AGY and Local models.",

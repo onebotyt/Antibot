@@ -523,6 +523,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ((if (AgentKind.AGY in enabled) agy else emptyList()) + (if (AgentKind.LOCAL in enabled) local else emptyList()))
             .sortedByDescending { it.updatedAt }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val allConversations: StateFlow<List<Conversation>> get() = conversations
 
     private val _currentConversation = store.currentConversation
     val currentConversation: StateFlow<Conversation?> = _currentConversation.asStateFlow()

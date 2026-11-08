@@ -85,8 +85,12 @@ object JarvisTasks {
     /** Approvals waiting in Antigravity chats that are not on screen (tasks and the Jarvis chat), from the hub. */
     private val agyPending = ConcurrentHashMap<String, List<Pair<ToolCall, String>>>()
     private val agyCheckedAt = ConcurrentHashMap<String, Long>()
+    private val chatModelMap = ConcurrentHashMap<String, String>()
     private val hub by lazy { AgyHubClient() }
     private lateinit var scope: CoroutineScope
+
+    fun rememberChatModel(id: String, modelId: String) { chatModelMap[id] = modelId }
+    fun modelOfChat(id: String): String = chatModelMap[id] ?: vm.conversations.value.find { it.id == id }?.modelId?.takeIf { it.isNotBlank() } ?: vm.selectedModelId.value
 
     private val vm get() = JarvisController.vm
 
@@ -132,7 +136,7 @@ object JarvisTasks {
                 val ws = projectPath ?: (com.example.gemini.data.daemon.TermuxDaemonManager.activeProject.value?.path
                     ?: com.example.gemini.data.local.LocalEnvironmentManager.getHomeDir(app).absolutePath)
                 hub.startCascade(id, enum, if (ws.startsWith("file://")) ws else "file://$ws").getOrThrow()
-                vm.agyBackend.rememberChatModel(id, chosen)
+                rememberChatModel(id, chosen)
                 hub.sendUserPrompt(id, PromptExpansion.expand(text), enum).getOrThrow()
                 scope.launch { delay(2500); runCatching { vm.agyBackend.syncAgyConversations(force = true) } }
                 id
@@ -180,7 +184,7 @@ object JarvisTasks {
                 vm.localBackend.sendMessage(PromptExpansion.expand(text))
             }
             AgentKind.AGY -> {
-                val enum = AgyHubClient.resolveModelEnum(vm.agyBackend.modelOfChat(t.id))
+                val enum = AgyHubClient.resolveModelEnum(modelOfChat(t.id))
                 hub.sendUserPrompt(t.id, PromptExpansion.expand(text), enum).getOrElse { return "Could not send: ${it.message}" }
             }
         }
@@ -277,7 +281,7 @@ object JarvisTasks {
     }
 
     private fun isRunningNow(t: Task): Boolean = when (t.agent) {
-        AgentKind.LOCAL -> vm.localBackend.isStreaming.value
+        AgentKind.LOCAL -> vm.localBackend.conversations.value.find { it.id == t.id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == t.id)
         AgentKind.AGY -> agyBusy(t.id)
     }
 
@@ -312,7 +316,7 @@ object JarvisTasks {
         val sig: String
         when (t.agent) {
             AgentKind.LOCAL -> {
-                running = vm.localBackend.isStreaming.value && vm.currentConversation.value?.id == t.id
+                running = vm.localBackend.conversations.value.find { it.id == t.id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == t.id)
                 val msgs = vm.messages.value
                 val last = msgs.lastOrNull()
                 sig = "${msgs.size}:${last?.content?.length}"
