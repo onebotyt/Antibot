@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,12 +38,16 @@ import com.example.gemini.theme.AppColors
 
 /**
  * Messages sent while the agent was working, waiting to be delivered (above the input box).
- * Each row offers "Send now" (interrupts the current work and delivers it) and "Delete" when the agent allows them.
+ * Each row offers:
+ * - "Edit" (removes from queue and loads text into the chat text box)
+ * - "Send Immediately" (interrupts the current work, checks context, and delivers immediately)
+ * - "Delete" (discards message from queue)
  */
 @Composable
 fun QueuedMessagesCard(
     messages: List<QueuedMessage>,
     onSendNow: (String) -> Unit,
+    onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -76,21 +80,26 @@ fun QueuedMessagesCard(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "Sends when the agent is done",
+                        text = "Auto-sends when work finishes",
                         fontSize = 12.sp,
                         color = AppColors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                messages.forEach { msg -> QueuedRow(msg, onSendNow, onDelete) }
+                messages.forEach { msg -> QueuedRow(msg, onSendNow, onEdit, onDelete) }
             }
         }
     }
 }
 
 @Composable
-private fun QueuedRow(msg: QueuedMessage, onSendNow: (String) -> Unit, onDelete: (String) -> Unit) {
+private fun QueuedRow(
+    msg: QueuedMessage,
+    onSendNow: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -122,22 +131,39 @@ private fun QueuedRow(msg: QueuedMessage, onSendNow: (String) -> Unit, onDelete:
             )
         }
         if (msg.canSendNow) {
-            IconButton(onClick = { onSendNow(msg.id) }, modifier = Modifier.size(36.dp)) {
+            IconButton(
+                onClick = { onEdit(msg.id) },
+                modifier = Modifier.size(32.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Rounded.ArrowUpward,
-                    contentDescription = "Send now: ${msg.text.take(60)}",
-                    tint = AppColors.onBackground,
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = "Edit message",
+                    tint = AppColors.textSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            IconButton(
+                onClick = { onSendNow(msg.id) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Bolt,
+                    contentDescription = "Send immediately",
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }
         }
         if (msg.canDelete) {
-            IconButton(onClick = { onDelete(msg.id) }, modifier = Modifier.size(36.dp)) {
+            IconButton(
+                onClick = { onDelete(msg.id) },
+                modifier = Modifier.size(32.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "Delete: ${msg.text.take(60)}",
+                    contentDescription = "Delete from queue",
                     tint = AppColors.textSecondary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

@@ -105,11 +105,38 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     ANDROID_AUTOMATION("Android Automation", "Let AI agents see and control this phone"),
     X11_DESKTOP("X11 Desktop", "Linux desktop apps with Termux:X11"),
     CHANGELOG("What's new", "Every AntiBot version and what changed"),
-    ABOUT("About & Info", "App version, package details, and bridge export");
+    ABOUT("About & Info", "App version, package details, and bridge export"),
+    JARVIS("Jarvis", "Hands-free voice assistant"),
+    JARVIS_AGENT("Jarvis · Agent", "Which agent and model runs Jarvis"),
+    JARVIS_PERSONALITY("Jarvis · Personality & Voice", "Name, voice engine, speed, quiet mode"),
+    JARVIS_SETUP("Jarvis · Setup", "Verify connection, mic permission, and tools"),
+    JARVIS_WAKE("Jarvis · Wake Word", "Wake phrase and hotword triggers"),
+    JARVIS_LISTEN("Jarvis · Listening & Silence", "Speech timeout, auto-send and silence threshold"),
+    JARVIS_VOICE("Jarvis · Voice & Audio", "TTS engines and speech parameters"),
+    JARVIS_TASKS("Jarvis · Tasks & Automation", "Autonomous tasks and background monitoring"),
+    JARVIS_APPROVALS("Jarvis · Approvals & Security", "Execution safety and tool confirmation"),
+    JARVIS_SCREEN("Jarvis · Screen & Context", "Screen awareness and visual context"),
+    JARVIS_CHAT("Jarvis · Chat & Logs", "Voice session history and transcript logs");
+
+    val jarvisPage: com.example.gemini.ui.jarvis.JarvisSettingsPage? get() = when (this) {
+        JARVIS_AGENT -> com.example.gemini.ui.jarvis.JarvisSettingsPage.AGENT
+        JARVIS_PERSONALITY -> com.example.gemini.ui.jarvis.JarvisSettingsPage.PERSONALITY
+        JARVIS_SETUP -> com.example.gemini.ui.jarvis.JarvisSettingsPage.SETUP
+        JARVIS_WAKE -> com.example.gemini.ui.jarvis.JarvisSettingsPage.WAKE
+        JARVIS_LISTEN -> com.example.gemini.ui.jarvis.JarvisSettingsPage.LISTEN
+        JARVIS_VOICE -> com.example.gemini.ui.jarvis.JarvisSettingsPage.VOICE
+        JARVIS_TASKS -> com.example.gemini.ui.jarvis.JarvisSettingsPage.TASKS
+        JARVIS_APPROVALS -> com.example.gemini.ui.jarvis.JarvisSettingsPage.APPROVALS
+        JARVIS_SCREEN -> com.example.gemini.ui.jarvis.JarvisSettingsPage.SCREEN
+        JARVIS_CHAT -> com.example.gemini.ui.jarvis.JarvisSettingsPage.CHAT
+        else -> null
+    }
 
     /** Where Back goes from this section. */
     val parent: SettingsSection get() = when (this) {
         ADB_CONNECT, ANDROID_AUTOMATION, X11_DESKTOP -> UTILITIES
+        JARVIS_AGENT, JARVIS_PERSONALITY, JARVIS_SETUP, JARVIS_WAKE, JARVIS_LISTEN,
+        JARVIS_VOICE, JARVIS_TASKS, JARVIS_APPROVALS, JARVIS_SCREEN, JARVIS_CHAT -> JARVIS
         else -> MAIN
     }
 }
@@ -597,6 +624,37 @@ fun SettingsDialog(
                         cardBg = cardBg,
                         cardBorder = cardBorder
                     )
+                    SettingsSection.JARVIS -> com.example.gemini.ui.jarvis.JarvisSettingsScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder,
+                        onOpen = { page ->
+                            val target = when (page) {
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.AGENT -> SettingsSection.JARVIS_AGENT
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.PERSONALITY -> SettingsSection.JARVIS_PERSONALITY
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.SETUP -> SettingsSection.JARVIS_SETUP
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.WAKE -> SettingsSection.JARVIS_WAKE
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.LISTEN -> SettingsSection.JARVIS_LISTEN
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.VOICE -> SettingsSection.JARVIS_VOICE
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.TASKS -> SettingsSection.JARVIS_TASKS
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.APPROVALS -> SettingsSection.JARVIS_APPROVALS
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.SCREEN -> SettingsSection.JARVIS_SCREEN
+                                com.example.gemini.ui.jarvis.JarvisSettingsPage.CHAT -> SettingsSection.JARVIS_CHAT
+                            }
+                            currentSection = target
+                        }
+                    )
+                    SettingsSection.JARVIS_AGENT, SettingsSection.JARVIS_PERSONALITY, SettingsSection.JARVIS_SETUP,
+                    SettingsSection.JARVIS_WAKE, SettingsSection.JARVIS_LISTEN, SettingsSection.JARVIS_VOICE,
+                    SettingsSection.JARVIS_TASKS, SettingsSection.JARVIS_APPROVALS, SettingsSection.JARVIS_SCREEN,
+                    SettingsSection.JARVIS_CHAT -> {
+                        currentSection.jarvisPage?.let { page ->
+                            com.example.gemini.ui.jarvis.JarvisSettingsSectionPage(
+                                page = page,
+                                cardBg = cardBg,
+                                cardBorder = cardBorder
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -695,6 +753,15 @@ private fun MainSettingsMenu(
                 title = "Slash Commands",
                 subtitle = "Create commands that expand into longer tasks",
                 onClick = { onNavigate(SettingsSection.SLASH_COMMANDS) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.RecordVoiceOver,
+                title = "Jarvis Voice Assistant",
+                subtitle = "Hands-free voice orb, screen context & autonomous tasks",
+                badgeText = if (com.example.gemini.data.jarvis.JarvisPreferences.enabled.value) "Active" else "Off",
+                badgeStyle = if (com.example.gemini.data.jarvis.JarvisPreferences.enabled.value) SettingsBadgeStyle.GREEN else SettingsBadgeStyle.GREY,
+                onClick = { onNavigate(SettingsSection.JARVIS) }
             )
         }
 
@@ -3478,6 +3545,7 @@ private fun McpSubScreen(
                 McpPreset("Android", "Tap, type & read this phone", Icons.Outlined.PhoneAndroid, Color(0xFF14B8A6),
                     localSpec(bridge.ANDROID_AUTOMATION_MCP_NAME, "/android")),
                 McpPreset("Notes & To-dos", "Read & edit your notes", Icons.Outlined.EditNote, Color(0xFFF59E0B), localSpec(bridge.NOTES_MCP_NAME, "/notes")),
+                McpPreset("Jarvis Voice", "Hands-free voice assistant tools", Icons.Outlined.RecordVoiceOver, Color(0xFF6366F1), localSpec(bridge.JARVIS_MCP_NAME, "/jarvis")),
                 McpPreset("Stitch", "Google Stitch UI design · API key", Icons.Outlined.Palette, Color(0xFFEC4899),
                     com.example.gemini.domain.model.McpServerSpec(serverName = "stitch", serverUrl = "https://stitch.googleapis.com/mcp", headers = mapOf("X-Goog-Api-Key" to "")))
             )

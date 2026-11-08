@@ -192,6 +192,102 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isCurrentChatActivelyRunning = agyBackend.isCurrentChatActivelyRunning
     val isCurrentChatBackgroundActive = agyBackend.isCurrentChatBackgroundActive
     val connectionState = agyBackend.connectionState
+
+    private val _queuedMessages = MutableStateFlow<Map<String, List<com.example.gemini.domain.model.QueuedMessage>>>(emptyMap())
+    val queuedMessages: StateFlow<List<com.example.gemini.domain.model.QueuedMessage>> = kotlinx.coroutines.flow.combine(
+        store.currentConversation,
+        _queuedMessages
+    ) { conv, map ->
+        val key = conv?.id.orEmpty()
+        map[key].orEmpty()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    init {
+        viewModelScope.launch {
+            var wasRunning = false
+            isCurrentChatActivelyRunning.collect { isRunning ->
+                if (wasRunning && !isRunning) {
+                    val convId = currentConversation.value?.id.orEmpty()
+                    if (convId.isNotEmpty()) {
+                        var nextMsg: com.example.gemini.domain.model.QueuedMessage? = null
+                        _queuedMessages.update { map ->
+                            val list = map[convId].orEmpty()
+                            if (list.isNotEmpty()) {
+                                nextMsg = list.first()
+                                map + (convId to list.drop(1))
+                            } else {
+                                map
+                            }
+                        }
+                        nextMsg?.let { msg ->
+                            kotlinx.coroutines.delay(200)
+                            sendMessage(msg.text)
+                        }
+                    }
+                }
+                wasRunning = isRunning
+            }
+        }
+    }
+
+    fun enqueueMessage(conversationId: String, text: String, attachmentCount: Int = 0) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() && attachmentCount == 0) return
+        val id = java.util.UUID.randomUUID().toString()
+        val msg = com.example.gemini.domain.model.QueuedMessage(
+            id = id,
+            text = trimmed,
+            attachmentCount = attachmentCount,
+            canSendNow = true,
+            canDelete = true,
+            isPending = false
+        )
+        _queuedMessages.update { map ->
+            val list = map[conversationId].orEmpty() + msg
+            map + (conversationId to list)
+        }
+    }
+
+    fun editQueuedMessage(conversationId: String, id: String): String? {
+        var textFound: String? = null
+        _queuedMessages.update { map ->
+            val list = map[conversationId].orEmpty()
+            val target = list.firstOrNull { it.id == id }
+            textFound = target?.text
+            map + (conversationId to list.filter { it.id != id })
+        }
+        return textFound
+    }
+
+    fun deleteQueuedMessage(conversationId: String, id: String) {
+        _queuedMessages.update { map ->
+            val list = map[conversationId].orEmpty()
+            map + (conversationId to list.filter { it.id != id })
+        }
+    }
+
+    fun sendImmediately(conversationId: String, id: String) {
+        var targetMsg: com.example.gemini.domain.model.QueuedMessage? = null
+        _queuedMessages.update { map ->
+            val list = map[conversationId].orEmpty()
+            targetMsg = list.firstOrNull { it.id == id }
+            map + (conversationId to list.filter { it.id != id })
+        }
+        val msg = targetMsg ?: return
+
+        stopStreaming()
+
+        val steeringPrompt = "⚡ [IMMEDIATE STEERING DIRECTIVE]\n" +
+            "The user interrupted ongoing work to issue this command immediately:\n" +
+            "\"${msg.text}\"\n\n" +
+            "First, think and determine whether this directive is related to the work you were just doing (a correction, tweak, or continuation) or if it is an entirely new task. State your determination briefly, then act accordingly."
+
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(250)
+            sendMessage(steeringPrompt)
+        }
+    }
+
     fun refreshActiveInstances() = agyBackend.refreshActiveInstances()
     fun terminateInstance(conversationId: String) = agyBackend.terminateInstance(conversationId)
     fun syncAgyConversations(force: Boolean = false) = agyBackend.syncAgyConversations(force)

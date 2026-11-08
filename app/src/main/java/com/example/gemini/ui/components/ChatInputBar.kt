@@ -182,6 +182,7 @@ fun ChatInputBar(
     focusRequester: FocusRequester = remember { FocusRequester() },
     queuedMessages: List<com.example.gemini.domain.model.QueuedMessage> = emptyList(),
     onSendQueuedNow: (String) -> Unit = {},
+    onEditQueued: (String) -> Unit = {},
     onDeleteQueued: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -624,6 +625,7 @@ fun ChatInputBar(
             QueuedMessagesCard(
                 messages = queuedMessages,
                 onSendNow = onSendQueuedNow,
+                onEdit = onEditQueued,
                 onDelete = onDeleteQueued,
                 modifier = Modifier.padding(bottom = 6.dp)
             )

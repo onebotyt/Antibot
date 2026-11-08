@@ -1,12 +1,12 @@
 {
-  "version_code": 171,
-  "version_name": "1.0.51",
+  "version_code": 172,
+  "version_name": "1.0.52",
   "min_supported_version_code": 1,
   "changelog": [
-    "Resolved CSRF Token Error: Automatically fetch and transmit x-codeium-csrf-token headers on all hub calls.",
-    "Added Pure Monochrome Solid White & Solid Black Theme: 100% OLED pitch black and crisp pure white with zero neon.",
-    "Unified Theme Templates: Each template now holds matching Dark & Light modes together, dynamically updating when toggling display modes.",
-    "Quick Theme Picker: Floating panel updated to display unified theme templates with real-time mode-aware color previews."
+    "Restored hands-free Jarvis voice assistant: voice orb overlay, wake phrase, task management, and tile service adapted for AGY and Local models.",
+    "Integrated Jarvis MCP preset and bridge server routing for voice-controlled app operations.",
+    "Added intelligent message queue: messages sent while AI is working are queued and auto-sent when generation finishes.",
+    "Queue action controls: ✏️ Edit (removes from queue into text box), ⚡ Send Immediately (interrupts with smart continuation vs new task reasoning directive), and ✕ Delete."
   ],
   "is_critical": false
 }

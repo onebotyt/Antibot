@@ -194,6 +194,7 @@ fun ChatScreen(
     val conversationError by viewModel.conversationError.collectAsState()
     val activeInstances by viewModel.activeInstances.collectAsState()
     val isActivelyRunning by viewModel.isCurrentChatActivelyRunning.collectAsState()
+    val queuedMessages by viewModel.queuedMessages.collectAsState()
     val isBackgroundActive by viewModel.isCurrentChatBackgroundActive.collectAsState()
     val quotaSummary by viewModel.quotaSummary.collectAsState()
     val preferredModelName by viewModel.preferredModelName.collectAsState()
@@ -1929,12 +1930,28 @@ fun ChatScreen(
                     },
                     isStreaming = isActivelyRunning,
                     isBackgroundActive = isBackgroundActive,
+                    queuedMessages = queuedMessages,
+                    onSendQueuedNow = { id -> viewModel.sendImmediately(activeConversationKey, id) },
+                    onEditQueued = { id ->
+                        val text = viewModel.editQueuedMessage(activeConversationKey, id)
+                        if (!text.isNullOrBlank()) {
+                            textFieldValue = TextFieldValue(text, androidx.compose.ui.text.TextRange(text.length))
+                            chatInputFocusRequester.requestFocus()
+                        }
+                    },
+                    onDeleteQueued = { id -> viewModel.deleteQueuedMessage(activeConversationKey, id) },
                     onSendMessage = { text ->
                         val prunedText = com.example.gemini.domain.context.LocalTurnSynthesizer.prunePrompt(text)
-                        viewModel.sendMessage(prunedText)
-                        userSentMessageTrigger++
-                        viewModel.clearDraft(activeConversationKey)
-                        textFieldValue = TextFieldValue("")
+                        if (isActivelyRunning || isRunningOrStreaming) {
+                            viewModel.enqueueMessage(activeConversationKey, prunedText, attachments.size)
+                            viewModel.clearDraft(activeConversationKey)
+                            textFieldValue = TextFieldValue("")
+                        } else {
+                            viewModel.sendMessage(prunedText)
+                            userSentMessageTrigger++
+                            viewModel.clearDraft(activeConversationKey)
+                            textFieldValue = TextFieldValue("")
+                        }
                     },
                     onStopStreaming = { showStopConfirmDialog = true },
                     attachments = attachments,

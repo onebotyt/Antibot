@@ -76,6 +76,9 @@ class MainActivity : ComponentActivity() {
                 android.util.Log.e("MainActivity", "Failed starting background services", t)
             }
         }
+        com.example.gemini.data.jarvis.JarvisPreferences.init(this)
+        com.example.gemini.data.jarvis.JarvisController.attach(application, chatViewModel)
+        handleJarvisIntent(intent)
         handleOAuthIntent(intent)
         handleIncomingFileIntent(intent)
 
@@ -259,6 +262,7 @@ class MainActivity : ComponentActivity() {
                         var previousModeForFocus by remember { mutableStateOf(currentViewMode) }
 
                         LaunchedEffect(currentViewMode) {
+                            com.example.gemini.data.jarvis.JarvisController.screen.value = currentViewMode.name.lowercase()
                             if (previousModeForFocus != currentViewMode) {
                                 val isKeyboardOpen = imeInsets.getBottom(density) > 0
                                 focusCoordinator.onScreenLeaving(previousModeForFocus, isKeyboardOpen)
@@ -460,6 +464,9 @@ class MainActivity : ComponentActivity() {
                                         onDismiss = { pendingUpdateInfo = null }
                                     )
                                 }
+
+                                // Jarvis: voice orb overlay
+                                com.example.gemini.ui.jarvis.JarvisOverlay()
                             }
                         }
                     }
@@ -480,8 +487,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        handleJarvisIntent(intent)
         handleOAuthIntent(intent)
         handleIncomingFileIntent(intent)
+    }
+
+    private fun handleJarvisIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(com.example.gemini.data.jarvis.JarvisTileService.EXTRA_TALK, false) != true) return
+        intent.removeExtra(com.example.gemini.data.jarvis.JarvisTileService.EXTRA_TALK)
+        window.decorView.postDelayed({
+            if (com.example.gemini.data.jarvis.JarvisController.isAttached) com.example.gemini.data.jarvis.JarvisController.startListening()
+        }, 700)
     }
 
     private fun handleOAuthIntent(intent: Intent?) {
