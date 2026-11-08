@@ -1231,9 +1231,9 @@ fun ChatInputBar(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
 
-                            // Model Selector Pill
+                            // Model Selector Pill (Compact 32dp capsule matching attachment button)
                             Surface(
                                 onClick = {
                                     focusManager.clearFocus(force = true)
@@ -1242,19 +1242,22 @@ fun ChatInputBar(
                                 },
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.background,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                                modifier = Modifier.height(32.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .padding(horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Outlined.AutoAwesome,
                                         contentDescription = null,
                                         tint = familyColor,
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     val modelName = when {
                                         isAuto -> "Auto"
                                         selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
@@ -1269,18 +1272,18 @@ fun ChatInputBar(
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.widthIn(max = 85.dp)
+                                        modifier = Modifier.widthIn(max = 140.dp)
                                     )
 
                                     val pct = quota?.percentage
                                     if (pct != null) {
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(4.dp))
                                                 .background(badgeColor.copy(alpha = 0.15f))
-                                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
                                             Text(
                                                 text = "$pct%",
@@ -1291,7 +1294,7 @@ fun ChatInputBar(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Icon(
                                         imageVector = Icons.Default.KeyboardArrowDown,
                                         contentDescription = "Switch Model",

@@ -1964,7 +1964,6 @@ fun ChatScreen(
                         currentTab = "CHAT",
                         onNavigateToChat = { /* Already on chat */ },
                         onNavigateToProjects = { showProjectPickerDialog = true },
-                        onNavigateToAgents = { scope.launch { drawerState.open() } },
                         onNavigateToTerminal = {
                             if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) {
                                 onNavigateToTerminal()
@@ -2977,7 +2976,6 @@ fun StudioNavigationDock(
     currentTab: String = "CHAT",
     onNavigateToChat: () -> Unit = {},
     onNavigateToProjects: () -> Unit = {},
-    onNavigateToAgents: () -> Unit = {},
     onNavigateToTerminal: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     isTerminalActive: Boolean = false,
@@ -2991,7 +2989,7 @@ fun StudioNavigationDock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -3006,12 +3004,6 @@ fun StudioNavigationDock(
                 icon = Icons.Outlined.Folder,
                 isSelected = currentTab == "PROJECTS",
                 onClick = onNavigateToProjects
-            )
-            StudioDockItem(
-                label = "Agents",
-                icon = Icons.Outlined.GridView,
-                isSelected = currentTab == "AGENTS",
-                onClick = onNavigateToAgents
             )
             StudioDockItem(
                 label = "Terminal",
