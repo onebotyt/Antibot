@@ -18,6 +18,7 @@ use tracing_subscriber::FmtSubscriber;
 mod handlers;
 mod models;
 mod security;
+mod supervisor;
 mod ws;
 
 use security::SecurityManager;
@@ -55,7 +56,7 @@ pub enum Commands {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version = "1.0.60", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
+#[command(author, version = "1.0.62", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
 pub struct Args {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -98,6 +99,7 @@ pub struct AppState {
     pub security: SecurityManager,
     pub start_time: Instant,
     pub tx: broadcast::Sender<String>,
+    pub supervisor: Arc<supervisor::PtySupervisor>,
 }
 
 #[tokio::main]
@@ -184,6 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let (tx, _) = broadcast::channel(100);
+    let supervisor = Arc::new(supervisor::PtySupervisor::new());
 
     let state = Arc::new(AppState {
         port: args.port,
@@ -192,6 +195,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         security: SecurityManager::new(args.token.clone()),
         start_time: Instant::now(),
         tx,
+        supervisor,
     });
 
     let artifacts_dir = PathBuf::from(&home).join(".gemini/antigravity-cli/brain");
@@ -293,6 +297,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/restore/chats", post(handlers::archive::restore_chats_handler))
         .route("/api/backup/projects", post(handlers::archive::backup_projects_handler))
         .route("/api/restore/projects", post(handlers::archive::restore_projects_handler))
+        // Terminal / PTY Process Supervisor
+        .route("/api/terminal/sessions", get(supervisor::handlers::list_sessions_handler))
+        .route("/api/terminal/spawn", post(supervisor::handlers::spawn_session_handler))
+        .route(
+            "/api/terminal/:id",
+            get(supervisor::handlers::get_session_handler)
+                .delete(supervisor::handlers::close_session_handler),
+        )
+        .route("/api/terminal/:id/write", post(supervisor::handlers::write_session_handler))
+        .route("/api/terminal/:id/resize", post(supervisor::handlers::resize_session_handler))
+        .route("/api/terminal/:id/kill", post(supervisor::handlers::kill_session_handler))
+        .route("/api/terminal/:id/close", post(supervisor::handlers::close_session_handler))
+        .route("/api/terminal/:id/output", get(supervisor::handlers::output_session_handler))
+        .route("/ws/terminal/:id", get(supervisor::handlers::ws_terminal_handler))
+        .route("/ws/pty/:id", get(supervisor::handlers::ws_terminal_handler))
         // WebSocket
         .route("/ws", get(ws::ws_handler))
         // Static files

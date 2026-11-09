@@ -1,11 +1,11 @@
 {
-  "version_code": 181,
-  "version_name": "1.0.61",
+  "version_code": 182,
+  "version_name": "1.0.62",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\udce6 Phase 2 Upgrade: Pure Rust Streaming Backup & Archive System (`agy_ide_bridge_rs`): Instant zero-dependency chat, project, and individual `.antigem` conversation backup and restore.",
-    "\u26a1 Replaced Legacy Shell Scripts: `backup_chats`, `restore_chats`, `backup_projects`, and `restore_projects` now execute native Rust engine with zero external `zip` or `python` tool dependencies.",
-    "\ud83d\udee1\ufe0f High-Throughput Compression: Tested with over 15,000 files and 2.4 GB of workspace data with seamless in-memory and disk streaming."
+    "🐚 Phase 3 Upgrade: Pure Rust Native PTY & Subprocess Supervisor (`portable-pty` & `libc`): Full bidirectional pseudo-terminal emulation for interactive CLI tools.",
+    "⚡ Zero Orphaned Processes: Subprocess group isolation (`-PID` signal dispatch) terminates runaway dev servers, python/node scripts, and child shells cleanly.",
+    "🌐 WebSocket Terminal Multiplexer: Dedicated `/ws/terminal/:id` and REST APIs (`/api/terminal/*`) with real-time bidirectional byte streaming, resize handling, and ANSI escape preservation."
   ],
   "is_critical": false
 }

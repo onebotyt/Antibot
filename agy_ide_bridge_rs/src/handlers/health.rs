@@ -13,7 +13,7 @@ pub async fn health_handler() -> impl IntoResponse {
     let resp = HealthResponse {
         status: "ok".to_string(),
         timestamp: Utc::now().to_rfc3339(),
-        version: "1.0.59".to_string(),
+        version: "1.0.62".to_string(),
     };
     (StatusCode::OK, Json(resp))
 }
@@ -24,7 +24,7 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResp
         status: "ok".to_string(),
         uptime,
         timestamp: Utc::now().to_rfc3339(),
-        version: "1.0.59".to_string(),
+        version: "1.0.62".to_string(),
         hub: StatusHub {
             active: false,
             status: "stopped".to_string(),
@@ -43,7 +43,7 @@ pub async fn server_info_handler(State(state): State<Arc<AppState>>) -> impl Int
     let resp = json!({
         "status": "ok",
         "engine": "rust",
-        "version": "1.0.59",
+        "version": "1.0.62",
         "port": state.port,
         "hubPort": state.hub_port,
         "homeDir": home,
@@ -54,7 +54,8 @@ pub async fn server_info_handler(State(state): State<Arc<AppState>>) -> impl Int
     (StatusCode::OK, Json(resp))
 }
 
-pub async fn shutdown_handler() -> impl IntoResponse {
+pub async fn shutdown_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.supervisor.kill_all().await;
     tokio::spawn(async {
         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
         std::process::exit(0);
@@ -73,16 +74,23 @@ pub async fn quotas_handler() -> impl IntoResponse {
     (StatusCode::OK, Json(json!({})))
 }
 
-pub async fn instances_handler() -> impl IntoResponse {
-    (StatusCode::OK, Json(json!({ "instances": [] })))
+pub async fn instances_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let sessions = state.supervisor.list().await;
+    let instances: Vec<serde_json::Value> = sessions.iter().map(|s| s.to_json()).collect();
+    (StatusCode::OK, Json(json!({ "instances": instances })))
 }
 
-pub async fn terminate_instance_handler(AxumPath(id): AxumPath<String>) -> impl IntoResponse {
-    (StatusCode::OK, Json(json!({ "status": "terminated", "conversationId": id })))
+pub async fn terminate_instance_handler(
+    State(state): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let _ = state.supervisor.kill(&id, Some(libc::SIGTERM)).await;
+    (StatusCode::OK, Json(json!({ "status": "terminated", "conversationId": id, "instanceId": id })))
 }
 
-pub async fn abort_handler() -> impl IntoResponse {
-    (StatusCode::OK, Json(json!({ "status": "ok" })))
+pub async fn abort_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let killed = state.supervisor.kill_all().await;
+    (StatusCode::OK, Json(json!({ "status": "ok", "aborted": killed })))
 }
 
 pub async fn agy_cli_handler() -> impl IntoResponse {
