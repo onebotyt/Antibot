@@ -133,6 +133,40 @@ object AntiBotNative {
     @JvmStatic
     external fun computeAudioTelemetryNative(pcmBytes: ByteArray, sampleRate: Int): String
 
+    @JvmStatic
+    external fun indexDocumentNative(docJson: String): Boolean
+
+    @JvmStatic
+    external fun searchHybridNative(queryText: String, queryEmbedding: FloatArray, alpha: Float, topK: Int): String
+
+    @JvmStatic
+    external fun getIndexStatsNative(): String
+
+    data class SearchDocument(
+        val id: String,
+        val title: String,
+        val body: String,
+        val embedding: FloatArray = floatArrayOf(),
+        val metadata: Map<String, String> = emptyMap()
+    )
+
+    data class SearchResultItem(
+        val id: String,
+        val score: Float,
+        val bm25Score: Float,
+        val vectorScore: Float,
+        val title: String,
+        val snippet: String,
+        val metadata: Map<String, String> = emptyMap()
+    )
+
+    data class IndexStats(
+        val totalDocuments: Int,
+        val uniqueTerms: Int,
+        val totalPostings: Int,
+        val avgDocLength: Float
+    )
+
     data class AudioTelemetry(
         val normalizedAmplitude: Float,
         val peakAmplitude: Float,
@@ -1165,6 +1199,89 @@ object AntiBotNative {
                 spectrumBands = FloatArray(8),
                 sampleRate = sampleRate
             )
+        }
+    }
+
+    /**
+     * Indexes a document into the native full-text (BM25) and hybrid vector database.
+     */
+    fun indexDocument(doc: SearchDocument): Boolean {
+        if (!isLoaded || doc.id.isBlank()) return false
+        return try {
+            val obj = JSONObject()
+            obj.put("id", doc.id)
+            obj.put("title", doc.title)
+            obj.put("body", doc.body)
+            val embArr = JSONArray()
+            for (v in doc.embedding) embArr.put(v.toDouble())
+            obj.put("embedding", embArr)
+            val metaObj = JSONObject()
+            for ((k, v) in doc.metadata) metaObj.put(k, v)
+            obj.put("metadata", metaObj)
+            indexDocumentNative(obj.toString())
+        } catch (e: Throwable) {
+            Log.w(TAG, "indexDocumentNative error: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Performs hybrid search combining BM25 lexical ranking and embedding cosine similarity.
+     */
+    fun searchHybrid(
+        queryText: String,
+        queryEmbedding: FloatArray = floatArrayOf(),
+        alpha: Float = 0.5f,
+        topK: Int = 10
+    ): List<SearchResultItem> {
+        if (!isLoaded || (queryText.isBlank() && queryEmbedding.isEmpty())) return emptyList()
+        return try {
+            val resJson = searchHybridNative(queryText, queryEmbedding, alpha, topK)
+            val resArr = JSONArray(resJson)
+            (0 until resArr.length()).map { i ->
+                val o = resArr.getJSONObject(i)
+                val meta = mutableMapOf<String, String>()
+                val mObj = o.optJSONObject("metadata")
+                if (mObj != null) {
+                    val keys = mObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        meta[k] = mObj.optString(k, "")
+                    }
+                }
+                SearchResultItem(
+                    id = o.optString("id", ""),
+                    score = o.optDouble("score", 0.0).toFloat(),
+                    bm25Score = o.optDouble("bm25_score", 0.0).toFloat(),
+                    vectorScore = o.optDouble("vector_score", 0.0).toFloat(),
+                    title = o.optString("title", ""),
+                    snippet = o.optString("snippet", ""),
+                    metadata = meta
+                )
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "searchHybridNative error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Returns statistics of the native full-text and vector search database.
+     */
+    fun getIndexStats(): IndexStats {
+        if (!isLoaded) return IndexStats(0, 0, 0, 0.0f)
+        return try {
+            val resJson = getIndexStatsNative()
+            val obj = JSONObject(resJson)
+            IndexStats(
+                totalDocuments = obj.optInt("total_documents", 0),
+                uniqueTerms = obj.optInt("unique_terms", 0),
+                totalPostings = obj.optInt("total_postings", 0),
+                avgDocLength = obj.optDouble("avg_doc_length", 0.0).toFloat()
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "getIndexStatsNative error: ${e.message}")
+            IndexStats(0, 0, 0, 0.0f)
         }
     }
 }

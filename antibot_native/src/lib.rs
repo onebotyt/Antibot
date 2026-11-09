@@ -7,6 +7,7 @@ pub mod agent_dag;
 pub mod audio;
 pub mod audio_dsp;
 pub mod crypto;
+pub mod db_search;
 pub mod diff;
 pub mod fuzzy;
 pub mod diff_patch;
@@ -20,6 +21,7 @@ pub mod vector_rag;
 static VAD: Mutex<Option<audio::VadEngine>> = Mutex::new(None);
 static RING_BUFFER: Mutex<Option<audio_dsp::AudioRingBuffer>> = Mutex::new(None);
 static TELEMETRY_NOISE: Mutex<f32> = Mutex::new(300.0);
+static SEARCH_INDEX: Mutex<Option<db_search::InvertedIndex>> = Mutex::new(None);
 
 #[no_mangle]
 pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_isNativeAvailable<'local>(
@@ -34,7 +36,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.75-rust-audio-dsp").unwrap();
+    let output = env.new_string("1.0.76-rust-db-search").unwrap();
     output.into_raw()
 }
 
@@ -805,6 +807,67 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_computeAudio
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_indexDocumentNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    doc_json: JString<'local>,
+) -> jboolean {
+    let input: String = match env.get_string(&doc_json) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    let doc: db_search::DocumentRecord = match serde_json::from_str(&input) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    let mut lock = SEARCH_INDEX.lock().unwrap();
+    let index = lock.get_or_insert_with(db_search::InvertedIndex::new);
+    index.insert(doc);
+    1
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_searchHybridNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    query_text: JString<'local>,
+    query_vec: JFloatArray<'local>,
+    alpha: jfloat,
+    top_k: jint,
+) -> jstring {
+    let q_text: String = match env.get_string(&query_text) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let query_embedding = get_float_vec(&mut env, &query_vec);
+
+    let mut lock = SEARCH_INDEX.lock().unwrap();
+    let index = lock.get_or_insert_with(db_search::InvertedIndex::new);
+    let results = index.search_hybrid(&q_text, &query_embedding, alpha, top_k.max(1) as usize);
+
+    let json_str = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getIndexStatsNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jstring {
+    let mut lock = SEARCH_INDEX.lock().unwrap();
+    let index = lock.get_or_insert_with(db_search::InvertedIndex::new);
+    let stats = index.stats();
+
+    let json_str = serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 

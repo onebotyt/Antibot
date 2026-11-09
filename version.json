@@ -1,11 +1,11 @@
 {
-  "version_code": 195,
-  "version_name": "1.0.75",
+  "version_code": 196,
+  "version_name": "1.0.76",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83c\udf99\ufe0f Phase 16 Upgrade: Native Real-time Audio Ring-Buffer, FFT Spectrum & VAD Telemetry in Rust.",
-    "\u26a1 Lock-free Audio Ring-Buffer: Microsecond-latency circular PCM stream buffering with atomic head pointers.",
-    "\ud83d\udcca Radix-2 FFT & Compose Equalizer: Real-time Cooley-Tukey spectral analysis with Hanning windowing and multi-band equalizer rendering."
+    "🗄️ Phase 17 Upgrade: Native SQLite Vector & Document Search Engine (FTS5 + BM25) in Rust.",
+    "⚡ BM25 Okapi Inverted Index: Ultra-fast keyword retrieval matching SQLite FTS5 (k1=1.2, b=0.75) with sub-millisecond query execution.",
+    "🔍 Hybrid Lexical + Vector Fusion: Reciprocal rank fusion combining lexical BM25 scores with semantic embedding cosine similarity."
   ],
   "is_critical": false
 }
