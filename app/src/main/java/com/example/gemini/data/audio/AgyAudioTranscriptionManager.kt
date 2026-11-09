@@ -100,6 +100,7 @@ class AgyAudioTranscriptionManager(
         _isLiveStreaming.value = true
         currentSessionId.value = null
         lastTranscribedText = ""
+        com.example.gemini.native.AntiBotNative.resetVad()
 
         val pendingChunks = ConcurrentLinkedQueue<Pair<Long, ByteArray>>()
         val seqCounter = AtomicLong(0L)
@@ -119,18 +120,24 @@ class AgyAudioTranscriptionManager(
                         }
                         val chunk = buffer.copyOf(read)
 
-                        // Calculate RMS amplitude for live waveform animation
-                        var sum = 0.0
-                        val sampleCount = read / 2
-                        if (sampleCount > 0) {
-                            for (i in 0 until read step 2) {
-                                val sample = (chunk[i].toInt() and 0xFF) or (chunk[i + 1].toInt() shl 8)
-                                val signedSample = if (sample >= 32768) sample - 65536 else sample
-                                sum += (signedSample * signedSample)
+                        // High-speed Audio DSP: SIMD RMS amplitude & VAD via libantibot_native.so
+                        val nativeMetrics = com.example.gemini.native.AntiBotNative.processAudioPcm(chunk)
+                        if (nativeMetrics != null) {
+                            _latestAmplitude.value = nativeMetrics.normalizedAmplitude
+                        } else {
+                            // Fallback JVM calculation
+                            var sum = 0.0
+                            val sampleCount = read / 2
+                            if (sampleCount > 0) {
+                                for (i in 0 until read step 2) {
+                                    val sample = (chunk[i].toInt() and 0xFF) or (chunk[i + 1].toInt() shl 8)
+                                    val signedSample = if (sample >= 32768) sample - 65536 else sample
+                                    sum += (signedSample * signedSample)
+                                }
+                                val rms = sqrt(sum / sampleCount)
+                                val normalized = (rms.toFloat() / 6500f).coerceIn(0.08f, 1f)
+                                _latestAmplitude.value = normalized
                             }
-                            val rms = sqrt(sum / sampleCount)
-                            val normalized = (rms.toFloat() / 6500f).coerceIn(0.08f, 1f)
-                            _latestAmplitude.value = normalized
                         }
 
                         val seq = seqCounter.getAndIncrement()

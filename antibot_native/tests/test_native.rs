@@ -1,4 +1,4 @@
-use antibot_native::{crypto, diff, markdown, syntax};
+use antibot_native::{audio, crypto, diff, markdown, syntax};
 
 #[test]
 fn test_parse_markdown_blocks() {
@@ -156,4 +156,45 @@ fn test_syntax_highlight_json() {
     assert!(types.contains(&(syntax::TokenType::Number as i32)));
     assert!(types.contains(&(syntax::TokenType::Type as i32))); // true/false
 }
+
+#[test]
+fn test_audio_dsp_vad_and_rms() {
+    let mut vad = audio::VadEngine::new();
+
+    // 1. Silent PCM chunk (100ms = 1600 samples = 3200 bytes of zeros)
+    let silent_chunk = vec![0u8; 3200];
+    let metrics_silence = vad.process_pcm(&silent_chunk);
+    assert_eq!(metrics_silence.normalized_amplitude, 0.08);
+    assert!(!metrics_silence.is_speech, "Silence should not trigger VAD");
+    assert_eq!(metrics_silence.rms_raw, 0.0);
+
+    // 2. Active voice PCM chunk (simulated 400Hz speech sinusoid with ~8000 peak amplitude)
+    let mut speech_chunk = Vec::with_capacity(3200);
+    for i in 0..1600 {
+        let sample = (8000.0 * (2.0 * std::f64::consts::PI * 400.0 * (i as f64) / 16000.0).sin()) as i16;
+        speech_chunk.extend_from_slice(&sample.to_le_bytes());
+    }
+
+    let metrics_speech = vad.process_pcm(&speech_chunk);
+    assert!(metrics_speech.normalized_amplitude > 0.5, "Speech should produce high waveform amplitude");
+    assert!(metrics_speech.is_speech, "Speech should trigger VAD");
+    assert!(metrics_speech.snr_db > 10.0, "Speech should have high SNR");
+}
+
+#[test]
+fn test_pcm_to_wav_conversion() {
+    let pcm_data = vec![0u8; 3200]; // 100ms 16kHz 16-bit mono
+    let wav = audio::pcm_to_wav(&pcm_data, 16000, 1, 16);
+
+    assert_eq!(wav.len(), 44 + 3200);
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert_eq!(&wav[8..12], b"WAVE");
+    assert_eq!(&wav[12..16], b"fmt ");
+    assert_eq!(&wav[36..40], b"data");
+
+    // Sample rate check: 16000 in little endian = [0x80, 0x3E, 0x00, 0x00]
+    let sample_rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
+    assert_eq!(sample_rate, 16000);
+}
+
 

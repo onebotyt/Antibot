@@ -1,11 +1,15 @@
-use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jintArray, jstring};
+use jni::objects::{JByteArray, JClass, JString};
+use jni::sys::{jboolean, jbyteArray, jfloatArray, jint, jintArray, jshort, jstring};
 use jni::JNIEnv;
+use std::sync::Mutex;
 
+pub mod audio;
 pub mod crypto;
 pub mod diff;
 pub mod markdown;
 pub mod syntax;
+
+static VAD: Mutex<Option<audio::VadEngine>> = Mutex::new(None);
 
 #[no_mangle]
 pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_isNativeAvailable<'local>(
@@ -20,7 +24,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.64-rust-syntax-neon").unwrap();
+    let output = env.new_string("1.0.65-rust-audio-dsp-neon").unwrap();
     output.into_raw()
 }
 
@@ -127,4 +131,74 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_highlightSyn
 
     array.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_processAudioPcmNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pcm_array: JByteArray<'local>,
+) -> jfloatArray {
+    let pcm_vec: Vec<u8> = match env.convert_byte_array(&pcm_array) {
+        Ok(v) => v,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let mut lock = VAD.lock().unwrap();
+    let engine = lock.get_or_insert_with(audio::VadEngine::new);
+    let metrics = engine.process_pcm(&pcm_vec);
+
+    let result = [
+        metrics.normalized_amplitude,
+        metrics.peak_amplitude,
+        if metrics.is_speech { 1.0f32 } else { 0.0f32 },
+        metrics.snr_db,
+        metrics.rms_raw,
+    ];
+
+    let output_array = match env.new_float_array(5) {
+        Ok(arr) => arr,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    if env.set_float_array_region(&output_array, 0, &result).is_err() {
+        return std::ptr::null_mut();
+    }
+
+    output_array.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_resetVadNative<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) {
+    let mut lock = VAD.lock().unwrap();
+    if let Some(engine) = lock.as_mut() {
+        engine.reset();
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_pcmToWavNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pcm_array: JByteArray<'local>,
+    sample_rate: jint,
+    channels: jshort,
+    bits_per_sample: jshort,
+) -> jbyteArray {
+    let pcm_vec: Vec<u8> = match env.convert_byte_array(&pcm_array) {
+        Ok(v) => v,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let wav_bytes = audio::pcm_to_wav(&pcm_vec, sample_rate as u32, channels as u16, bits_per_sample as u16);
+    let output_array = match env.byte_array_from_slice(&wav_bytes) {
+        Ok(arr) => arr,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    output_array.into_raw()
+}
+
 

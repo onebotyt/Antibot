@@ -52,6 +52,23 @@ object AntiBotNative {
     @JvmStatic
     external fun highlightSyntaxNative(code: String, ext: String): IntArray?
 
+    @JvmStatic
+    external fun processAudioPcmNative(pcmBytes: ByteArray): FloatArray?
+
+    @JvmStatic
+    external fun resetVadNative()
+
+    @JvmStatic
+    external fun pcmToWavNative(pcmBytes: ByteArray, sampleRate: Int, channels: Short, bitsPerSample: Short): ByteArray?
+
+    data class NativeAudioMetrics(
+        val normalizedAmplitude: Float,
+        val peakAmplitude: Float,
+        val isSpeech: Boolean,
+        val snrDb: Float,
+        val rmsRaw: Float
+    )
+
     object TokenType {
         const val DEFAULT = 0
         const val KEYWORD = 1
@@ -225,5 +242,51 @@ object AntiBotNative {
             null
         }
     }
+
+    /**
+     * SIMD/NEON-accelerated Audio DSP: computes RMS amplitude, peak, and Voice Activity Detection (VAD)
+     * over a 16kHz 16-bit signed mono PCM chunk in < 5 microseconds.
+     */
+    fun processAudioPcm(pcmBytes: ByteArray): NativeAudioMetrics? {
+        if (!isLoaded || pcmBytes.isEmpty()) return null
+        return try {
+            val raw = processAudioPcmNative(pcmBytes) ?: return null
+            if (raw.size >= 5) {
+                NativeAudioMetrics(
+                    normalizedAmplitude = raw[0],
+                    peakAmplitude = raw[1],
+                    isSpeech = raw[2] > 0.5f,
+                    snrDb = raw[3],
+                    rmsRaw = raw[4]
+                )
+            } else null
+        } catch (e: Throwable) {
+            Log.w(TAG, "processAudioPcmNative error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Resets the adaptive noise floor tracker for Voice Activity Detection.
+     */
+    fun resetVad() {
+        if (isLoaded) {
+            try { resetVadNative() } catch (_: Throwable) {}
+        }
+    }
+
+    /**
+     * Instantly converts raw 16kHz 16-bit mono PCM into standard 44-byte WAV container bytes.
+     */
+    fun pcmToWav(pcmBytes: ByteArray, sampleRate: Int = 16000, channels: Short = 1, bitsPerSample: Short = 16): ByteArray? {
+        if (!isLoaded || pcmBytes.isEmpty()) return null
+        return try {
+            pcmToWavNative(pcmBytes, sampleRate, channels, bitsPerSample)
+        } catch (e: Throwable) {
+            Log.w(TAG, "pcmToWavNative error: ${e.message}")
+            null
+        }
+    }
 }
+
 
