@@ -76,16 +76,22 @@ pub async fn projects_handler(State(_state): State<Arc<AppState>>) -> impl IntoR
     (StatusCode::OK, Json(json!({ "projects": projects })))
 }
 
-pub async fn projects_add_handler(Json(req): Json<AddProjectReq>) -> impl IntoResponse {
+pub async fn projects_add_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<AddProjectReq>,
+) -> impl IntoResponse {
     let path = req.path.trim().to_string();
     if path.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "path is required" })));
     }
 
+    let p_path = Path::new(&path);
+    let _ = state.watcher.watch(p_path);
+
     let mut saved = load_saved_projects();
     if !saved.iter().any(|p| p.path == path) {
         let name = if req.name.is_empty() {
-            Path::new(&path).file_name().and_then(|n| n.to_str()).unwrap_or("Project").to_string()
+            p_path.file_name().and_then(|n| n.to_str()).unwrap_or("Project").to_string()
         } else {
             req.name
         };
@@ -100,8 +106,13 @@ pub async fn projects_add_handler(Json(req): Json<AddProjectReq>) -> impl IntoRe
     (StatusCode::OK, Json(json!({ "success": true, "path": path })))
 }
 
-pub async fn projects_remove_handler(Json(req): Json<AddProjectReq>) -> impl IntoResponse {
+pub async fn projects_remove_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<AddProjectReq>,
+) -> impl IntoResponse {
     let path = req.path.trim().to_string();
+    let _ = state.watcher.unwatch(Path::new(&path));
+
     let mut saved = load_saved_projects();
     let len_before = saved.len();
     saved.retain(|p| p.path != path);
@@ -128,6 +139,8 @@ pub async fn create_project_handler(
             Json(json!({ "error": e.to_string() })),
         );
     }
+
+    let _ = state.watcher.watch(&target_dir);
 
     // Initialize simple template if requested
     if let Some(tpl) = req.template {

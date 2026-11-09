@@ -1,11 +1,11 @@
 {
-  "version_code": 184,
-  "version_name": "1.0.64",
+  "version_code": 185,
+  "version_name": "1.0.65",
   "min_supported_version_code": 1,
   "changelog": [
-    "\u26a1 Phase 5 Upgrade: Ultra-Fast Native Code Syntax Highlighting in `libantibot_native.so` for 120 FPS typing in IDE Editor & Chat CodeBlocks.",
-    "\ud83d\ude80 Zero-Allocation Lexer: Single-pass DFA tokenization replaces 10 heavy Java regex passes, eliminating Dalvik GC pauses during editing.",
-    "\u2728 Multi-Language Native Highlighting: Full support for Kotlin, Rust, Python, TypeScript, JavaScript, Go, JSON, HTML, SQL, Shell, and PascalCase semantic typing."
+    "👁️ Phase 6 Upgrade: Real-Time Inotify File Watcher & WebSocket Event Bus in `agy_ide_bridge_rs`.",
+    "⚡ Instant Disk Sync: Native Linux inotify watches active workspace files and pushes debounced `fs_event` notifications over `/ws`.",
+    "🔄 Automatic IDE Tab & Explorer Reload: Open tabs automatically reload when files are modified externally; new files instantly appear in the explorer without polling."
   ],
   "is_critical": false
 }

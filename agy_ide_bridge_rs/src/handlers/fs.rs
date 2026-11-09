@@ -572,3 +572,36 @@ pub async fn mcp_config_save_handler(Json(req): Json<McpConfigReq>) -> impl Into
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
     }
 }
+
+#[derive(Debug, Deserialize)]
+pub struct WatchReq {
+    pub dir: String,
+}
+
+pub async fn fs_watches_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let watches = state.watcher.list_watched();
+    (StatusCode::OK, Json(json!({ "watches": watches })))
+}
+
+pub async fn fs_watch_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<WatchReq>,
+) -> impl IntoResponse {
+    let path = std::path::PathBuf::from(&req.dir);
+    match state.watcher.watch(&path) {
+        Ok(_) => (StatusCode::OK, Json(json!({ "success": true, "path": path.to_string_lossy() }))),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))),
+    }
+}
+
+pub async fn fs_unwatch_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<WatchReq>,
+) -> impl IntoResponse {
+    let path = std::path::PathBuf::from(&req.dir);
+    match state.watcher.unwatch(&path) {
+        Ok(_) => (StatusCode::OK, Json(json!({ "success": true, "path": path.to_string_lossy() }))),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))),
+    }
+}
+

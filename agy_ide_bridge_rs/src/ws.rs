@@ -26,7 +26,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // Send initial connected greeting
     let greeting = json!({
         "type": "connected",
-        "version": "1.0.62",
+        "version": "1.0.64",
         "engine": "rust",
     });
     if let Err(e) = sender.send(Message::Text(greeting.to_string())).await {

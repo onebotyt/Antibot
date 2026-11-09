@@ -19,6 +19,7 @@ mod handlers;
 mod models;
 mod security;
 mod supervisor;
+mod watcher;
 mod ws;
 
 use security::SecurityManager;
@@ -56,7 +57,7 @@ pub enum Commands {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version = "1.0.62", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
+#[command(author, version = "1.0.64", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
 pub struct Args {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -100,6 +101,7 @@ pub struct AppState {
     pub start_time: Instant,
     pub tx: broadcast::Sender<String>,
     pub supervisor: Arc<supervisor::PtySupervisor>,
+    pub watcher: Arc<watcher::FsWatcher>,
 }
 
 #[tokio::main]
@@ -187,6 +189,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (tx, _) = broadcast::channel(100);
     let supervisor = Arc::new(supervisor::PtySupervisor::new());
+    let watcher = watcher::FsWatcher::new(tx.clone());
+    let _ = watcher.watch(&workspace_dir);
 
     let state = Arc::new(AppState {
         port: args.port,
@@ -196,6 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_time: Instant::now(),
         tx,
         supervisor,
+        watcher,
     });
 
     let artifacts_dir = PathBuf::from(&home).join(".gemini/antigravity-cli/brain");
@@ -234,6 +239,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/file/rename", post(handlers::fs::file_rename_handler))
         .route("/api/search", get(handlers::fs::file_search_handler))
         .route("/api/fs/search", get(handlers::fs::file_search_handler))
+        .route("/api/fs/watches", get(handlers::fs::fs_watches_handler))
+        .route("/api/fs/watch", post(handlers::fs::fs_watch_handler))
+        .route("/api/fs/unwatch", post(handlers::fs::fs_unwatch_handler))
         .route(
             "/api/mcp/config",
             get(handlers::fs::mcp_config_get_handler).post(handlers::fs::mcp_config_save_handler),

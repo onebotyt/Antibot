@@ -124,7 +124,15 @@ object TermuxDaemonManager {
                 }
             }
         }
+
+        // Reactively observe live Inotify filesystem change events (zero polling)
+        scope.launch {
+            com.example.gemini.data.remote.AgyBridgeService.instance.fsChangeEvents.collect { event ->
+                handleLiveFsEvent(event)
+            }
+        }
     }
+
 
     fun setActiveProject(project: ProjectItem?) {
         _activeProject.value = project
@@ -346,4 +354,40 @@ object TermuxDaemonManager {
         log("Checking HTTP healthcheck at ${AuthPreferences.currentBridgeHttpUrl}/api/health...")
         checkHealthAndReconnect(isSilent = false)
     }
+
+    private fun handleLiveFsEvent(event: com.example.gemini.data.remote.AgyBridgeService.FsChangeEvent) {
+        val eventPath = event.path
+        val tabs = _openTabs.value
+        val affectedTab = tabs.firstOrNull { tab ->
+            tab.path == eventPath || eventPath.endsWith(tab.path) || tab.path.endsWith(eventPath)
+        }
+
+        if (affectedTab != null) {
+            when (event.kind) {
+                "modify" -> {
+                    scope.launch {
+                        val newContent = IdeApiClient.readFile(affectedTab.path)
+                        if (newContent != null) {
+                            withContext(Dispatchers.Main) {
+                                updateTabFromDisk(affectedTab.path, newContent)
+                            }
+                        }
+                    }
+                }
+                "remove" -> {
+                    if (affectedTab.isModified) {
+                        _openTabs.value = _openTabs.value.map { tab ->
+                            if (tab.path == affectedTab.path) tab.copy(diskConflict = true) else tab
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto-refresh file explorer tree if files/directories were created or deleted
+        if (event.kind == "create" || event.kind == "remove") {
+            _serverReconnectedEvent.tryEmit(Unit)
+        }
+    }
 }
+

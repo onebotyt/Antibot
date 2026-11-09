@@ -175,6 +175,16 @@ class AgyBridgeService(
     private val _loginUrlEvents = MutableSharedFlow<String>(replay = 1, extraBufferCapacity = 5)
     val loginUrlEvents: SharedFlow<String> = _loginUrlEvents.asSharedFlow()
 
+    data class FsChangeEvent(
+        val kind: String,
+        val path: String,
+        val isDir: Boolean,
+        val timestamp: Long
+    )
+
+    private val _fsChangeEvents = MutableSharedFlow<FsChangeEvent>(replay = 0, extraBufferCapacity = 64)
+    val fsChangeEvents: SharedFlow<FsChangeEvent> = _fsChangeEvents.asSharedFlow()
+
     val isHubOnline: Boolean
         get() = _systemConnectionState.value.isHubOnline
 
@@ -505,6 +515,15 @@ class AgyBridgeService(
                             val statusObj = AgyHubStatus(status = st, port = p, csrfToken = csrf, error = err, logs = logsList)
                             updateHubStatus(statusObj)
                             trySend(statusObj)
+                        }
+                        "fs_event" -> {
+                            val kind = root.optString("kind", "modify")
+                            val path = root.optString("path", "")
+                            val isDir = root.optBoolean("is_dir", false)
+                            val ts = root.optLong("timestamp", System.currentTimeMillis())
+                            if (path.isNotBlank()) {
+                                _fsChangeEvents.tryEmit(FsChangeEvent(kind, path, isDir, ts))
+                            }
                         }
                     }
                 } catch (_: Exception) {}
