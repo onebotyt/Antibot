@@ -17,6 +17,7 @@ use tracing_subscriber::FmtSubscriber;
 
 mod handlers;
 mod models;
+mod mcp;
 mod security;
 mod supervisor;
 mod watcher;
@@ -102,6 +103,7 @@ pub struct AppState {
     pub tx: broadcast::Sender<String>,
     pub supervisor: Arc<supervisor::PtySupervisor>,
     pub watcher: Arc<watcher::FsWatcher>,
+    pub mcp_supervisor: Arc<mcp::McpSupervisor>,
 }
 
 #[tokio::main]
@@ -191,6 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let supervisor = Arc::new(supervisor::PtySupervisor::new());
     let watcher = watcher::FsWatcher::new(tx.clone());
     let _ = watcher.watch(&workspace_dir);
+    let mcp_supervisor = Arc::new(mcp::McpSupervisor::new());
 
     let state = Arc::new(AppState {
         port: args.port,
@@ -201,6 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tx,
         supervisor,
         watcher,
+        mcp_supervisor,
     });
 
     let artifacts_dir = PathBuf::from(&home).join(".gemini/antigravity-cli/brain");
@@ -246,6 +250,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/mcp/config",
             get(handlers::fs::mcp_config_get_handler).post(handlers::fs::mcp_config_save_handler),
         )
+        // MCP Streaming RPC Supervisor & Tool Sandbox
+        .route("/api/mcp/servers", get(mcp::handlers::mcp_list_servers_handler))
+        .route("/api/mcp/tools", get(mcp::handlers::mcp_list_tools_handler))
+        .route("/api/mcp/call", post(mcp::handlers::mcp_call_tool_handler))
+        .route("/api/mcp/restart", post(mcp::handlers::mcp_restart_server_handler))
+        .route("/api/mcp/toggle", post(mcp::handlers::mcp_toggle_server_handler))
         // Projects
         .route("/api/projects", get(handlers::projects::projects_handler))
         .route("/api/projects/add", post(handlers::projects::projects_add_handler))

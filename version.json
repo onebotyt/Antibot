@@ -1,11 +1,11 @@
 {
-  "version_code": 191,
-  "version_name": "1.0.71",
+  "version_code": 192,
+  "version_name": "1.0.72",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83e\udde0 Phase 12 Upgrade: Native LSP Diagnostics & Microsecond Auto-Completion Gateway in Rust.",
-    "\u26a1 High-Speed Symbol Trie: In-memory prefix Trie providing offline language keywords, types, snippets, and live document symbols in < 0.1ms.",
-    "\ud83d\udd0d Universal Diagnostic Parser: Real-time compiler & linter diagnostic extraction (rustc, kotlinc, tsc, pyright) with UTF-16 Compose underline coordinates."
+    "🔌 Phase 13 Upgrade: Native Model Context Protocol (MCP) Streaming RPC Supervisor & Tool Sandbox in Rust.",
+    "⚡ JSON-RPC 2.0 Streaming Engine: Zero-copy framing and response parser over stdio pipes and HTTP gateways with active child process supervisor.",
+    "🛡️ Dynamic Tool Sandbox: Multi-server management (browser, terminal, jarvis, notes, themes, plugins), live memory inspection (/proc/statm), and 120+ schema tools index."
   ],
   "is_critical": false
 }

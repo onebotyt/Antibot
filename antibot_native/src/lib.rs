@@ -9,6 +9,7 @@ pub mod diff;
 pub mod fuzzy;
 pub mod diff_patch;
 pub mod lsp_diagnostics;
+pub mod mcp_rpc;
 pub mod markdown;
 pub mod mmap_log;
 pub mod syntax;
@@ -28,7 +29,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.70-rust-lsp-diagnostics").unwrap();
+    let output = env.new_string("1.0.71-rust-mcp-supervisor").unwrap();
     output.into_raw()
 }
 
@@ -526,6 +527,59 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_parseDiagnos
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_frameJsonRpcRequestNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    id: jint,
+    method: JString<'local>,
+    params_json: JString<'local>,
+) -> jstring {
+    let m_str: String = match env.get_string(&method) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let p_str: String = match env.get_string(&params_json) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let params_val: Option<serde_json::Value> = if !p_str.trim().is_empty() {
+        serde_json::from_str(&p_str).ok()
+    } else {
+        None
+    };
+
+    let framed = mcp_rpc::frame_jsonrpc_request(id.max(0) as u64, &m_str, params_val);
+    let output = env.new_string(framed).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_parseJsonRpcResponseNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    raw: JString<'local>,
+) -> jstring {
+    let r_str: String = match env.get_string(&raw) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let json_str = match mcp_rpc::parse_jsonrpc_response(&r_str) {
+        Ok(res) => serde_json::to_string(&res).unwrap_or_else(|_| "{}".to_string()),
+        Err(e) => serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 0,
+            "error": { "code": -32700, "message": e }
+        }).to_string(),
+    };
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 

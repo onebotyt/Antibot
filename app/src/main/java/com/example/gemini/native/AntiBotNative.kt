@@ -97,6 +97,24 @@ object AntiBotNative {
     @JvmStatic
     external fun parseDiagnosticsNative(rawOutput: String): String
 
+    @JvmStatic
+    external fun frameJsonRpcRequestNative(id: Int, method: String, paramsJson: String): String
+
+    @JvmStatic
+    external fun parseJsonRpcResponseNative(raw: String): String
+
+    data class NativeJsonRpcResponse(
+        val id: Long,
+        val result: JSONObject? = null,
+        val error: NativeJsonRpcError? = null
+    )
+
+    data class NativeJsonRpcError(
+        val code: Long,
+        val message: String,
+        val data: String? = null
+    )
+
     data class NativeCompletionItem(
         val label: String,
         val kind: String,
@@ -669,6 +687,55 @@ object AntiBotNative {
         } catch (e: Throwable) {
             Log.w(TAG, "parseDiagnosticsNative error: ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * Frames a method and arguments into a JSON-RPC 2.0 packet using native Rust framing.
+     */
+    fun frameJsonRpcRequest(id: Int, method: String, params: JSONObject? = null): String {
+        val paramsJson = params?.toString() ?: ""
+        if (!isLoaded) {
+            val obj = JSONObject()
+            obj.put("jsonrpc", "2.0")
+            obj.put("id", id)
+            obj.put("method", method)
+            if (params != null) obj.put("params", params)
+            return obj.toString() + "\n"
+        }
+        return try {
+            frameJsonRpcRequestNative(id, method, paramsJson)
+        } catch (e: Throwable) {
+            Log.w(TAG, "frameJsonRpcRequestNative error: ${e.message}")
+            "{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\"}\n"
+        }
+    }
+
+    /**
+     * Parses a raw JSON-RPC 2.0 response using native Rust parser.
+     */
+    fun parseJsonRpcResponse(raw: String): NativeJsonRpcResponse {
+        if (!isLoaded || raw.isBlank()) return NativeJsonRpcResponse(0, null, null)
+        return try {
+            val jsonStr = parseJsonRpcResponseNative(raw)
+            val obj = JSONObject(jsonStr)
+            val errObj = obj.optJSONObject("error")
+            val error = if (errObj != null) {
+                NativeJsonRpcError(
+                    code = errObj.optLong("code", -1L),
+                    message = errObj.optString("message", "Unknown error"),
+                    data = errObj.optString("data").takeIf { it.isNotBlank() }
+                )
+            } else null
+
+            NativeJsonRpcResponse(
+                id = obj.optLong("id", 0L),
+                result = obj.optJSONObject("result"),
+                error = error
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "parseJsonRpcResponseNative error: ${e.message}")
+            NativeJsonRpcResponse(0, null, NativeJsonRpcError(-32700, e.message ?: "Parse error"))
         }
     }
 }
