@@ -3,9 +3,9 @@
   "version_name": "1.0.63",
   "min_supported_version_code": 1,
   "changelog": [
-    "🚀 Phase 4 Upgrade: Android Native JNI Layer (`libantibot_native.so`): 120 FPS Compose UI rendering via zero-allocation ARM64 Rust markdown token parser.",
-    "⚡ Native Markdown AST & Inline Spans: Replaces slow regexes with sub-millisecond Rust tokenization for math, code, lists, callouts, and tables.",
-    "🛡️ Native Unified Diff & SHA256: Zero-copy JNI acceleration for Git file comparisons and file hashing without subprocess overhead."
+    "\ud83d\ude80 Phase 4 Upgrade: Android Native JNI Layer (`libantibot_native.so`): 120 FPS Compose UI rendering via zero-allocation ARM64 Rust markdown token parser.",
+    "\u26a1 Native Markdown AST & Inline Spans: Replaces slow regexes with sub-millisecond Rust tokenization for math, code, lists, callouts, and tables.",
+    "\ud83d\udee1\ufe0f Native Unified Diff & SHA256: Zero-copy JNI acceleration for Git file comparisons and file hashing without subprocess overhead."
   ],
   "is_critical": false
 }
