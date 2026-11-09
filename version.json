@@ -3,9 +3,9 @@
   "version_name": "1.0.72",
   "min_supported_version_code": 1,
   "changelog": [
-    "🔌 Phase 13 Upgrade: Native Model Context Protocol (MCP) Streaming RPC Supervisor & Tool Sandbox in Rust.",
-    "⚡ JSON-RPC 2.0 Streaming Engine: Zero-copy framing and response parser over stdio pipes and HTTP gateways with active child process supervisor.",
-    "🛡️ Dynamic Tool Sandbox: Multi-server management (browser, terminal, jarvis, notes, themes, plugins), live memory inspection (/proc/statm), and 120+ schema tools index."
+    "\ud83d\udd0c Phase 13 Upgrade: Native Model Context Protocol (MCP) Streaming RPC Supervisor & Tool Sandbox in Rust.",
+    "\u26a1 JSON-RPC 2.0 Streaming Engine: Zero-copy framing and response parser over stdio pipes and HTTP gateways with active child process supervisor.",
+    "\ud83d\udee1\ufe0f Dynamic Tool Sandbox: Multi-server management (browser, terminal, jarvis, notes, themes, plugins), live memory inspection (/proc/statm), and 120+ schema tools index."
   ],
   "is_critical": false
 }
