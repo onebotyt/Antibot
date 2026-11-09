@@ -3,9 +3,9 @@
   "version_name": "1.0.65",
   "min_supported_version_code": 1,
   "changelog": [
-    "👁️ Phase 6 Upgrade: Real-Time Inotify File Watcher & WebSocket Event Bus in `agy_ide_bridge_rs`.",
-    "⚡ Instant Disk Sync: Native Linux inotify watches active workspace files and pushes debounced `fs_event` notifications over `/ws`.",
-    "🔄 Automatic IDE Tab & Explorer Reload: Open tabs automatically reload when files are modified externally; new files instantly appear in the explorer without polling."
+    "\ud83d\udc41\ufe0f Phase 6 Upgrade: Real-Time Inotify File Watcher & WebSocket Event Bus in `agy_ide_bridge_rs`.",
+    "\u26a1 Instant Disk Sync: Native Linux inotify watches active workspace files and pushes debounced `fs_event` notifications over `/ws`.",
+    "\ud83d\udd04 Automatic IDE Tab & Explorer Reload: Open tabs automatically reload when files are modified externally; new files instantly appear in the explorer without polling."
   ],
   "is_critical": false
 }
