@@ -157,6 +157,59 @@ pub struct ComputeDiffReq {
     pub filename: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ApplyPatchReq {
+    pub path: Option<String>,
+    pub project: Option<String>,
+    pub patch: String,
+    #[serde(default)]
+    pub reverse: bool,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyPatchResponse {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patched_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hunk_index: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ThreeWayMergeReq {
+    pub base: String,
+    pub ours: String,
+    pub theirs: String,
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreeWayMergeResponse {
+    pub success: bool,
+    pub merged: String,
+    pub has_conflicts: bool,
+    pub conflict_count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResolveConflictReq {
+    pub text: String,
+    pub strategy: String, // "ours", "theirs", "both"
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolveConflictResponse {
+    pub success: bool,
+    pub resolved: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,

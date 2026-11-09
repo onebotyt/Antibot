@@ -7,6 +7,7 @@ pub mod audio;
 pub mod crypto;
 pub mod diff;
 pub mod fuzzy;
+pub mod diff_patch;
 pub mod markdown;
 pub mod mmap_log;
 pub mod syntax;
@@ -26,7 +27,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.68-rust-mmap-cache").unwrap();
+    let output = env.new_string("1.0.69-rust-diff-patch-merge").unwrap();
     output.into_raw()
 }
 
@@ -354,6 +355,91 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_extractTrans
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_applyPatchNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    original: JString<'local>,
+    patch_text: JString<'local>,
+    reverse: jboolean,
+) -> jstring {
+    let orig: String = match env.get_string(&original) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let patch_str: String = match env.get_string(&patch_text) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let hunks = diff_patch::parse_unified_diff(&patch_str);
+    let result = diff_patch::apply_patch(&orig, &hunks, reverse != 0);
+
+    let json = match result {
+        Ok(patched) => serde_json::json!({ "ok": true, "text": patched }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e.message, "hunk": e.hunk_index }),
+    };
+
+    let output = env.new_string(json.to_string()).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_threeWayMergeNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    base: JString<'local>,
+    ours: JString<'local>,
+    theirs: JString<'local>,
+) -> jstring {
+    let base_str: String = match env.get_string(&base) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let ours_str: String = match env.get_string(&ours) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let theirs_str: String = match env.get_string(&theirs) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let result = diff_patch::three_way_merge(&base_str, &ours_str, &theirs_str);
+    let json_str = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_resolveConflictsNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    merged_text: JString<'local>,
+    strategy: JString<'local>,
+) -> jstring {
+    let text: String = match env.get_string(&merged_text) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let strat_str: String = match env.get_string(&strategy) {
+        Ok(s) => s.into(),
+        Err(_) => "ours".to_string(),
+    };
+
+    let strat = match strat_str.to_lowercase().as_str() {
+        "theirs" => diff_patch::ConflictStrategy::Theirs,
+        "both" => diff_patch::ConflictStrategy::Both,
+        _ => diff_patch::ConflictStrategy::Ours,
+    };
+
+    let resolved = diff_patch::resolve_conflicts(&text, strat);
+    let output = env.new_string(resolved).unwrap();
+    output.into_raw()
+}
+
 
 
 

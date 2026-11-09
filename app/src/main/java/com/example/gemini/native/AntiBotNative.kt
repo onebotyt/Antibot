@@ -79,12 +79,42 @@ object AntiBotNative {
     @JvmStatic
     external fun extractTranscriptMetaMmapNative(transcriptPath: String): String
 
+    @JvmStatic
+    external fun applyPatchNative(original: String, patchText: String, reverse: Boolean): String
+
+    @JvmStatic
+    external fun threeWayMergeNative(base: String, ours: String, theirs: String): String
+
+    @JvmStatic
+    external fun resolveConflictsNative(mergedText: String, strategy: String): String
+
     data class TranscriptSummary(
         val title: String,
         val totalSteps: Int,
         val isRunning: Boolean,
         val firstPrompt: String,
         val lastRole: String
+    )
+
+    data class PatchResult(
+        val ok: Boolean,
+        val text: String?,
+        val error: String?,
+        val hunkIndex: Int?
+    )
+
+    data class MergeResult(
+        val merged: String,
+        val hasConflicts: Boolean,
+        val conflictCount: Int,
+        val conflictRegions: List<ConflictRegion>
+    )
+
+    data class ConflictRegion(
+        val baseStart: Int,
+        val baseEnd: Int,
+        val oursText: String,
+        val theirsText: String
     )
 
     data class NativeAudioMetrics(
@@ -437,6 +467,72 @@ object AntiBotNative {
         } catch (e: Throwable) {
             Log.w(TAG, "extractTranscriptMeta error: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Applies a unified diff patch to the original text in native Rust.
+     * Supports fuzzy line drift tolerance and reverse (un-apply) mode.
+     */
+    fun applyPatch(original: String, patchText: String, reverse: Boolean = false): PatchResult {
+        if (!isLoaded) return PatchResult(false, null, "Native library not loaded", null)
+        return try {
+            val jsonStr = applyPatchNative(original, patchText, reverse)
+            val obj = JSONObject(jsonStr)
+            PatchResult(
+                ok = obj.optBoolean("ok", false),
+                text = obj.optString("text").takeIf { obj.optBoolean("ok", false) },
+                error = obj.optString("error").takeIf { !obj.optBoolean("ok", false) },
+                hunkIndex = if (obj.has("hunk")) obj.optInt("hunk") else null
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "applyPatchNative error: ${e.message}")
+            PatchResult(false, null, e.message, null)
+        }
+    }
+
+    /**
+     * Performs a 3-way merge in native Rust. Returns merged text with conflict markers
+     * when overlapping edits are detected.
+     */
+    fun threeWayMerge(base: String, ours: String, theirs: String): MergeResult {
+        if (!isLoaded) return MergeResult(ours, false, 0, emptyList())
+        return try {
+            val jsonStr = threeWayMergeNative(base, ours, theirs)
+            val obj = JSONObject(jsonStr)
+            val regionsArr = obj.optJSONArray("conflict_regions") ?: JSONArray()
+            val regions = mutableListOf<ConflictRegion>()
+            for (i in 0 until regionsArr.length()) {
+                val r = regionsArr.getJSONObject(i)
+                regions.add(ConflictRegion(
+                    baseStart = r.optInt("base_start", 0),
+                    baseEnd = r.optInt("base_end", 0),
+                    oursText = r.optString("ours_text", ""),
+                    theirsText = r.optString("theirs_text", "")
+                ))
+            }
+            MergeResult(
+                merged = obj.optString("merged", ""),
+                hasConflicts = obj.optBoolean("has_conflicts", false),
+                conflictCount = obj.optInt("conflict_count", 0),
+                conflictRegions = regions
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "threeWayMergeNative error: ${e.message}")
+            MergeResult(ours, false, 0, emptyList())
+        }
+    }
+
+    /**
+     * Resolves all conflict markers in text using the given strategy: "ours", "theirs", or "both".
+     */
+    fun resolveConflicts(mergedText: String, strategy: String = "ours"): String {
+        if (!isLoaded || mergedText.isEmpty()) return mergedText
+        return try {
+            resolveConflictsNative(mergedText, strategy)
+        } catch (e: Throwable) {
+            Log.w(TAG, "resolveConflictsNative error: ${e.message}")
+            mergedText
         }
     }
 }

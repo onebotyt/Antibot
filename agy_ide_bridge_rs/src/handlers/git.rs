@@ -10,12 +10,15 @@ use std::{process::Command, sync::Arc};
 
 use crate::{
     models::{
-        ComputeDiffReq, DiffFile, DiffHunk, DiffLine, DiffResponse, GitActionReq, GitActionResult,
-        GitBranchInfo, GitCommitDetailsResponse, GitCommitFileChange, GitCommitRef, GitConfig,
-        GitFileStatus, GitGraphCommit, GitGraphSegment, GitSetConfigReq,
+        ApplyPatchReq, ApplyPatchResponse, ComputeDiffReq, DiffFile, DiffHunk, DiffLine,
+        DiffResponse, GitActionReq, GitActionResult, GitBranchInfo, GitCommitDetailsResponse,
+        GitCommitFileChange, GitCommitRef, GitConfig, GitFileStatus, GitGraphCommit,
+        GitGraphSegment, GitSetConfigReq, ResolveConflictReq, ResolveConflictResponse,
+        ThreeWayMergeReq, ThreeWayMergeResponse,
     },
     AppState,
 };
+use antibot_native::diff_patch::{self, ConflictStrategy};
 
 #[derive(Debug, Deserialize)]
 pub struct GitQuery {
@@ -427,6 +430,141 @@ pub async fn compute_diff_handler(
         }),
     )
 }
+
+pub async fn apply_diff_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ApplyPatchReq>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_post_dir(&state, req.project.as_deref());
+    let (target_path, original_content) = if let Some(ref rel_path) = req.path {
+        let full_path = std::path::Path::new(&repo_dir).join(rel_path);
+        let content = match std::fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApplyPatchResponse {
+                        success: false,
+                        patched_text: None,
+                        error: Some(format!("Failed to read target file {}: {}", rel_path, e)),
+                        hunk_index: None,
+                    }),
+                );
+            }
+        };
+        (Some(full_path), content)
+    } else {
+        (None, String::new())
+    };
+
+    let hunks = diff_patch::parse_unified_diff(&req.patch);
+    if hunks.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApplyPatchResponse {
+                success: false,
+                patched_text: None,
+                error: Some("No valid hunks found in patch".to_string()),
+                hunk_index: None,
+            }),
+        );
+    }
+
+    match diff_patch::apply_patch(&original_content, &hunks, req.reverse) {
+        Ok(patched) => {
+            if !req.dry_run {
+                if let Some(ref p) = target_path {
+                    if let Some(parent) = p.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = std::fs::write(p, &patched) {
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ApplyPatchResponse {
+                                success: false,
+                                patched_text: Some(patched),
+                                error: Some(format!("Failed to write patched file: {}", e)),
+                                hunk_index: None,
+                            }),
+                        );
+                    }
+                }
+            }
+            (
+                StatusCode::OK,
+                Json(ApplyPatchResponse {
+                    success: true,
+                    patched_text: Some(patched),
+                    error: None,
+                    hunk_index: None,
+                }),
+            )
+        }
+        Err(err) => (
+            StatusCode::OK,
+            Json(ApplyPatchResponse {
+                success: false,
+                patched_text: None,
+                error: Some(err.message),
+                hunk_index: Some(err.hunk_index),
+            }),
+        ),
+    }
+}
+
+pub async fn git_merge_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ThreeWayMergeReq>,
+) -> impl IntoResponse {
+    let result = diff_patch::three_way_merge(&req.base, &req.ours, &req.theirs);
+    if let Some(ref rel_path) = req.path {
+        if !result.has_conflicts {
+            let repo_dir = state.workspace_dir.to_string_lossy().to_string();
+            let full_path = std::path::Path::new(&repo_dir).join(rel_path);
+            if let Some(parent) = full_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(full_path, &result.merged);
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(ThreeWayMergeResponse {
+            success: !result.has_conflicts,
+            merged: result.merged,
+            has_conflicts: result.has_conflicts,
+            conflict_count: result.conflict_count,
+        }),
+    )
+}
+
+pub async fn git_conflict_resolve_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ResolveConflictReq>,
+) -> impl IntoResponse {
+    let strategy = match req.strategy.to_lowercase().as_str() {
+        "theirs" => ConflictStrategy::Theirs,
+        "both" => ConflictStrategy::Both,
+        _ => ConflictStrategy::Ours,
+    };
+
+    let resolved = diff_patch::resolve_conflicts(&req.text, strategy);
+    if let Some(ref rel_path) = req.path {
+        let repo_dir = state.workspace_dir.to_string_lossy().to_string();
+        let full_path = std::path::Path::new(&repo_dir).join(rel_path);
+        let _ = std::fs::write(full_path, &resolved);
+    }
+
+    (
+        StatusCode::OK,
+        Json(ResolveConflictResponse {
+            success: true,
+            resolved,
+        }),
+    )
+}
+
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -1361,5 +1499,37 @@ mod tests {
         // b1 is on lane 1
         assert_eq!(graph[2].graph_column, 1);
     }
+
+    #[test]
+    fn test_apply_diff_patch_flow() {
+        let base = "fn main() {\n    println!(\"hello\");\n}\n";
+        let diff = "--- a/main.rs\n+++ b/main.rs\n@@ -1,3 +1,3 @@\n fn main() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
+        let hunks = antibot_native::diff_patch::parse_unified_diff(diff);
+        let patched = antibot_native::diff_patch::apply_patch(base, &hunks, false).unwrap();
+        assert!(patched.contains("world"));
+        assert!(!patched.contains("hello"));
+    }
+
+    #[test]
+    fn test_three_way_merge_flow() {
+        let base = "alpha\nbeta\ngamma\n";
+        let ours = "alpha-1\nbeta\ngamma\n";
+        let theirs = "alpha\nbeta\ngamma-2\n";
+        let res = antibot_native::diff_patch::three_way_merge(base, ours, theirs);
+        assert!(!res.has_conflicts);
+        assert!(res.merged.contains("alpha-1"));
+        assert!(res.merged.contains("gamma-2"));
+    }
+
+    #[test]
+    fn test_conflict_resolve_flow() {
+        let text = "<<<<<<< ours\nfeatureA\n=======\nfeatureB\n>>>>>>> theirs\n";
+        let ours_resolved = antibot_native::diff_patch::resolve_conflicts(text, antibot_native::diff_patch::ConflictStrategy::Ours);
+        assert_eq!(ours_resolved.trim(), "featureA");
+
+        let theirs_resolved = antibot_native::diff_patch::resolve_conflicts(text, antibot_native::diff_patch::ConflictStrategy::Theirs);
+        assert_eq!(theirs_resolved.trim(), "featureB");
+    }
 }
+
 

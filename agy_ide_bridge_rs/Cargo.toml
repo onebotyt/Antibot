@@ -25,6 +25,7 @@ libc = "0.2"
 notify = "6.1"
 memmap2 = "0.9"
 memchr = "2.7"
+antibot_native = { path = "../antibot_native" }
 
 [profile.release]
 opt-level = "z"
