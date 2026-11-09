@@ -3,9 +3,9 @@
   "version_name": "1.0.71",
   "min_supported_version_code": 1,
   "changelog": [
-    "🧠 Phase 12 Upgrade: Native LSP Diagnostics & Microsecond Auto-Completion Gateway in Rust.",
-    "⚡ High-Speed Symbol Trie: In-memory prefix Trie providing offline language keywords, types, snippets, and live document symbols in < 0.1ms.",
-    "🔍 Universal Diagnostic Parser: Real-time compiler & linter diagnostic extraction (rustc, kotlinc, tsc, pyright) with UTF-16 Compose underline coordinates."
+    "\ud83e\udde0 Phase 12 Upgrade: Native LSP Diagnostics & Microsecond Auto-Completion Gateway in Rust.",
+    "\u26a1 High-Speed Symbol Trie: In-memory prefix Trie providing offline language keywords, types, snippets, and live document symbols in < 0.1ms.",
+    "\ud83d\udd0d Universal Diagnostic Parser: Real-time compiler & linter diagnostic extraction (rustc, kotlinc, tsc, pyright) with UTF-16 Compose underline coordinates."
   ],
   "is_critical": false
 }
