@@ -1,11 +1,12 @@
 {
-  "version_code": 196,
-  "version_name": "1.0.76",
+  "version_code": 197,
+  "version_name": "1.0.77",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\uddc4\ufe0f Phase 17 Upgrade: Native SQLite Vector & Document Search Engine (FTS5 + BM25) in Rust.",
-    "\u26a1 BM25 Okapi Inverted Index: Ultra-fast keyword retrieval matching SQLite FTS5 (k1=1.2, b=0.75) with sub-millisecond query execution.",
-    "\ud83d\udd0d Hybrid Lexical + Vector Fusion: Reciprocal rank fusion combining lexical BM25 scores with semantic embedding cosine similarity."
+    "🌐 Phase 18 Upgrade: Native HTTP / SOCKS5 Proxy & Network Traffic Inspector in Rust.",
+    "⚡ Real-Time Throughput & Bandwidth Meter: Rolling download and upload throughput calculation, active socket tracking, and error monitoring.",
+    "🛡️ Traffic Inspector: Zero-overhead circular ring-buffer recording HTTP transactions, status codes, latency, and request/response payloads.",
+    "🔌 Upstream Connectivity Testing: High-precision async TCP handshake and proxy latency diagnostics."
   ],
   "is_critical": false
 }

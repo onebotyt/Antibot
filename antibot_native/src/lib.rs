@@ -15,6 +15,7 @@ pub mod lsp_diagnostics;
 pub mod mcp_rpc;
 pub mod markdown;
 pub mod mmap_log;
+pub mod net_traffic;
 pub mod syntax;
 pub mod vector_rag;
 
@@ -22,6 +23,7 @@ static VAD: Mutex<Option<audio::VadEngine>> = Mutex::new(None);
 static RING_BUFFER: Mutex<Option<audio_dsp::AudioRingBuffer>> = Mutex::new(None);
 static TELEMETRY_NOISE: Mutex<f32> = Mutex::new(300.0);
 static SEARCH_INDEX: Mutex<Option<db_search::InvertedIndex>> = Mutex::new(None);
+static TRAFFIC_INSPECTOR: Mutex<Option<net_traffic::TrafficInspector>> = Mutex::new(None);
 
 #[no_mangle]
 pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_isNativeAvailable<'local>(
@@ -36,7 +38,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.76-rust-db-search").unwrap();
+    let output = env.new_string("1.0.77-rust-net-traffic").unwrap();
     output.into_raw()
 }
 
@@ -867,6 +869,73 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getIndexStat
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_recordNetworkTrafficNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    entry_json: JString<'local>,
+) -> jboolean {
+    let input: String = match env.get_string(&entry_json) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    let entry: net_traffic::HttpTrafficEntry = match serde_json::from_str(&input) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+
+    let mut lock = TRAFFIC_INSPECTOR.lock().unwrap();
+    let inspector = lock.get_or_insert_with(net_traffic::TrafficInspector::default);
+    inspector.record(entry);
+    1
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getRecentNetworkTrafficNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    limit: jint,
+) -> jstring {
+    let lock = TRAFFIC_INSPECTOR.lock().unwrap();
+    let entries = match &*lock {
+        Some(inspector) => inspector.get_recent(limit.max(1) as usize),
+        None => Vec::new(),
+    };
+
+    let json_str = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNetworkMetricsNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jstring {
+    let lock = TRAFFIC_INSPECTOR.lock().unwrap();
+    let metrics = match &*lock {
+        Some(inspector) => inspector.get_metrics(),
+        None => net_traffic::TrafficInspector::default().get_metrics(),
+    };
+
+    let json_str = serde_json::to_string(&metrics).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_clearNetworkTrafficNative<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) {
+    let mut lock = TRAFFIC_INSPECTOR.lock().unwrap();
+    if let Some(inspector) = lock.as_mut() {
+        inspector.clear();
+    }
+}
+
 
 
 

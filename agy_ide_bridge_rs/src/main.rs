@@ -308,6 +308,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/db/search", post(handlers::db::db_search_handler))
         .route("/api/db/stats", get(handlers::db::db_stats_handler))
         .route("/api/db/vacuum", post(handlers::db::db_vacuum_handler))
+        // Network Traffic Inspector & Bandwidth Monitor
+        .route("/api/network/traffic", get(handlers::network::network_traffic_handler))
+        .route("/api/network/record", post(handlers::network::network_record_handler))
+        .route("/api/network/stats", get(handlers::network::network_stats_handler))
+        .route("/api/network/clear", post(handlers::network::network_clear_handler))
+        .route("/api/network/proxy/test", post(handlers::network::network_proxy_test_handler))
         // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))

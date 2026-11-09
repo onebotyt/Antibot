@@ -142,6 +142,42 @@ object AntiBotNative {
     @JvmStatic
     external fun getIndexStatsNative(): String
 
+    @JvmStatic
+    external fun recordNetworkTrafficNative(entryJson: String): Boolean
+
+    @JvmStatic
+    external fun getRecentNetworkTrafficNative(limit: Int): String
+
+    @JvmStatic
+    external fun getNetworkMetricsNative(): String
+
+    @JvmStatic
+    external fun clearNetworkTrafficNative()
+
+    data class NetworkTrafficEntry(
+        val id: String,
+        val timestamp: Long = System.currentTimeMillis(),
+        val method: String,
+        val url: String,
+        val statusCode: Int,
+        val durationMs: Long,
+        val bytesSent: Long,
+        val bytesReceived: Long,
+        val clientIp: String = "127.0.0.1",
+        val error: String? = null
+    )
+
+    data class NetworkMetrics(
+        val totalBytesSent: Long,
+        val totalBytesReceived: Long,
+        val activeConnections: Int,
+        val requestCount: Long,
+        val responseCount: Long,
+        val errorCount: Long,
+        val uploadBps: Float,
+        val downloadBps: Float
+    )
+
     data class SearchDocument(
         val id: String,
         val title: String,
@@ -1284,6 +1320,98 @@ object AntiBotNative {
             IndexStats(0, 0, 0, 0.0f)
         }
     }
+
+    /**
+     * Records an HTTP transaction into native ring-buffer traffic history.
+     */
+    fun recordNetworkTraffic(entry: NetworkTrafficEntry): Boolean {
+        if (!isLoaded) return false
+        return try {
+            val obj = JSONObject()
+            obj.put("id", entry.id)
+            obj.put("timestamp", entry.timestamp)
+            obj.put("method", entry.method)
+            obj.put("url", entry.url)
+            obj.put("status_code", entry.statusCode)
+            obj.put("duration_ms", entry.durationMs)
+            obj.put("bytes_sent", entry.bytesSent)
+            obj.put("bytes_received", entry.bytesReceived)
+            obj.put("client_ip", entry.clientIp)
+            if (entry.error != null) {
+                obj.put("error", entry.error)
+            }
+            recordNetworkTrafficNative(obj.toString())
+        } catch (e: Throwable) {
+            Log.w(TAG, "recordNetworkTraffic error: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Retrieves the most recent recorded network traffic transactions.
+     */
+    fun getRecentNetworkTraffic(limit: Int = 50): List<NetworkTrafficEntry> {
+        if (!isLoaded) return emptyList()
+        return try {
+            val resJson = getRecentNetworkTrafficNative(limit)
+            val arr = JSONArray(resJson)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                NetworkTrafficEntry(
+                    id = o.optString("id", ""),
+                    timestamp = o.optLong("timestamp", 0L),
+                    method = o.optString("method", "GET"),
+                    url = o.optString("url", ""),
+                    statusCode = o.optInt("status_code", 200),
+                    durationMs = o.optLong("duration_ms", 0L),
+                    bytesSent = o.optLong("bytes_sent", 0L),
+                    bytesReceived = o.optLong("bytes_received", 0L),
+                    clientIp = o.optString("client_ip", "127.0.0.1"),
+                    error = if (o.isNull("error")) null else o.optString("error", null)
+                )
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "getRecentNetworkTraffic error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Computes real-time bandwidth metrics, total bytes sent/received, and error counts.
+     */
+    fun getNetworkMetrics(): NetworkMetrics {
+        if (!isLoaded) return NetworkMetrics(0L, 0L, 0, 0L, 0L, 0L, 0.0f, 0.0f)
+        return try {
+            val resJson = getNetworkMetricsNative()
+            val o = JSONObject(resJson)
+            NetworkMetrics(
+                totalBytesSent = o.optLong("total_bytes_sent", 0L),
+                totalBytesReceived = o.optLong("total_bytes_received", 0L),
+                activeConnections = o.optInt("active_connections", 0),
+                requestCount = o.optLong("request_count", 0L),
+                responseCount = o.optLong("response_count", 0L),
+                errorCount = o.optLong("error_count", 0L),
+                uploadBps = o.optDouble("upload_bps", 0.0).toFloat(),
+                downloadBps = o.optDouble("download_bps", 0.0).toFloat()
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "getNetworkMetrics error: ${e.message}")
+            NetworkMetrics(0L, 0L, 0, 0L, 0L, 0L, 0.0f, 0.0f)
+        }
+    }
+
+    /**
+     * Clears recorded network traffic history and counters.
+     */
+    fun clearNetworkTraffic() {
+        if (!isLoaded) return
+        try {
+            clearNetworkTrafficNative()
+        } catch (e: Throwable) {
+            Log.w(TAG, "clearNetworkTraffic error: ${e.message}")
+        }
+    }
 }
+
 
 
