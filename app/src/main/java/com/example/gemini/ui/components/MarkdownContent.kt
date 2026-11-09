@@ -3174,6 +3174,13 @@ fun parseMarkdownBlocks(
     rawText: String,
     toolCalls: List<com.example.gemini.domain.model.ToolCall> = emptyList()
 ): List<MarkdownBlock> {
+    // ⚡ Fast-path: Native Rust acceleration for pure markdown content
+    if (com.example.gemini.native.AntiBotNative.isLoaded && toolCalls.isEmpty() && !rawText.contains('<')) {
+        com.example.gemini.native.AntiBotNative.parseMarkdownBlocks(rawText)?.let {
+            if (it.isNotEmpty()) return it
+        }
+    }
+
     val result = mutableListOf<MarkdownBlock>()
 
     // Filter out <chat_title> so it never appears in UI

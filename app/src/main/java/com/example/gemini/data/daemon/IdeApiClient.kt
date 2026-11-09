@@ -98,9 +98,7 @@ sealed class FileSaveResult {
 }
 
 fun computeSha256(content: String): String {
-    val md = java.security.MessageDigest.getInstance("SHA-256")
-    val bytes = md.digest(content.toByteArray(Charsets.UTF_8))
-    return bytes.joinToString("") { "%02x".format(it) }
+    return com.example.gemini.native.AntiBotNative.computeSha256(content)
 }
 
 object IdeApiClient {
