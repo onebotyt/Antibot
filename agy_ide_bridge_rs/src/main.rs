@@ -2,7 +2,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::{
     net::SocketAddr,
     path::PathBuf,
@@ -22,9 +22,44 @@ mod ws;
 
 use security::SecurityManager;
 
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Backup all AGY chats and credentials to a compressed zip archive
+    #[command(name = "backup-chats")]
+    BackupChats {
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Restore all AGY chats from an archive
+    #[command(name = "restore-chats")]
+    RestoreChats {
+        #[arg(short, long)]
+        file: String,
+        #[arg(short, long)]
+        target: Option<String>,
+    },
+    /// Backup workspace projects to a zip archive
+    #[command(name = "backup-projects")]
+    BackupProjects {
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Restore workspace projects from a zip archive
+    #[command(name = "restore-projects")]
+    RestoreProjects {
+        #[arg(short, long)]
+        file: String,
+        #[arg(short, long)]
+        target: Option<String>,
+    },
+}
+
 #[derive(Parser, Debug)]
-#[command(author, version = "1.0.59", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
+#[command(author, version = "1.0.60", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+
     #[arg(short = 'p', long, default_value_t = 1234)]
     pub port: u16,
 
@@ -67,14 +102,80 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/data/data/com.termux/files/home".to_string());
+
+    // Handle CLI subcommands if specified
+    if let Some(cmd) = args.command {
+        match cmd {
+            Commands::BackupChats { output } => {
+                println!("📦 Starting AntiBot Native Rust Chat Backup...");
+                match handlers::archive::run_backup_chats(output) {
+                    Ok(res) => {
+                        println!("✅ Chat backup completed successfully!");
+                        println!("📁 Archive: {}", res.path);
+                        println!("📄 Files: {} ({} bytes)", res.total_files, res.total_bytes);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Backup failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::RestoreChats { file, target } => {
+                println!("📦 Restoring AntiBot Chats from: {}", file);
+                match handlers::archive::run_restore_chats(&file, target) {
+                    Ok(count) => {
+                        println!("✅ Restored {} files successfully!", count);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Restore failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::BackupProjects { output } => {
+                println!("📦 Backing up workspace projects...");
+                let ws = PathBuf::from(&home).join(".gemini/antigravity-cli/scratch");
+                match handlers::archive::run_backup_projects(&ws, output, None) {
+                    Ok(res) => {
+                        println!("✅ Project backup completed successfully!");
+                        println!("📁 Archive: {}", res.path);
+                        println!("📄 Files: {} ({} bytes)", res.total_files, res.total_bytes);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Backup failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::RestoreProjects { file, target } => {
+                let ws = target
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(&home).join(".gemini/antigravity-cli/scratch"));
+                println!("📦 Restoring projects to: {}", ws.display());
+                match handlers::archive::run_restore_projects(&file, &ws) {
+                    Ok(count) => {
+                        println!("✅ Restored {} files successfully!", count);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Restore failed: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+    }
+
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).ok();
 
-    let args = Args::parse();
-
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/data/data/com.termux/files/home".to_string());
     let default_workspace = PathBuf::from(&home).join(".gemini/antigravity-cli/scratch");
     let workspace_dir = args.dir.map(PathBuf::from).unwrap_or(default_workspace);
 
@@ -159,8 +260,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/git/config",
             get(handlers::git::git_config_get_handler).post(handlers::git::git_config_set_handler),
         )
-        // Conversations
+        // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
+        .route(
+            "/api/conversations/restore",
+            post(handlers::archive::restore_conversation_archive_handler),
+        )
+        .route(
+            "/api/conversations/import",
+            post(handlers::archive::restore_conversation_archive_handler),
+        )
+        .route(
+            "/api/conversations/:id/export",
+            get(handlers::archive::export_conversation_archive_handler),
+        )
+        .route(
+            "/api/conversations/:id/share",
+            get(handlers::archive::export_conversation_archive_handler),
+        )
         .route(
             "/api/conversations/:id",
             get(handlers::conversations::conversation_messages_handler)
@@ -171,6 +288,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             post(handlers::conversations::update_conversation_title_handler)
                 .patch(handlers::conversations::update_conversation_title_handler),
         )
+        // Backup & Restore Engine
+        .route("/api/backup/chats", post(handlers::archive::backup_chats_handler))
+        .route("/api/restore/chats", post(handlers::archive::restore_chats_handler))
+        .route("/api/backup/projects", post(handlers::archive::backup_projects_handler))
+        .route("/api/restore/projects", post(handlers::archive::restore_projects_handler))
         // WebSocket
         .route("/ws", get(ws::ws_handler))
         // Static files

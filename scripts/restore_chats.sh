@@ -15,6 +15,11 @@ fi
 # ==============================================================================
 set -euo pipefail
 
+# ⚡ Fast path: Use high-performance pure Rust restore engine if available
+if command -v agy_ide_bridge >/dev/null 2>&1 && [ -n "${1:-}" ]; then
+    exec agy_ide_bridge restore-chats --file "$1"
+fi
+
 INPUT_ZIP="${1:-}"
 PASSWORD="${2:-}"
 TIMESTAMP="$(date +"%Y-%m-%d-%H-%M-%S")"

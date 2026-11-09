@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod conversations;
 pub mod fs;
 pub mod git;

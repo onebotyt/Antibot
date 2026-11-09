@@ -15,6 +15,15 @@ fi
 # ==============================================================================
 set -euo pipefail
 
+# ⚡ Fast path: Use high-performance pure Rust backup engine if available
+if command -v agy_ide_bridge >/dev/null 2>&1; then
+    OUTPUT_PARAM=""
+    if [ -n "${1:-}" ]; then
+        OUTPUT_PARAM="--output $1"
+    fi
+    exec agy_ide_bridge backup-chats $OUTPUT_PARAM
+fi
+
 HOME_DIR="${HOME:-/data/data/com.termux/files/home}"
 GEMINI_DIR="${HOME_DIR}/.gemini"
 BACKUP_DIR="/sdcard/Download/Antigem/backups"
