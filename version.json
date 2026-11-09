@@ -3,9 +3,9 @@
   "version_name": "1.0.70",
   "min_supported_version_code": 1,
   "changelog": [
-    "⚔️ Phase 11 Upgrade: Native Unified Diff Patcher, 3-Way Merge & Conflict Resolver in Rust.",
-    "⚡ Fuzzy Patch Application: High-performance unified diff parser with ±3 line fuzzy drift tolerance and atomic forward/reverse un-apply modes.",
-    "🧬 3-Way Merge & Conflict Engine: Zero-allocation base/ours/theirs merging producing standard conflict markers and strategy-based automated resolution (ours/theirs/both)."
+    "\u2694\ufe0f Phase 11 Upgrade: Native Unified Diff Patcher, 3-Way Merge & Conflict Resolver in Rust.",
+    "\u26a1 Fuzzy Patch Application: High-performance unified diff parser with \u00b13 line fuzzy drift tolerance and atomic forward/reverse un-apply modes.",
+    "\ud83e\uddec 3-Way Merge & Conflict Engine: Zero-allocation base/ours/theirs merging producing standard conflict markers and strategy-based automated resolution (ours/theirs/both)."
   ],
   "is_critical": false
 }
