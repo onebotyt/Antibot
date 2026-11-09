@@ -109,6 +109,52 @@ pub struct SearchMatch {
     pub line_number: usize,
     #[serde(rename = "lineText")]
     pub line_text: String,
+    #[serde(rename = "matchStart", skip_serializing_if = "Option::is_none")]
+    pub match_start: Option<usize>,
+    #[serde(rename = "matchEnd", skip_serializing_if = "Option::is_none")]
+    pub match_end: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffLine {
+    #[serde(rename = "type")]
+    pub line_type: String, // "equal", "delete", "insert"
+    #[serde(rename = "oldLine", skip_serializing_if = "Option::is_none")]
+    pub old_line: Option<usize>,
+    #[serde(rename = "newLine", skip_serializing_if = "Option::is_none")]
+    pub new_line: Option<usize>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffHunk {
+    pub header: String,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffFile {
+    pub path: String,
+    #[serde(rename = "oldPath", skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
+    pub status: String, // "modified", "added", "deleted"
+    pub hunks: Vec<DiffHunk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffResponse {
+    pub diff: String,
+    pub files: Vec<DiffFile>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ComputeDiffReq {
+    #[serde(rename = "oldText")]
+    pub old_text: String,
+    #[serde(rename = "newText")]
+    pub new_text: String,
+    #[serde(default)]
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

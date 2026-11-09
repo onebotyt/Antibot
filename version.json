@@ -1,12 +1,11 @@
 {
-  "version_code": 179,
-  "version_name": "1.0.59",
+  "version_code": 180,
+  "version_name": "1.0.60",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83e\udd80 Upgraded Background Daemon to Rust (`agy_ide_bridge_rs`): Instant sub-millisecond cold boot, zero garbage collection pauses, and ~90% lower RAM footprint (5.2 MB RSS vs. 45 MB).",
-    "\u26a1 Compact Binary Footprint: Shrunk daemon binary from 12.6 MB down to 1.5 MB uncompressed and 816 KB xz-compressed inside the APK.",
-    "\ud83d\ude80 Complete REST & WebSocket Parity: High-performance async Tokio + Axum engine handling file operations, Git source control, project templates, transcript parsing, and MCP server bridges.",
-    "\ud83d\udee1\ufe0f Rock-Solid Memory Safety & Graceful Shutdown: Thread-safe broadcast bus, zero-copy streaming, and resilient fallback mechanisms."
+    "🔍 Ripgrep-Grade Search Engine in Rust (`agy_ide_bridge_rs`): Instant sub-millisecond search across workspaces with .gitignore compliance, binary file skipping, regex support, and exact character position matching.",
+    "⚡ Semantic Git Diff Engine (`similar` crate): Fast hunk-by-hunk diff parser for live repository changes and arbitrary text diff computation via `/api/diff` and `/api/git/diff`.",
+    "🦀 870 KB Packaged Asset: Slashed memory and binary overhead while delivering desktop-grade IDE performance on Android."
   ],
   "is_critical": false
 }

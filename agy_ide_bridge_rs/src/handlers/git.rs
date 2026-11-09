@@ -10,7 +10,8 @@ use std::{process::Command, sync::Arc};
 
 use crate::{
     models::{
-        GitActionReq, GitActionResult, GitBranchInfo, GitConfig, GitFileStatus, GitSetConfigReq,
+        ComputeDiffReq, DiffFile, DiffHunk, DiffLine, DiffResponse, GitActionReq, GitActionResult,
+        GitBranchInfo, GitConfig, GitFileStatus, GitSetConfigReq,
     },
     AppState,
 };
@@ -221,7 +222,152 @@ pub async fn git_diff_handler(
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .unwrap_or_default();
 
-    (StatusCode::OK, Json(json!({ "diff": diff })))
+    let files = parse_git_diff(&diff);
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "diff": diff,
+            "files": files
+        })),
+    )
+}
+
+pub fn parse_git_diff(raw_diff: &str) -> Vec<DiffFile> {
+    let mut files = Vec::new();
+    let mut current_file: Option<DiffFile> = None;
+    let mut current_hunk: Option<DiffHunk> = None;
+
+    let mut old_line_num = 0;
+    let mut new_line_num = 0;
+
+    let hunk_re = regex::Regex::new(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@").unwrap();
+
+    for line in raw_diff.lines() {
+        if line.starts_with("diff --git ") {
+            if let Some(hunk) = current_hunk.take() {
+                if let Some(ref mut f) = current_file {
+                    f.hunks.push(hunk);
+                }
+            }
+            if let Some(f) = current_file.take() {
+                files.push(f);
+            }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let path = parts.get(3).unwrap_or(&"").trim_start_matches("b/").to_string();
+            let old_path = parts.get(2).map(|p| p.trim_start_matches("a/").to_string());
+            current_file = Some(DiffFile {
+                path,
+                old_path,
+                status: "modified".to_string(),
+                hunks: Vec::new(),
+            });
+        } else if line.starts_with("@@ ") {
+            if let Some(hunk) = current_hunk.take() {
+                if let Some(ref mut f) = current_file {
+                    f.hunks.push(hunk);
+                }
+            }
+            if let Some(caps) = hunk_re.captures(line) {
+                old_line_num = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()).unwrap_or(1);
+                new_line_num = caps.get(2).and_then(|m| m.as_str().parse::<usize>().ok()).unwrap_or(1);
+            }
+            current_hunk = Some(DiffHunk {
+                header: line.to_string(),
+                lines: Vec::new(),
+            });
+        } else if let Some(ref mut hunk) = current_hunk {
+            if line.starts_with('+') && !line.starts_with("+++") {
+                hunk.lines.push(DiffLine {
+                    line_type: "insert".to_string(),
+                    old_line: None,
+                    new_line: Some(new_line_num),
+                    text: line[1..].to_string(),
+                });
+                new_line_num += 1;
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                hunk.lines.push(DiffLine {
+                    line_type: "delete".to_string(),
+                    old_line: Some(old_line_num),
+                    new_line: None,
+                    text: line[1..].to_string(),
+                });
+                old_line_num += 1;
+            } else if line.starts_with(' ') {
+                hunk.lines.push(DiffLine {
+                    line_type: "equal".to_string(),
+                    old_line: Some(old_line_num),
+                    new_line: Some(new_line_num),
+                    text: line[1..].to_string(),
+                });
+                old_line_num += 1;
+                new_line_num += 1;
+            }
+        }
+    }
+
+    if let Some(hunk) = current_hunk {
+        if let Some(ref mut f) = current_file {
+            f.hunks.push(hunk);
+        }
+    }
+    if let Some(f) = current_file {
+        files.push(f);
+    }
+
+    files
+}
+
+pub async fn compute_diff_handler(
+    Json(req): Json<ComputeDiffReq>,
+) -> impl IntoResponse {
+    let text_diff = similar::TextDiff::from_lines(&req.old_text, &req.new_text);
+    let mut hunks = Vec::new();
+
+    for hunk in text_diff.unified_diff().context_radius(3).iter_hunks() {
+        let header = format!("{}", hunk.header());
+        let mut lines = Vec::new();
+        for change in hunk.iter_changes() {
+            let (line_type, old_line, new_line) = match change.tag() {
+                similar::ChangeTag::Equal => (
+                    "equal",
+                    change.old_index().map(|i| i + 1),
+                    change.new_index().map(|i| i + 1),
+                ),
+                similar::ChangeTag::Delete => ("delete", change.old_index().map(|i| i + 1), None),
+                similar::ChangeTag::Insert => ("insert", None, change.new_index().map(|i| i + 1)),
+            };
+            lines.push(DiffLine {
+                line_type: line_type.to_string(),
+                old_line,
+                new_line,
+                text: change.value().trim_end_matches(['\r', '\n']).to_string(),
+            });
+        }
+        hunks.push(DiffHunk { header, lines });
+    }
+
+    let filename = req.filename.unwrap_or_else(|| "file".to_string());
+    let diff_file = DiffFile {
+        path: filename.clone(),
+        old_path: Some(filename.clone()),
+        status: "modified".to_string(),
+        hunks,
+    };
+
+    let raw_diff = text_diff
+        .unified_diff()
+        .context_radius(3)
+        .header(&format!("a/{}", filename), &format!("b/{}", filename))
+        .to_string();
+
+    (
+        StatusCode::OK,
+        Json(DiffResponse {
+            diff: raw_diff,
+            files: vec![diff_file],
+        }),
+    )
 }
 
 pub async fn git_log_handler(

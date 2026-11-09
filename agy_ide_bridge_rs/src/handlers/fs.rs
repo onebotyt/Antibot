@@ -12,7 +12,8 @@ use std::{
     sync::Arc,
     time::UNIX_EPOCH,
 };
-use walkdir::WalkDir;
+use ignore::WalkBuilder;
+use regex::{Regex, RegexBuilder};
 
 use crate::{
     models::{
@@ -39,6 +40,11 @@ pub struct SearchQuery {
     pub q: Option<String>,
     pub path: Option<String>,
     pub dir: Option<String>,
+    pub regex: Option<bool>,
+    #[serde(rename = "caseSensitive")]
+    pub case_sensitive: Option<bool>,
+    #[serde(rename = "maxResults")]
+    pub max_results: Option<usize>,
 }
 
 pub async fn fs_roots_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -363,33 +369,106 @@ pub async fn file_search_handler(
         return (StatusCode::OK, Json(json!(Vec::<SearchMatch>::new())));
     }
 
-    let mut matches = Vec::new();
-    let query_lower = query_str.to_lowercase();
+    let is_regex = params.regex.unwrap_or(false);
+    let case_sensitive = params.case_sensitive.unwrap_or(false);
+    let max_results = params.max_results.unwrap_or(200);
 
-    for entry in WalkDir::new(path).max_depth(8).into_iter().flatten() {
-        if matches.len() >= 200 {
+    let regex_matcher: Option<Regex> = if is_regex {
+        RegexBuilder::new(&query_str)
+            .case_insensitive(!case_sensitive)
+            .build()
+            .ok()
+    } else {
+        None
+    };
+
+    let query_needle = if case_sensitive {
+        query_str.clone()
+    } else {
+        query_str.to_lowercase()
+    };
+
+    let mut matches = Vec::new();
+
+    // Ripgrep-grade traversal: respects .gitignore, ignores hidden system dirs, skips binaries
+    let walker = WalkBuilder::new(path)
+        .hidden(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .max_depth(Some(16))
+        .build();
+
+    for result in walker {
+        if matches.len() >= max_results {
             break;
         }
 
+        let entry = match result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
         let p = entry.path();
-        if p.is_file() {
-            let name = entry.file_name().to_string_lossy();
-            if name == ".git" || name.starts_with('.') || name == "Cargo.lock" {
+        if !p.is_file() {
+            continue;
+        }
+
+        // Avoid opening massive files (> 10 MB)
+        if let Ok(meta) = entry.metadata() {
+            if meta.len() > 10 * 1024 * 1024 {
                 continue;
             }
+        }
 
-            if let Ok(content) = fs::read_to_string(p) {
-                for (idx, line) in content.lines().enumerate() {
-                    if line.to_lowercase().contains(&query_lower) {
-                        matches.push(SearchMatch {
-                            path: p.to_string_lossy().to_string(),
-                            line_number: idx + 1,
-                            line_text: line.trim().to_string(),
-                        });
-                        if matches.len() >= 200 {
-                            break;
-                        }
-                    }
+        let bytes = match fs::read(p) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+
+        // Binary check: if null byte exists within first 1024 bytes, skip
+        let check_len = bytes.len().min(1024);
+        if bytes[..check_len].contains(&0) {
+            continue;
+        }
+
+        let content = match String::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let file_path_str = p.to_string_lossy().to_string();
+
+        for (idx, line) in content.lines().enumerate() {
+            let (is_match, m_start, m_end) = if let Some(ref re) = regex_matcher {
+                if let Some(m) = re.find(line) {
+                    (true, Some(m.start()), Some(m.end()))
+                } else {
+                    (false, None, None)
+                }
+            } else {
+                let haystack = if case_sensitive {
+                    line.to_string()
+                } else {
+                    line.to_lowercase()
+                };
+                if let Some(start_idx) = haystack.find(&query_needle) {
+                    (true, Some(start_idx), Some(start_idx + query_needle.len()))
+                } else {
+                    (false, None, None)
+                }
+            };
+
+            if is_match {
+                matches.push(SearchMatch {
+                    path: file_path_str.clone(),
+                    line_number: idx + 1,
+                    line_text: line.trim().to_string(),
+                    match_start: m_start,
+                    match_end: m_end,
+                });
+                if matches.len() >= max_results {
+                    break;
                 }
             }
         }

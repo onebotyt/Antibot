@@ -142,6 +142,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/git/status", get(handlers::git::git_status_handler))
         .route("/api/git/branches", get(handlers::git::git_branches_handler))
         .route("/api/git/diff", get(handlers::git::git_diff_handler))
+        .route("/api/git/diff/compute", post(handlers::git::compute_diff_handler))
+        .route("/api/diff", post(handlers::git::compute_diff_handler))
         .route("/api/git/log", get(handlers::git::git_log_handler))
         .route("/api/git/init", post(handlers::git::git_init_handler))
         .route("/api/git/clone", post(handlers::git::git_clone_handler))
