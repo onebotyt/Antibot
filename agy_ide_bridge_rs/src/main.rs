@@ -300,6 +300,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ai/similarity", post(handlers::ai::similarity_handler))
         .route("/api/ai/rag/search", post(handlers::ai::rag_search_handler))
         .route("/api/ai/tokens", post(handlers::ai::tokens_handler))
+        // Real-Time Audio DSP, Ring-Buffer & Spectral Telemetry
+        .route("/api/audio/telemetry", post(handlers::audio::audio_telemetry_handler))
+        .route("/ws/audio/telemetry", get(handlers::audio::ws_audio_telemetry_handler))
         // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))

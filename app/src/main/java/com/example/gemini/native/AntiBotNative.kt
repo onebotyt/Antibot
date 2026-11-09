@@ -121,6 +121,30 @@ object AntiBotNative {
     @JvmStatic
     external fun truncateToTokenBudgetNative(text: String, maxTokens: Int): String
 
+    @JvmStatic
+    external fun initAudioRingBufferNative(capacitySamples: Int)
+
+    @JvmStatic
+    external fun writeAudioRingBufferNative(pcmBytes: ByteArray): Int
+
+    @JvmStatic
+    external fun computeEqualizerBandsNative(pcmBytes: ByteArray, numBands: Int): FloatArray?
+
+    @JvmStatic
+    external fun computeAudioTelemetryNative(pcmBytes: ByteArray, sampleRate: Int): String
+
+    data class AudioTelemetry(
+        val normalizedAmplitude: Float,
+        val peakAmplitude: Float,
+        val rmsDb: Float,
+        val snrDb: Float,
+        val isSpeech: Boolean,
+        val noiseFloor: Float,
+        val dominantFrequencyHz: Float,
+        val spectrumBands: FloatArray,
+        val sampleRate: Int
+    )
+
     data class VectorDocument(
         val id: String,
         val text: String,
@@ -1052,6 +1076,95 @@ object AntiBotNative {
         } catch (e: Throwable) {
             Log.w(TAG, "truncateToTokenBudgetNative error: ${e.message}")
             TokenBudgetResult(text.take(maxTokens * 4), maxTokens)
+        }
+    }
+
+    /**
+     * Initializes the native lock-free circular audio ring buffer with specified capacity.
+     */
+    fun initAudioRingBuffer(capacitySamples: Int = 16000) {
+        if (!isLoaded) return
+        try {
+            initAudioRingBufferNative(capacitySamples)
+        } catch (e: Throwable) {
+            Log.w(TAG, "initAudioRingBufferNative error: ${e.message}")
+        }
+    }
+
+    /**
+     * Writes 16-bit PCM audio samples into the native circular ring buffer.
+     */
+    fun writeAudioRingBuffer(pcmBytes: ByteArray): Int {
+        if (!isLoaded || pcmBytes.isEmpty()) return 0
+        return try {
+            writeAudioRingBufferNative(pcmBytes)
+        } catch (e: Throwable) {
+            Log.w(TAG, "writeAudioRingBufferNative error: ${e.message}")
+            0
+        }
+    }
+
+    /**
+     * Computes N-band visual audio equalizer spectrum for live Compose rendering.
+     */
+    fun computeEqualizerBands(pcmBytes: ByteArray, numBands: Int = 8): FloatArray {
+        if (!isLoaded || pcmBytes.isEmpty()) return FloatArray(numBands)
+        return try {
+            computeEqualizerBandsNative(pcmBytes, numBands) ?: FloatArray(numBands)
+        } catch (e: Throwable) {
+            Log.w(TAG, "computeEqualizerBandsNative error: ${e.message}")
+            FloatArray(numBands)
+        }
+    }
+
+    /**
+     * Analyzes PCM audio samples to compute comprehensive real-time telemetry
+     * including RMS, peak energy, SNR, speech decision, dominant pitch, and equalizer bands.
+     */
+    fun computeAudioTelemetry(pcmBytes: ByteArray, sampleRate: Int = 16000): AudioTelemetry {
+        if (!isLoaded || pcmBytes.isEmpty()) {
+            return AudioTelemetry(
+                normalizedAmplitude = 0.08f,
+                peakAmplitude = 0.0f,
+                rmsDb = -96.0f,
+                snrDb = 0.0f,
+                isSpeech = false,
+                noiseFloor = 300.0f,
+                dominantFrequencyHz = 0.0f,
+                spectrumBands = FloatArray(8),
+                sampleRate = sampleRate
+            )
+        }
+        return try {
+            val resJson = computeAudioTelemetryNative(pcmBytes, sampleRate)
+            val obj = JSONObject(resJson)
+            val bandsArr = obj.optJSONArray("spectrum_bands") ?: JSONArray()
+            val bands = FloatArray(bandsArr.length()) { i -> bandsArr.optDouble(i, 0.0).toFloat() }
+
+            AudioTelemetry(
+                normalizedAmplitude = obj.optDouble("normalized_amplitude", 0.08).toFloat(),
+                peakAmplitude = obj.optDouble("peak_amplitude", 0.0).toFloat(),
+                rmsDb = obj.optDouble("rms_db", -96.0).toFloat(),
+                snrDb = obj.optDouble("snr_db", 0.0).toFloat(),
+                isSpeech = obj.optBoolean("is_speech", false),
+                noiseFloor = obj.optDouble("noise_floor", 300.0).toFloat(),
+                dominantFrequencyHz = obj.optDouble("dominant_frequency_hz", 0.0).toFloat(),
+                spectrumBands = bands,
+                sampleRate = obj.optInt("sample_rate", sampleRate)
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "computeAudioTelemetryNative error: ${e.message}")
+            AudioTelemetry(
+                normalizedAmplitude = 0.08f,
+                peakAmplitude = 0.0f,
+                rmsDb = -96.0f,
+                snrDb = 0.0f,
+                isSpeech = false,
+                noiseFloor = 300.0f,
+                dominantFrequencyHz = 0.0f,
+                spectrumBands = FloatArray(8),
+                sampleRate = sampleRate
+            )
         }
     }
 }

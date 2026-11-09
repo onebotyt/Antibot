@@ -1,11 +1,11 @@
 {
-  "version_code": 194,
-  "version_name": "1.0.74",
+  "version_code": 195,
+  "version_name": "1.0.75",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83e\udde0 Phase 15 Upgrade: Native Fast Semantic Vector Index, RAG Cache & Tokenizer in Rust.",
-    "\u26a1 Vector Similarity Math: High-performance cosine similarity, dot product, and L2 euclidean distance calculation with zero allocations.",
-    "\ud83d\udd0d In-Memory RAG & Tokenizer: Fast k-NN semantic search over transcript & codebase embeddings, with BPE token estimation and context budgeting."
+    "🎙️ Phase 16 Upgrade: Native Real-time Audio Ring-Buffer, FFT Spectrum & VAD Telemetry in Rust.",
+    "⚡ Lock-free Audio Ring-Buffer: Microsecond-latency circular PCM stream buffering with atomic head pointers.",
+    "📊 Radix-2 FFT & Compose Equalizer: Real-time Cooley-Tukey spectral analysis with Hanning windowing and multi-band equalizer rendering."
   ],
   "is_critical": false
 }

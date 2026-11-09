@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 pub mod agent_dag;
 pub mod audio;
+pub mod audio_dsp;
 pub mod crypto;
 pub mod diff;
 pub mod fuzzy;
@@ -17,6 +18,8 @@ pub mod syntax;
 pub mod vector_rag;
 
 static VAD: Mutex<Option<audio::VadEngine>> = Mutex::new(None);
+static RING_BUFFER: Mutex<Option<audio_dsp::AudioRingBuffer>> = Mutex::new(None);
+static TELEMETRY_NOISE: Mutex<f32> = Mutex::new(300.0);
 
 #[no_mangle]
 pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_isNativeAvailable<'local>(
@@ -31,7 +34,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.74-rust-vector-rag").unwrap();
+    let output = env.new_string("1.0.75-rust-audio-dsp").unwrap();
     output.into_raw()
 }
 
@@ -709,6 +712,100 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_truncateToTo
     let output = env.new_string(json_val.to_string()).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_initAudioRingBufferNative<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    capacity_samples: jint,
+) {
+    let mut lock = RING_BUFFER.lock().unwrap();
+    *lock = Some(audio_dsp::AudioRingBuffer::new(capacity_samples.max(256) as usize));
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_writeAudioRingBufferNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pcm_bytes: JByteArray<'local>,
+) -> jint {
+    let pcm_vec: Vec<u8> = match env.convert_byte_array(&pcm_bytes) {
+        Ok(v) => v,
+        Err(_) => return 0,
+    };
+
+    let sample_count = pcm_vec.len() / 2;
+    if sample_count == 0 {
+        return 0;
+    }
+
+    let mut samples = Vec::with_capacity(sample_count);
+    for chunk in pcm_vec.chunks_exact(2) {
+        samples.push(i16::from_le_bytes([chunk[0], chunk[1]]));
+    }
+
+    let mut lock = RING_BUFFER.lock().unwrap();
+    let ring = lock.get_or_insert_with(|| audio_dsp::AudioRingBuffer::new(16000));
+    ring.write(&samples) as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_computeEqualizerBandsNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pcm_bytes: JByteArray<'local>,
+    num_bands: jint,
+) -> jfloatArray {
+    let pcm_vec: Vec<u8> = match env.convert_byte_array(&pcm_bytes) {
+        Ok(v) => v,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let sample_count = pcm_vec.len() / 2;
+    let mut samples = Vec::with_capacity(sample_count);
+    for chunk in pcm_vec.chunks_exact(2) {
+        samples.push(i16::from_le_bytes([chunk[0], chunk[1]]));
+    }
+
+    let bands = audio_dsp::compute_equalizer_bands(&samples, 16000, num_bands.max(4) as usize);
+
+    let output_array = match env.new_float_array(bands.len() as jint) {
+        Ok(arr) => arr,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    if env.set_float_array_region(&output_array, 0, &bands).is_err() {
+        return std::ptr::null_mut();
+    }
+
+    output_array.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_computeAudioTelemetryNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pcm_bytes: JByteArray<'local>,
+    sample_rate: jint,
+) -> jstring {
+    let pcm_vec: Vec<u8> = match env.convert_byte_array(&pcm_bytes) {
+        Ok(v) => v,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let mut noise_lock = TELEMETRY_NOISE.lock().unwrap();
+    let telemetry = audio_dsp::analyze_pcm_telemetry(
+        &pcm_vec,
+        sample_rate.max(8000) as u32,
+        8,
+        &mut noise_lock,
+    );
+
+    let json_str = serde_json::to_string(&telemetry).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 
