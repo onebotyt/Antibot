@@ -4,12 +4,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use memchr::memchr_iter;
+use memmap2::Mmap;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
     fs::{self, File},
-    io::{BufRead, BufReader},
     path::PathBuf,
     time::UNIX_EPOCH,
 };
@@ -18,6 +19,20 @@ use crate::models::{
     ChatMessage, ConversationListResponse, ConversationSummary, ToolCall,
     TranscriptSearchMatch, TranscriptSearchResponse,
 };
+
+fn get_line_offsets(mmap: &[u8]) -> Vec<usize> {
+    if mmap.is_empty() {
+        return Vec::new();
+    }
+    let mut offsets = Vec::with_capacity(64);
+    offsets.push(0);
+    for idx in memchr_iter(b'\n', mmap) {
+        if idx + 1 < mmap.len() {
+            offsets.push(idx + 1);
+        }
+    }
+    offsets
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ConvQuery {
@@ -90,40 +105,55 @@ pub async fn conversations_list_handler(Query(params): Query<ConvQuery>) -> impl
                 .unwrap_or_default();
 
             let title_file = p.join("custom_title.txt");
-            let title = if let Ok(t) = fs::read_to_string(&title_file) {
+            let (title, steps_count) = if let Ok(t) = fs::read_to_string(&title_file) {
                 let trimmed = t.trim().to_string();
-                if trimmed.is_empty() {
-                    conv_id.clone()
+                let steps = if let Ok(f) = File::open(&transcript_path) {
+                    if let Ok(m) = unsafe { Mmap::map(&f) } {
+                        let mut c = memchr_iter(b'\n', &m).count();
+                        if !m.is_empty() && m[m.len() - 1] != b'\n' {
+                            c += 1;
+                        }
+                        c.max(1)
+                    } else {
+                        1
+                    }
                 } else {
-                    trimmed
-                }
+                    1
+                };
+                (if trimmed.is_empty() { conv_id.clone() } else { trimmed }, steps)
             } else {
                 let mut found_title = String::new();
+                let mut steps = 1;
                 if let Ok(file) = File::open(&transcript_path) {
-                    let reader = BufReader::new(file);
-                    for line in reader.lines().flatten() {
-                        if let Ok(step) = serde_json::from_str::<Value>(&line) {
-                            if step["type"] == "USER_INPUT" {
-                                if let Some(content) = step["content"].as_str() {
-                                    let clean = extract_prompt_text(content);
-                                    if !clean.is_empty() {
-                                        found_title = if clean.len() > 36 {
-                                            format!("{}...", &clean[..36])
-                                        } else {
-                                            clean
-                                        };
-                                        break;
+                    if let Ok(m) = unsafe { Mmap::map(&file) } {
+                        let offsets = get_line_offsets(&m);
+                        steps = offsets.len().max(1);
+                        for (idx, &off) in offsets.iter().enumerate() {
+                            let end = if idx + 1 < offsets.len() {
+                                offsets[idx + 1]
+                            } else {
+                                m.len()
+                            };
+                            let line = &m[off..end];
+                            if let Ok(step) = serde_json::from_slice::<Value>(line) {
+                                if step["type"] == "USER_INPUT" {
+                                    if let Some(content) = step["content"].as_str() {
+                                        let clean = extract_prompt_text(content);
+                                        if !clean.is_empty() {
+                                            found_title = if clean.len() > 36 {
+                                                format!("{}...", &clean[..36])
+                                            } else {
+                                                clean
+                                            };
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-                if found_title.is_empty() {
-                    conv_id.clone()
-                } else {
-                    found_title
-                }
+                (if found_title.is_empty() { conv_id.clone() } else { found_title }, steps)
             };
 
             if let Some(q) = &search {
@@ -138,7 +168,7 @@ pub async fn conversations_list_handler(Query(params): Query<ConvQuery>) -> impl
                     id: conv_id,
                     title,
                     created_at: created_at.clone(),
-                    steps_count: 1,
+                    steps_count,
                     is_running: false,
                     last_activity: Some(created_at),
                 },
@@ -174,7 +204,9 @@ pub async fn conversations_list_handler(Query(params): Query<ConvQuery>) -> impl
 pub async fn conversation_messages_handler(
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    let transcript_path = brain_dir().join(&id).join(".system_generated/logs/transcript.jsonl");
+    let conv_dir = brain_dir().join(&id);
+    let transcript_path = conv_dir.join(".system_generated/logs/transcript.jsonl");
+    let full_path = conv_dir.join(".system_generated/logs/transcript_full.jsonl");
 
     if !transcript_path.exists() {
         return (
@@ -183,7 +215,7 @@ pub async fn conversation_messages_handler(
         );
     }
 
-    let file = match File::open(&transcript_path) {
+    let compact_file = match File::open(&transcript_path) {
         Ok(f) => f,
         Err(e) => {
             return (
@@ -193,11 +225,52 @@ pub async fn conversation_messages_handler(
         }
     };
 
-    let reader = BufReader::new(file);
-    let mut messages = Vec::new();
+    let compact_mmap = match unsafe { Mmap::map(&compact_file) } {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e.to_string(), "messages": [] })),
+            );
+        }
+    };
 
-    for line in reader.lines().flatten() {
-        if let Ok(step) = serde_json::from_str::<Value>(&line) {
+    let full_mmap_opt = if full_path.exists() {
+        File::open(&full_path).ok().and_then(|f| unsafe { Mmap::map(&f).ok() })
+    } else {
+        None
+    };
+
+    let full_offsets = full_mmap_opt.as_ref().map(|m| get_line_offsets(m));
+    let compact_offsets = get_line_offsets(&compact_mmap);
+    let mut messages = Vec::with_capacity(compact_offsets.len());
+
+    for (idx, &off) in compact_offsets.iter().enumerate() {
+        let end = if idx + 1 < compact_offsets.len() {
+            compact_offsets[idx + 1]
+        } else {
+            compact_mmap.len()
+        };
+        let line_slice = &compact_mmap[off..end];
+
+        let mut step_val: Option<Value> = serde_json::from_slice(line_slice).ok();
+
+        // If truncated_fields is present, splice in the full fields from transcript_full.jsonl!
+        if let Some(ref val) = step_val {
+            if val.get("truncated_fields").is_some() {
+                if let (Some(ref full_m), Some(ref f_offs)) = (&full_mmap_opt, &full_offsets) {
+                    if idx < f_offs.len() {
+                        let f_start = f_offs[idx];
+                        let f_end = if idx + 1 < f_offs.len() { f_offs[idx + 1] } else { full_m.len() };
+                        if let Ok(full_val) = serde_json::from_slice::<Value>(&full_m[f_start..f_end]) {
+                            step_val = Some(full_val);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(step) = step_val {
             let step_type = step["type"].as_str().unwrap_or_default();
             if step_type == "USER_INPUT" {
                 let content = step["content"].as_str().unwrap_or_default();
@@ -246,6 +319,60 @@ pub async fn conversation_messages_handler(
     }
 
     (StatusCode::OK, Json(json!({ "id": id, "messages": messages })))
+}
+
+pub async fn conversation_step_handler(
+    AxumPath((id, step_index)): AxumPath<(String, usize)>,
+) -> impl IntoResponse {
+    let conv_dir = brain_dir().join(&id);
+    let compact_path = conv_dir.join(".system_generated/logs/transcript.jsonl");
+    let full_path = conv_dir.join(".system_generated/logs/transcript_full.jsonl");
+
+    if !compact_path.exists() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "Not found" })));
+    }
+
+    let compact_file = match File::open(&compact_path) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+    };
+
+    let compact_mmap = match unsafe { Mmap::map(&compact_file) } {
+        Ok(m) => m,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+    };
+
+    let offsets = get_line_offsets(&compact_mmap);
+    if step_index >= offsets.len() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "Step index out of range" })));
+    }
+
+    let start = offsets[step_index];
+    let end = if step_index + 1 < offsets.len() { offsets[step_index + 1] } else { compact_mmap.len() };
+    let line_slice = &compact_mmap[start..end];
+
+    let mut val: Value = match serde_json::from_slice(line_slice) {
+        Ok(v) => v,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+    };
+
+    // If truncated, check transcript_full.jsonl
+    if val.get("truncated_fields").is_some() && full_path.exists() {
+        if let Ok(f) = File::open(&full_path) {
+            if let Ok(full_m) = unsafe { Mmap::map(&f) } {
+                let f_offs = get_line_offsets(&full_m);
+                if step_index < f_offs.len() {
+                    let fs = f_offs[step_index];
+                    let fe = if step_index + 1 < f_offs.len() { f_offs[step_index + 1] } else { full_m.len() };
+                    if let Ok(full_v) = serde_json::from_slice::<Value>(&full_m[fs..fe]) {
+                        val = full_v;
+                    }
+                }
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(val))
 }
 
 pub async fn update_conversation_title_handler(
@@ -327,24 +454,39 @@ pub async fn search_conversations_handler(
                 Err(_) => continue,
             };
 
-            let reader = BufReader::new(file);
-            for line in reader.lines().flatten() {
+            let mmap = match unsafe { Mmap::map(&file) } {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let offsets = get_line_offsets(&mmap);
+            for (line_idx, &off) in offsets.iter().enumerate() {
                 if matches.len() >= limit {
                     break;
                 }
+                let end = if line_idx + 1 < offsets.len() {
+                    offsets[line_idx + 1]
+                } else {
+                    mmap.len()
+                };
+                let line_slice = &mmap[off..end];
+                let line_str = match std::str::from_utf8(line_slice) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
 
                 // Fast pre-check on line content before expensive parsing
                 let line_matches = if case_sensitive {
-                    line.contains(&needle)
+                    line_str.contains(&needle)
                 } else {
-                    line.to_lowercase().contains(&needle)
+                    line_str.to_lowercase().contains(&needle)
                 };
 
                 if !line_matches {
                     continue;
                 }
 
-                if let Ok(step) = serde_json::from_str::<Value>(&line) {
+                if let Ok(step) = serde_json::from_str::<Value>(line_str) {
                     let step_type = step["type"].as_str().unwrap_or_default();
                     let role = if step_type == "USER_INPUT" {
                         "user"
@@ -432,4 +574,34 @@ pub async fn search_conversations_handler(
         }),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_line_offsets_empty() {
+        assert_eq!(get_line_offsets(b""), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn test_get_line_offsets_multiple_lines() {
+        let data = b"line1\nline2\nline3\n";
+        let offsets = get_line_offsets(data);
+        assert_eq!(offsets, vec![0, 6, 12]);
+    }
+
+    #[test]
+    fn test_extract_prompt_text_user_request() {
+        let content = "<antigem-expansion command=\"\"></antigem-expansion><USER_REQUEST>Fix the Rust compilation issue</USER_REQUEST>";
+        assert_eq!(extract_prompt_text(content), "Fix the Rust compilation issue");
+    }
+
+    #[test]
+    fn test_extract_prompt_text_fallback_tags() {
+        let content = "<system>Hello</system> World!";
+        assert_eq!(extract_prompt_text(content), "Hello World!");
+    }
+}
+
 

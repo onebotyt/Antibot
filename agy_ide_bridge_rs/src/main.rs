@@ -304,6 +304,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             post(handlers::conversations::update_conversation_title_handler)
                 .patch(handlers::conversations::update_conversation_title_handler),
         )
+        .route(
+            "/api/conversations/:id/steps/:step_index",
+            get(handlers::conversations::conversation_step_handler),
+        )
         // Backup & Restore Engine
         .route("/api/backup/chats", post(handlers::archive::backup_chats_handler))
         .route("/api/restore/chats", post(handlers::archive::restore_chats_handler))

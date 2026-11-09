@@ -67,6 +67,26 @@ object AntiBotNative {
     @JvmStatic
     external fun fuzzyFilterIndicesNative(pattern: String, targets: Array<String>, maxResults: Int): IntArray?
 
+    @JvmStatic
+    external fun countLinesMmapNative(path: String): Int
+
+    @JvmStatic
+    external fun getLineMmapNative(path: String, lineIndex: Int): String
+
+    @JvmStatic
+    external fun getSplicedTurnMmapNative(compactPath: String, fullPath: String, lineIndex: Int): String
+
+    @JvmStatic
+    external fun extractTranscriptMetaMmapNative(transcriptPath: String): String
+
+    data class TranscriptSummary(
+        val title: String,
+        val totalSteps: Int,
+        val isRunning: Boolean,
+        val firstPrompt: String,
+        val lastRole: String
+    )
+
     data class NativeAudioMetrics(
         val normalizedAmplitude: Float,
         val peakAmplitude: Float,
@@ -353,6 +373,71 @@ object AntiBotNative {
             val score = fuzzyScore(pattern, item)
             if (score > 0) Pair(item, score) else null
         }.sortedByDescending { it.second }.take(maxResults).map { it.first }
+    }
+
+    /**
+     * Counts lines in a file via memory mapping and SIMD memchr in Rust.
+     */
+    fun countLinesMmap(path: String): Int {
+        if (!isLoaded || path.isEmpty()) return 0
+        return try {
+            countLinesMmapNative(path)
+        } catch (e: Throwable) {
+            Log.w(TAG, "countLinesMmapNative error: ${e.message}")
+            0
+        }
+    }
+
+    /**
+     * Reads a single line by index from a file using zero-copy memory mapping in Rust.
+     */
+    fun getLineMmap(path: String, lineIndex: Int): String? {
+        if (!isLoaded || path.isEmpty() || lineIndex < 0) return null
+        return try {
+            val line = getLineMmapNative(path, lineIndex)
+            line.takeIf { it.isNotEmpty() }
+        } catch (e: Throwable) {
+            Log.w(TAG, "getLineMmapNative error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Retrieves a transcript turn, automatically splicing full untruncated fields
+     * from `transcript_full.jsonl` if `transcript.jsonl` contains truncated fields.
+     */
+    fun getSplicedTurnMmap(compactPath: String, fullPath: String, lineIndex: Int): String? {
+        if (!isLoaded || compactPath.isEmpty() || lineIndex < 0) return null
+        return try {
+            val turn = getSplicedTurnMmapNative(compactPath, fullPath, lineIndex)
+            turn.takeIf { it.isNotEmpty() }
+        } catch (e: Throwable) {
+            Log.w(TAG, "getSplicedTurnMmapNative error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Ultra-fast transcript summary extraction (title, total steps, running status)
+     * directly via Rust memory mapping in microseconds.
+     */
+    fun extractTranscriptMeta(transcriptPath: String): TranscriptSummary? {
+        if (!isLoaded || transcriptPath.isEmpty()) return null
+        return try {
+            val jsonStr = extractTranscriptMetaMmapNative(transcriptPath)
+            if (jsonStr.isBlank() || jsonStr == "{}") return null
+            val obj = JSONObject(jsonStr)
+            TranscriptSummary(
+                title = obj.optString("title", ""),
+                totalSteps = obj.optInt("total_steps", 0),
+                isRunning = obj.optBoolean("is_running", false),
+                firstPrompt = obj.optString("first_prompt", ""),
+                lastRole = obj.optString("last_role", "")
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "extractTranscriptMeta error: ${e.message}")
+            null
+        }
     }
 }
 

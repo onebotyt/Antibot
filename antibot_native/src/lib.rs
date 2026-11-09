@@ -8,6 +8,7 @@ pub mod crypto;
 pub mod diff;
 pub mod fuzzy;
 pub mod markdown;
+pub mod mmap_log;
 pub mod syntax;
 
 static VAD: Mutex<Option<audio::VadEngine>> = Mutex::new(None);
@@ -25,7 +26,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.67-rust-deep-search-fuzzy").unwrap();
+    let output = env.new_string("1.0.68-rust-mmap-cache").unwrap();
     output.into_raw()
 }
 
@@ -273,5 +274,86 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_fuzzyFilterI
 
     array.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_countLinesMmapNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    path: JString<'local>,
+) -> jint {
+    let p_str: String = match env.get_string(&path) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    mmap_log::count_lines_mmap(&p_str).unwrap_or(0) as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getLineMmapNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    path: JString<'local>,
+    line_index: jint,
+) -> jstring {
+    let p_str: String = match env.get_string(&path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let line = mmap_log::get_line_mmap(&p_str, line_index.max(0) as usize)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+
+    let output = env.new_string(line).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getSplicedTurnMmapNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    compact_path: JString<'local>,
+    full_path: JString<'local>,
+    line_index: jint,
+) -> jstring {
+    let cp_str: String = match env.get_string(&compact_path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let fp_str: String = match env.get_string(&full_path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let turn = mmap_log::get_spliced_turn_mmap(&cp_str, &fp_str, line_index.max(0) as usize)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+
+    let output = env.new_string(turn).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_extractTranscriptMetaMmapNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    transcript_path: JString<'local>,
+) -> jstring {
+    let p_str: String = match env.get_string(&transcript_path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let meta = mmap_log::extract_transcript_meta_mmap(&p_str)
+        .ok()
+        .flatten();
+
+    let json_str = serde_json::to_string(&meta).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
