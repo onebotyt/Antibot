@@ -12,6 +12,7 @@ pub mod diff;
 pub mod fuzzy;
 pub mod diff_patch;
 pub mod lsp_diagnostics;
+pub mod hw_telemetry;
 pub mod mcp_rpc;
 pub mod markdown;
 pub mod mmap_log;
@@ -38,7 +39,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.77-rust-net-traffic").unwrap();
+    let output = env.new_string("1.0.78-rust-hw-telemetry").unwrap();
     output.into_raw()
 }
 
@@ -935,6 +936,37 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_clearNetwork
         inspector.clear();
     }
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getHardwareTelemetryNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    override_temp: jfloat,
+) -> jstring {
+    let opt_temp = if override_temp > 0.0 {
+        Some(override_temp)
+    } else {
+        None
+    };
+    let telem = hw_telemetry::collect_hardware_telemetry(opt_temp);
+    let json_str = serde_json::to_string(&telem).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_evaluateThermalThrottleNative<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    temp_celsius: jfloat,
+    total_cores: jint,
+) -> jstring {
+    let advice = hw_telemetry::evaluate_thermal_throttle(temp_celsius, total_cores.max(1) as usize);
+    let json_str = serde_json::to_string(&advice).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 

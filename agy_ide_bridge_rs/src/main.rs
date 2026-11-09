@@ -314,6 +314,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/network/stats", get(handlers::network::network_stats_handler))
         .route("/api/network/clear", post(handlers::network::network_clear_handler))
         .route("/api/network/proxy/test", post(handlers::network::network_proxy_test_handler))
+        // Hardware Telemetry & Thermal Governor
+        .route("/api/hw/telemetry", get(handlers::hardware::hw_telemetry_handler))
+        .route("/api/hw/thermal/evaluate", post(handlers::hardware::hw_thermal_eval_handler))
+        .route("/api/hw/cpu", get(handlers::hardware::hw_cpu_handler))
         // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))

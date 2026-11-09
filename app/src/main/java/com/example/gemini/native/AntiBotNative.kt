@@ -154,6 +154,55 @@ object AntiBotNative {
     @JvmStatic
     external fun clearNetworkTrafficNative()
 
+    @JvmStatic
+    external fun getHardwareTelemetryNative(overrideTemp: Float): String
+
+    @JvmStatic
+    external fun evaluateThermalThrottleNative(tempCelsius: Float, totalCores: Int): String
+
+    data class CpuCoreInfo(
+        val coreId: Int,
+        val curFreqKhz: Long,
+        val minFreqKhz: Long,
+        val maxFreqKhz: Long,
+        val online: Boolean
+    )
+
+    data class MemoryMetrics(
+        val totalMb: Long,
+        val availableMb: Long,
+        val freeMb: Long,
+        val cachedMb: Long,
+        val usedMb: Long,
+        val usedPercentage: Float
+    )
+
+    data class ThermalZoneInfo(
+        val zoneId: Int,
+        val zoneType: String,
+        val tempCelsius: Float
+    )
+
+    data class ThrottleAdvice(
+        val severity: String,
+        val temperatureCelsius: Float,
+        val throttleMultiplier: Float,
+        val recommendedThreads: Int,
+        val pauseGenerationMs: Long,
+        val message: String
+    )
+
+    data class HardwareTelemetry(
+        val cpuCores: List<CpuCoreInfo>,
+        val onlineCoresCount: Int,
+        val avgCpuFreqKhz: Long,
+        val maxCpuFreqKhz: Long,
+        val memory: MemoryMetrics,
+        val thermals: List<ThermalZoneInfo>,
+        val maxTemperatureCelsius: Float,
+        val throttleAdvice: ThrottleAdvice
+    )
+
     data class NetworkTrafficEntry(
         val id: String,
         val timestamp: Long = System.currentTimeMillis(),
@@ -1411,7 +1460,117 @@ object AntiBotNative {
             Log.w(TAG, "clearNetworkTraffic error: ${e.message}")
         }
     }
+
+    /**
+     * Retrieves live hardware telemetry (CPU frequencies, RAM metrics, thermal sensors, throttle advice).
+     * @param overrideTemp Optional battery or device sensor temperature (in °C) to merge.
+     */
+    fun getHardwareTelemetry(overrideTemp: Float = 0.0f): HardwareTelemetry {
+        val fallbackAdvice = ThrottleAdvice("normal", 35.0f, 1.0f, 8, 0L, "Fallback")
+        val fallbackMem = MemoryMetrics(0L, 0L, 0L, 0L, 0L, 0.0f)
+        val fallback = HardwareTelemetry(emptyList(), 0, 0L, 0L, fallbackMem, emptyList(), 35.0f, fallbackAdvice)
+        if (!isLoaded) return fallback
+
+        return try {
+            val resJson = getHardwareTelemetryNative(overrideTemp)
+            val o = JSONObject(resJson)
+
+            val coresArr = o.optJSONArray("cpu_cores")
+            val cores = mutableListOf<CpuCoreInfo>()
+            if (coresArr != null) {
+                for (i in 0 until coresArr.length()) {
+                    val c = coresArr.getJSONObject(i)
+                    cores.add(
+                        CpuCoreInfo(
+                            coreId = c.optInt("core_id", i),
+                            curFreqKhz = c.optLong("cur_freq_khz", 0L),
+                            minFreqKhz = c.optLong("min_freq_khz", 0L),
+                            maxFreqKhz = c.optLong("max_freq_khz", 0L),
+                            online = c.optBoolean("online", true)
+                        )
+                    )
+                }
+            }
+
+            val mObj = o.optJSONObject("memory")
+            val memory = if (mObj != null) {
+                MemoryMetrics(
+                    totalMb = mObj.optLong("total_mb", 0L),
+                    availableMb = mObj.optLong("available_mb", 0L),
+                    freeMb = mObj.optLong("free_mb", 0L),
+                    cachedMb = mObj.optLong("cached_mb", 0L),
+                    usedMb = mObj.optLong("used_mb", 0L),
+                    usedPercentage = mObj.optDouble("used_percentage", 0.0).toFloat()
+                )
+            } else fallbackMem
+
+            val tArr = o.optJSONArray("thermals")
+            val thermals = mutableListOf<ThermalZoneInfo>()
+            if (tArr != null) {
+                for (i in 0 until tArr.length()) {
+                    val t = tArr.getJSONObject(i)
+                    thermals.add(
+                        ThermalZoneInfo(
+                            zoneId = t.optInt("zone_id", i),
+                            zoneType = t.optString("zone_type", ""),
+                            tempCelsius = t.optDouble("temp_celsius", 0.0).toFloat()
+                        )
+                    )
+                }
+            }
+
+            val aObj = o.optJSONObject("throttle_advice")
+            val advice = if (aObj != null) {
+                ThrottleAdvice(
+                    severity = aObj.optString("severity", "normal"),
+                    temperatureCelsius = aObj.optDouble("temperature_celsius", 35.0).toFloat(),
+                    throttleMultiplier = aObj.optDouble("throttle_multiplier", 1.0).toFloat(),
+                    recommendedThreads = aObj.optInt("recommended_threads", 4),
+                    pauseGenerationMs = aObj.optLong("pause_generation_ms", 0L),
+                    message = aObj.optString("message", "")
+                )
+            } else fallbackAdvice
+
+            HardwareTelemetry(
+                cpuCores = cores,
+                onlineCoresCount = o.optInt("online_cores_count", cores.size),
+                avgCpuFreqKhz = o.optLong("avg_cpu_freq_khz", 0L),
+                maxCpuFreqKhz = o.optLong("max_cpu_freq_khz", 0L),
+                memory = memory,
+                thermals = thermals,
+                maxTemperatureCelsius = o.optDouble("max_temperature_celsius", 35.0).toFloat(),
+                throttleAdvice = advice
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "getHardwareTelemetry error: ${e.message}")
+            fallback
+        }
+    }
+
+    /**
+     * Evaluates thermal conditions and computes adaptive throttling advice.
+     */
+    fun evaluateThermalThrottle(tempCelsius: Float, totalCores: Int = 8): ThrottleAdvice {
+        val fallback = ThrottleAdvice("normal", tempCelsius, 1.0f, totalCores, 0L, "Fallback")
+        if (!isLoaded) return fallback
+        return try {
+            val resJson = evaluateThermalThrottleNative(tempCelsius, totalCores)
+            val o = JSONObject(resJson)
+            ThrottleAdvice(
+                severity = o.optString("severity", "normal"),
+                temperatureCelsius = o.optDouble("temperature_celsius", tempCelsius.toDouble()).toFloat(),
+                throttleMultiplier = o.optDouble("throttle_multiplier", 1.0).toFloat(),
+                recommendedThreads = o.optInt("recommended_threads", totalCores),
+                pauseGenerationMs = o.optLong("pause_generation_ms", 0L),
+                message = o.optString("message", "")
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "evaluateThermalThrottle error: ${e.message}")
+            fallback
+        }
+    }
 }
+
 
 
 
