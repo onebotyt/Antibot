@@ -1,0 +1,242 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileNode {
+    pub name: String,
+    pub path: String,
+    #[serde(rename = "isDir")]
+    pub is_dir: bool,
+    pub size: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub children: Vec<FileNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FsItemNode {
+    pub name: String,
+    pub path: String,
+    #[serde(rename = "isDir")]
+    pub is_dir: bool,
+    pub size: u64,
+    #[serde(rename = "modTime")]
+    pub mod_time: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symlink: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(rename = "childCount", skip_serializing_if = "Option::is_none")]
+    pub child_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectSummary {
+    pub name: String,
+    pub path: String,
+    #[serde(rename = "isCustom", skip_serializing_if = "Option::is_none")]
+    pub is_custom: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FsBrowseResult {
+    #[serde(rename = "currentPath")]
+    pub current_path: String,
+    #[serde(rename = "parentPath")]
+    pub parent_path: String,
+    #[serde(rename = "homePath")]
+    pub home_path: String,
+    pub directories: Vec<ProjectSummary>,
+    pub items: Vec<FsItemNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSaveReq {
+    pub path: String,
+    pub content: String,
+    #[serde(rename = "expectedHash")]
+    pub expected_hash: Option<String>,
+    pub force: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilePatchReq {
+    pub path: String,
+    #[serde(rename = "startLine")]
+    pub start_line: usize,
+    #[serde(rename = "endLine")]
+    pub end_line: usize,
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileOpReq {
+    pub path: String,
+    #[serde(rename = "newPath")]
+    pub new_path: Option<String>,
+    #[serde(rename = "isDir")]
+    pub is_dir: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileCopyReq {
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+    #[serde(rename = "targetPath")]
+    pub target_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProjectReq {
+    pub name: String,
+    pub template: Option<String>,
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddProjectReq {
+    pub path: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchMatch {
+    pub path: String,
+    #[serde(rename = "lineNumber")]
+    pub line_number: usize,
+    #[serde(rename = "lineText")]
+    pub line_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub timestamp: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusHub {
+    pub active: bool,
+    pub status: String,
+    pub port: String,
+    pub csrf_token: String,
+    pub address: String,
+    pub error: String,
+    pub logs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusResponse {
+    pub status: String,
+    pub uptime: f64,
+    pub timestamp: String,
+    pub version: String,
+    pub hub: StatusHub,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitFileStatus {
+    pub path: String,
+    #[serde(rename = "oldPath", skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
+    pub status: String,
+    pub staged: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitBranchInfo {
+    pub name: String,
+    #[serde(rename = "isCurrent")]
+    pub is_current: bool,
+    #[serde(rename = "isRemote", default)]
+    pub is_remote: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitConfig {
+    #[serde(rename = "userName")]
+    pub user_name: String,
+    #[serde(rename = "userEmail")]
+    pub user_email: String,
+    #[serde(rename = "remoteOrigin", skip_serializing_if = "Option::is_none")]
+    pub remote_origin: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitActionResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitActionReq {
+    #[serde(default)]
+    pub project: Option<String>,
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub create: Option<bool>,
+    #[serde(default)]
+    pub paths: Option<Vec<String>>,
+    pub message: Option<String>,
+    pub remote: Option<String>,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitSetConfigReq {
+    pub project: Option<String>,
+    #[serde(rename = "userName")]
+    pub user_name: Option<String>,
+    #[serde(rename = "userEmail")]
+    pub user_email: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationSummary {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "created_at")]
+    pub created_at: String,
+    #[serde(rename = "steps_count", default)]
+    pub steps_count: usize,
+    #[serde(rename = "isRunning", default)]
+    pub is_running: bool,
+    #[serde(rename = "lastActivity", skip_serializing_if = "Option::is_none")]
+    pub last_activity: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationListResponse {
+    pub conversations: Vec<ConversationSummary>,
+    pub total: usize,
+    pub page: usize,
+    pub limit: usize,
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub status: String,
+    pub output: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+    #[serde(rename = "tool_calls", default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+}

@@ -248,30 +248,63 @@ val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
   dependsOn(syncBridgeVersion) // the bridge embeds the app's version
   val bridgeSourceDir = layout.projectDirectory.dir("../agy_ide_bridge")
   val rawFile = agyIdeBridgeRaw.get().asFile
+  val rustBin = layout.projectDirectory.file("../agy_ide_bridge_rs/target/release/agy_ide_bridge_rs").asFile
 
   doFirst {
     rawFile.parentFile.mkdirs()
   }
 
   workingDir = bridgeSourceDir.asFile
-  environment("GOOS", "android")
-  environment("GOARCH", "arm64")
-  environment("CGO_ENABLED", "0")
-  commandLine("go", "build", "-ldflags=-s -w", "-o", rawFile.absolutePath, "main.go")
+  commandLine(
+    "sh", "-c",
+    """
+    if [ -f "$1" ]; then
+      echo "⚡ Using high-performance Rust IDE daemon binary ($1)"
+      cp "$1" "$2"
+    elif command -v go >/dev/null 2>&1; then
+      echo "⚙️ Compiling Go IDE bridge fallback..."
+      GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "$2" main.go
+    elif [ -f "../app/src/main/assets/bin/agy_ide_bridge.xz" ]; then
+      echo "📦 Using pre-compressed asset bridge..."
+      touch "$2"
+    else
+      echo "❌ Neither Rust binary nor Go compiler found!"
+      exit 1
+    fi
+    """.trimIndent(),
+    "sh",
+    rustBin.absolutePath,
+    rawFile.absolutePath
+  )
 }
 
 val compressAgyIdeBridge = tasks.register<Exec>("compressAgyIdeBridge") {
   dependsOn(buildAgyIdeBridge)
   val binDir = layout.projectDirectory.dir("src/main/assets/bin").asFile
   val rawFile = agyIdeBridgeRaw.get().asFile
+  val assetFile = File(binDir, "agy_ide_bridge.xz")
 
   doFirst {
     binDir.mkdirs()
-    // an uncompressed copy left by older builds would be packaged too
     File(binDir, "agy_ide_bridge").delete()
   }
 
-  commandLine("sh", "-c", "xz -6 -T1 -c \"$1\" > \"$2\"", "sh", rawFile.absolutePath, File(binDir, "agy_ide_bridge.xz").absolutePath)
+  commandLine(
+    "sh", "-c",
+    """
+    if [ -s "$1" ]; then
+      xz -6 -T1 -c "$1" > "$2"
+    elif [ -s "$2" ]; then
+      echo "📦 Preserving existing $2"
+    else
+      echo "❌ No binary to compress into $2"
+      exit 1
+    fi
+    """.trimIndent(),
+    "sh",
+    rawFile.absolutePath,
+    assetFile.absolutePath
+  )
 }
 
 val copyScriptsToAssets = tasks.register<Copy>("copyScriptsToAssets") {

@@ -34,11 +34,15 @@ jobs:
       - name: Build agy_ide_bridge Android ARM64 Daemon
         run: |
           mkdir -p app/src/main/assets/bin
-          cd agy_ide_bridge
-          go mod tidy
-          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../app/src/main/assets/bin/agy_ide_bridge .
-          xz -6 -T1 -c ../app/src/main/assets/bin/agy_ide_bridge > ../app/src/main/assets/bin/agy_ide_bridge.xz
-          rm ../app/src/main/assets/bin/agy_ide_bridge
+          if [ -s app/src/main/assets/bin/agy_ide_bridge.xz ]; then
+            echo "⚡ High-performance Rust daemon already packaged in app/src/main/assets/bin/agy_ide_bridge.xz"
+            xz -d -c app/src/main/assets/bin/agy_ide_bridge.xz > app/src/main/assets/bin/agy_ide_bridge
+          else
+            cd agy_ide_bridge
+            go mod tidy
+            CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o ../app/src/main/assets/bin/agy_ide_bridge .
+            xz -6 -T1 -c ../app/src/main/assets/bin/agy_ide_bridge > ../app/src/main/assets/bin/agy_ide_bridge.xz
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

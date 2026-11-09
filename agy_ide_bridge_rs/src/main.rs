@@ -1,0 +1,187 @@
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use clap::Parser;
+use std::{
+    net::SocketAddr,
+    path::PathBuf,
+    sync::Arc,
+    time::Instant,
+};
+use tokio::sync::broadcast;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
+use tracing::{info, Level};
+use tracing_subscriber::FmtSubscriber;
+
+mod handlers;
+mod models;
+mod security;
+mod ws;
+
+use security::SecurityManager;
+
+#[derive(Parser, Debug)]
+#[command(author, version = "1.0.59", about = "AntiBot High-Performance Rust IDE Bridge & Daemon")]
+pub struct Args {
+    #[arg(short = 'p', long, default_value_t = 1234)]
+    pub port: u16,
+
+    #[arg(long = "hub-port", default_value_t = 1235)]
+    pub hub_port: u16,
+
+    #[arg(short = 't', long, default_value = "")]
+    pub token: String,
+
+    #[arg(short = 'f', long, default_value_t = false)]
+    pub force: bool,
+
+    #[arg(long, default_value = "127.0.0.1")]
+    pub bind: String,
+
+    #[arg(short = 'd', long)]
+    pub dir: Option<String>,
+
+    #[arg(long)]
+    pub bin: Option<String>,
+
+    #[arg(long = "tz-offset", default_value_t = 0)]
+    pub tz_offset: i32,
+
+    #[arg(long = "no-hub", default_value_t = false)]
+    pub no_hub: bool,
+
+    #[arg(long = "no-claude", default_value_t = false)]
+    pub no_claude: bool,
+}
+
+pub struct AppState {
+    pub port: u16,
+    pub hub_port: u16,
+    pub workspace_dir: PathBuf,
+    pub security: SecurityManager,
+    pub start_time: Instant,
+    pub tx: broadcast::Sender<String>,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).ok();
+
+    let args = Args::parse();
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/data/data/com.termux/files/home".to_string());
+    let default_workspace = PathBuf::from(&home).join(".gemini/antigravity-cli/scratch");
+    let workspace_dir = args.dir.map(PathBuf::from).unwrap_or(default_workspace);
+
+    if !workspace_dir.exists() {
+        let _ = std::fs::create_dir_all(&workspace_dir);
+    }
+
+    let (tx, _) = broadcast::channel(100);
+
+    let state = Arc::new(AppState {
+        port: args.port,
+        hub_port: args.hub_port,
+        workspace_dir: workspace_dir.clone(),
+        security: SecurityManager::new(args.token.clone()),
+        start_time: Instant::now(),
+        tx,
+    });
+
+    let artifacts_dir = PathBuf::from(&home).join(".gemini/antigravity-cli/brain");
+    let attachments_dir = PathBuf::from(&home).join(".gemini/antigravity-cli/attachments");
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let app = Router::new()
+        // Health & Status
+        .route("/api/health", get(handlers::health::health_handler))
+        .route("/api/status", get(handlers::health::status_handler))
+        .route("/api/server/info", get(handlers::health::server_info_handler))
+        .route("/api/shutdown", post(handlers::health::shutdown_handler))
+        .route("/api/models", get(handlers::health::models_handler))
+        .route("/api/models/refresh", get(handlers::health::models_handler))
+        .route("/api/quotas", get(handlers::health::quotas_handler))
+        .route("/api/quotas/refresh", get(handlers::health::quotas_handler))
+        .route("/api/instances", get(handlers::health::instances_handler))
+        .route("/api/instances/:id/terminate", post(handlers::health::terminate_instance_handler))
+        .route("/api/abort", post(handlers::health::abort_handler))
+        .route("/api/agy/cli", get(handlers::health::agy_cli_handler))
+        .route("/api/agy/cli/install", post(handlers::health::agy_cli_install_handler))
+        // Filesystem & Explorer
+        .route("/api/fs/roots", get(handlers::fs::fs_roots_handler))
+        .route("/api/fs/browse", get(handlers::fs::fs_browse_handler))
+        .route("/api/tree", get(handlers::fs::file_tree_handler))
+        .route("/api/file/read", get(handlers::fs::file_read_handler))
+        .route("/api/file/save", post(handlers::fs::file_save_handler))
+        .route("/api/file/patch", post(handlers::fs::file_patch_handler))
+        .route("/api/file/create", post(handlers::fs::file_create_handler))
+        .route("/api/file/copy", post(handlers::fs::file_copy_handler))
+        .route("/api/file/delete", post(handlers::fs::file_delete_handler))
+        .route("/api/file/rename", post(handlers::fs::file_rename_handler))
+        .route("/api/search", get(handlers::fs::file_search_handler))
+        .route("/api/fs/search", get(handlers::fs::file_search_handler))
+        .route(
+            "/api/mcp/config",
+            get(handlers::fs::mcp_config_get_handler).post(handlers::fs::mcp_config_save_handler),
+        )
+        // Projects
+        .route("/api/projects", get(handlers::projects::projects_handler))
+        .route("/api/projects/add", post(handlers::projects::projects_add_handler))
+        .route("/api/projects/remove", post(handlers::projects::projects_remove_handler))
+        .route("/api/projects/create", post(handlers::projects::create_project_handler))
+        // Git
+        .route("/api/git/status", get(handlers::git::git_status_handler))
+        .route("/api/git/branches", get(handlers::git::git_branches_handler))
+        .route("/api/git/diff", get(handlers::git::git_diff_handler))
+        .route("/api/git/log", get(handlers::git::git_log_handler))
+        .route("/api/git/init", post(handlers::git::git_init_handler))
+        .route("/api/git/clone", post(handlers::git::git_clone_handler))
+        .route("/api/git/stage", post(handlers::git::git_stage_handler))
+        .route("/api/git/unstage", post(handlers::git::git_unstage_handler))
+        .route("/api/git/discard", post(handlers::git::git_discard_handler))
+        .route("/api/git/commit", post(handlers::git::git_commit_handler))
+        .route("/api/git/push", post(handlers::git::git_push_handler))
+        .route("/api/git/pull", post(handlers::git::git_pull_handler))
+        .route("/api/git/checkout", post(handlers::git::git_checkout_handler))
+        .route("/api/git/branch/create", post(handlers::git::git_checkout_handler))
+        .route(
+            "/api/git/config",
+            get(handlers::git::git_config_get_handler).post(handlers::git::git_config_set_handler),
+        )
+        // Conversations
+        .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
+        .route(
+            "/api/conversations/:id",
+            get(handlers::conversations::conversation_messages_handler)
+                .delete(handlers::conversations::delete_conversation_handler),
+        )
+        .route(
+            "/api/conversations/:id/title",
+            post(handlers::conversations::update_conversation_title_handler)
+                .patch(handlers::conversations::update_conversation_title_handler),
+        )
+        // WebSocket
+        .route("/ws", get(ws::ws_handler))
+        // Static files
+        .nest_service("/artifacts", ServeDir::new(artifacts_dir))
+        .nest_service("/attachments", ServeDir::new(attachments_dir))
+        .layer(cors)
+        .with_state(state);
+
+    let addr: SocketAddr = format!("{}:{}", args.bind, args.port).parse()?;
+    info!("🚀 AntiBot Rust IDE Server listening on http://{}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
