@@ -109,6 +109,37 @@ object AntiBotNative {
     @JvmStatic
     external fun evaluateConsensusNative(proposalsJson: String, strategyStr: String): String
 
+    @JvmStatic
+    external fun cosineSimilarityNative(vecA: FloatArray, vecB: FloatArray): Float
+
+    @JvmStatic
+    external fun searchRagDocumentsNative(queryVec: FloatArray, documentsJson: String, topK: Int, minScore: Float): String
+
+    @JvmStatic
+    external fun estimateTokenCountNative(text: String): Int
+
+    @JvmStatic
+    external fun truncateToTokenBudgetNative(text: String, maxTokens: Int): String
+
+    data class VectorDocument(
+        val id: String,
+        val text: String,
+        val embedding: FloatArray,
+        val metadata: Map<String, String> = emptyMap()
+    )
+
+    data class RagSearchResult(
+        val id: String,
+        val score: Float,
+        val text: String,
+        val metadata: Map<String, String> = emptyMap()
+    )
+
+    data class TokenBudgetResult(
+        val text: String,
+        val tokenCount: Int
+    )
+
     data class AgentTaskNode(
         val id: String,
         val title: String,
@@ -927,6 +958,100 @@ object AntiBotNative {
                 agreementRatio = 0.0,
                 totalVotes = proposals.size
             )
+        }
+    }
+
+    /**
+     * Computes cosine similarity between two float embedding vectors.
+     */
+    fun computeCosineSimilarity(a: FloatArray, b: FloatArray): Float {
+        if (!isLoaded || a.isEmpty() || b.isEmpty()) return 0.0f
+        return try {
+            cosineSimilarityNative(a, b)
+        } catch (e: Throwable) {
+            Log.w(TAG, "cosineSimilarityNative error: ${e.message}")
+            0.0f
+        }
+    }
+
+    /**
+     * Performs in-memory k-NN semantic search across document snippets using cosine similarity.
+     */
+    fun searchRagDocuments(
+        queryEmbedding: FloatArray,
+        documents: List<VectorDocument>,
+        topK: Int = 5,
+        minScore: Float = 0.0f
+    ): List<RagSearchResult> {
+        if (!isLoaded || queryEmbedding.isEmpty() || documents.isEmpty() || topK <= 0) return emptyList()
+        return try {
+            val jsonArr = JSONArray()
+            for (doc in documents) {
+                val obj = JSONObject()
+                obj.put("id", doc.id)
+                obj.put("text", doc.text)
+                val embArr = JSONArray()
+                for (v in doc.embedding) embArr.put(v.toDouble())
+                obj.put("embedding", embArr)
+                val metaObj = JSONObject()
+                for ((k, v) in doc.metadata) metaObj.put(k, v)
+                obj.put("metadata", metaObj)
+                jsonArr.put(obj)
+            }
+            val resJson = searchRagDocumentsNative(queryEmbedding, jsonArr.toString(), topK, minScore)
+            val resArr = JSONArray(resJson)
+            (0 until resArr.length()).map { i ->
+                val o = resArr.getJSONObject(i)
+                val meta = mutableMapOf<String, String>()
+                val mObj = o.optJSONObject("metadata")
+                if (mObj != null) {
+                    val keys = mObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        meta[k] = mObj.optString(k, "")
+                    }
+                }
+                RagSearchResult(
+                    id = o.optString("id", ""),
+                    score = o.optDouble("score", 0.0).toFloat(),
+                    text = o.optString("text", ""),
+                    metadata = meta
+                )
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "searchRagDocumentsNative error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Estimates the token count for a text string using high-performance native heuristics.
+     */
+    fun estimateTokenCount(text: String): Int {
+        if (!isLoaded || text.isEmpty()) return 0
+        return try {
+            estimateTokenCountNative(text)
+        } catch (e: Throwable) {
+            Log.w(TAG, "estimateTokenCountNative error: ${e.message}")
+            text.length / 4
+        }
+    }
+
+    /**
+     * Truncates text to fit within the specified token budget.
+     */
+    fun truncateToTokenBudget(text: String, maxTokens: Int): TokenBudgetResult {
+        if (!isLoaded || text.isEmpty() || maxTokens <= 0) return TokenBudgetResult("", 0)
+        return try {
+            val resJson = truncateToTokenBudgetNative(text, maxTokens)
+            val obj = JSONObject(resJson)
+            TokenBudgetResult(
+                text = obj.optString("text", text),
+                tokenCount = obj.optInt("token_count", 0)
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "truncateToTokenBudgetNative error: ${e.message}")
+            TokenBudgetResult(text.take(maxTokens * 4), maxTokens)
         }
     }
 }

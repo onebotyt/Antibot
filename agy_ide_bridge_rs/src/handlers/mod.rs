@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod ai;
 pub mod archive;
 pub mod conversations;
 pub mod fs;

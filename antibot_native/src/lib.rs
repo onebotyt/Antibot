@@ -1,5 +1,5 @@
-use jni::objects::{JByteArray, JClass, JObjectArray, JString};
-use jni::sys::{jboolean, jbyteArray, jfloatArray, jint, jintArray, jobjectArray, jshort, jstring};
+use jni::objects::{JByteArray, JClass, JFloatArray, JObjectArray, JString};
+use jni::sys::{jboolean, jbyteArray, jfloat, jfloatArray, jint, jintArray, jobjectArray, jshort, jstring};
 use jni::JNIEnv;
 use std::sync::Mutex;
 
@@ -14,6 +14,7 @@ pub mod mcp_rpc;
 pub mod markdown;
 pub mod mmap_log;
 pub mod syntax;
+pub mod vector_rag;
 
 static VAD: Mutex<Option<audio::VadEngine>> = Mutex::new(None);
 
@@ -30,7 +31,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.73-rust-agent-dag").unwrap();
+    let output = env.new_string("1.0.74-rust-vector-rag").unwrap();
     output.into_raw()
 }
 
@@ -624,6 +625,91 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_evaluateCons
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+fn get_float_vec(env: &mut JNIEnv, arr: &JFloatArray) -> Vec<f32> {
+    match env.get_array_length(arr) {
+        Ok(len) if len > 0 => {
+            let mut buf = vec![0.0f32; len as usize];
+            if env.get_float_array_region(arr, 0, &mut buf).is_ok() {
+                buf
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_cosineSimilarityNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    vec_a: JFloatArray<'local>,
+    vec_b: JFloatArray<'local>,
+) -> jfloat {
+    let a = get_float_vec(&mut env, &vec_a);
+    let b = get_float_vec(&mut env, &vec_b);
+    vector_rag::cosine_similarity(&a, &b)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_searchRagDocumentsNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    query_vec: JFloatArray<'local>,
+    documents_json: JString<'local>,
+    top_k: jint,
+    min_score: jfloat,
+) -> jstring {
+    let query = get_float_vec(&mut env, &query_vec);
+    let docs_input: String = match env.get_string(&documents_json) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let docs: Vec<vector_rag::VectorDocument> = serde_json::from_str(&docs_input).unwrap_or_default();
+    let results = vector_rag::search_knn(&query, &docs, top_k.max(0) as usize, min_score);
+    let json_str = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_estimateTokenCountNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    text: JString<'local>,
+) -> jint {
+    let input: String = match env.get_string(&text) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    vector_rag::estimate_token_count(&input) as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_truncateToTokenBudgetNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    text: JString<'local>,
+    max_tokens: jint,
+) -> jstring {
+    let input: String = match env.get_string(&text) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let (truncated, tokens) = vector_rag::truncate_to_token_budget(&input, max_tokens.max(0) as usize);
+    let json_val = serde_json::json!({
+        "text": truncated,
+        "token_count": tokens,
+    });
+
+    let output = env.new_string(json_val.to_string()).unwrap();
+    output.into_raw()
+}
+
 
 
 
