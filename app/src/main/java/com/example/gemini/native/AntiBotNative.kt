@@ -49,6 +49,23 @@ object AntiBotNative {
     @JvmStatic
     external fun sha256Native(input: String): String
 
+    @JvmStatic
+    external fun highlightSyntaxNative(code: String, ext: String): IntArray?
+
+    object TokenType {
+        const val DEFAULT = 0
+        const val KEYWORD = 1
+        const val CONTROL_KEYWORD = 2
+        const val TYPE = 3
+        const val FUNCTION = 4
+        const val STRING = 5
+        const val NUMBER = 6
+        const val COMMENT = 7
+        const val TAG = 8
+        const val PROPERTY = 9
+        const val ANNOTATION = 10
+    }
+
     // --- High-Level Typed APIs ---
 
     /**
@@ -193,4 +210,20 @@ object AntiBotNative {
         val hash = digest.digest(text.toByteArray(Charsets.UTF_8))
         return hash.joinToString("") { "%02x".format(it) }
     }
+
+    /**
+     * Tokenizes source code into flat `[start, end, token_type, ...]` spans in Rust.
+     * Indices are in UTF-16 code units for 100% Android Compose compatibility.
+     * Returns null if native layer is unavailable or encounters an error.
+     */
+    fun highlightSyntax(code: String, ext: String): IntArray? {
+        if (!isLoaded || code.isEmpty()) return null
+        return try {
+            highlightSyntaxNative(code, ext)
+        } catch (e: Throwable) {
+            Log.w(TAG, "highlightSyntaxNative error: ${e.message}")
+            null
+        }
+    }
 }
+

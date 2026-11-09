@@ -760,6 +760,46 @@ private val FUNCTION_PATTERN = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\
  * Fast regex-based lexical tokenizer for syntax highlighting with precompiled patterns and zero allocations.
  */
 private fun highlightSyntax(code: String, lang: String): AnnotatedString {
+    // Fast-path: Native Rust single-pass lexer via libantibot_native.so
+    val nativeSpans = com.example.gemini.native.AntiBotNative.highlightSyntax(code, lang)
+    if (nativeSpans != null) {
+        val builder = AnnotatedString.Builder(code)
+        builder.addStyle(SpanStyle(color = TextPrimaryDark), 0, code.length)
+        val len = code.length
+        for (i in 0 until nativeSpans.size step 3) {
+            val s = nativeSpans[i].coerceIn(0, len)
+            val e = nativeSpans[i + 1].coerceIn(0, len)
+            val type = nativeSpans[i + 2]
+            if (s < e) {
+                val style = when (type) {
+                    com.example.gemini.native.AntiBotNative.TokenType.KEYWORD,
+                    com.example.gemini.native.AntiBotNative.TokenType.CONTROL_KEYWORD ->
+                        SpanStyle(color = SynKeyword, fontWeight = FontWeight.Bold)
+                    com.example.gemini.native.AntiBotNative.TokenType.TYPE ->
+                        SpanStyle(color = SynType, fontWeight = FontWeight.SemiBold)
+                    com.example.gemini.native.AntiBotNative.TokenType.FUNCTION ->
+                        SpanStyle(color = SynFunction)
+                    com.example.gemini.native.AntiBotNative.TokenType.STRING ->
+                        SpanStyle(color = SynString)
+                    com.example.gemini.native.AntiBotNative.TokenType.NUMBER ->
+                        SpanStyle(color = SynNumber)
+                    com.example.gemini.native.AntiBotNative.TokenType.COMMENT ->
+                        SpanStyle(color = SynComment, fontStyle = FontStyle.Italic)
+                    com.example.gemini.native.AntiBotNative.TokenType.TAG,
+                    com.example.gemini.native.AntiBotNative.TokenType.PROPERTY ->
+                        SpanStyle(color = SynFunction)
+                    com.example.gemini.native.AntiBotNative.TokenType.ANNOTATION ->
+                        SpanStyle(color = SynAnnotation, fontWeight = FontWeight.SemiBold)
+                    else -> null
+                }
+                if (style != null) {
+                    builder.addStyle(style, s, e)
+                }
+            }
+        }
+        return builder.toAnnotatedString()
+    }
+
     val builder = AnnotatedString.Builder(code)
 
     data class Span(val start: Int, val end: Int, val style: SpanStyle)

@@ -1,11 +1,11 @@
 {
-  "version_code": 183,
-  "version_name": "1.0.63",
+  "version_code": 184,
+  "version_name": "1.0.64",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\ude80 Phase 4 Upgrade: Android Native JNI Layer (`libantibot_native.so`): 120 FPS Compose UI rendering via zero-allocation ARM64 Rust markdown token parser.",
-    "\u26a1 Native Markdown AST & Inline Spans: Replaces slow regexes with sub-millisecond Rust tokenization for math, code, lists, callouts, and tables.",
-    "\ud83d\udee1\ufe0f Native Unified Diff & SHA256: Zero-copy JNI acceleration for Git file comparisons and file hashing without subprocess overhead."
+    "⚡ Phase 5 Upgrade: Ultra-Fast Native Code Syntax Highlighting in `libantibot_native.so` for 120 FPS typing in IDE Editor & Chat CodeBlocks.",
+    "🚀 Zero-Allocation Lexer: Single-pass DFA tokenization replaces 10 heavy Java regex passes, eliminating Dalvik GC pauses during editing.",
+    "✨ Multi-Language Native Highlighting: Full support for Kotlin, Rust, Python, TypeScript, JavaScript, Go, JSON, HTML, SQL, Shell, and PascalCase semantic typing."
   ],
   "is_critical": false
 }

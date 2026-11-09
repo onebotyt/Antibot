@@ -86,6 +86,49 @@ class CodeSyntaxVisualTransformation(private val fileName: String) : VisualTrans
         private val JSON_KEY_PATTERN = Pattern.compile("\"([^\"\\\\]|\\\\.)*\"(?=\\s*:)")
 
         fun highlightCode(code: String, ext: String): AnnotatedString {
+            // Fast-path: Native Rust single-pass lexer via libantibot_native.so
+            val nativeSpans = com.example.gemini.native.AntiBotNative.highlightSyntax(code, ext)
+            if (nativeSpans != null) {
+                return buildAnnotatedString {
+                    append(code)
+                    val len = code.length
+                    for (i in 0 until nativeSpans.size step 3) {
+                        val s = nativeSpans[i].coerceIn(0, len)
+                        val e = nativeSpans[i + 1].coerceIn(0, len)
+                        val type = nativeSpans[i + 2]
+                        if (s < e) {
+                            val style = when (type) {
+                                com.example.gemini.native.AntiBotNative.TokenType.KEYWORD ->
+                                    SpanStyle(color = CodeSyntaxColors.Keyword, fontWeight = FontWeight.Bold)
+                                com.example.gemini.native.AntiBotNative.TokenType.CONTROL_KEYWORD ->
+                                    SpanStyle(color = CodeSyntaxColors.ControlKeyword, fontWeight = FontWeight.Bold)
+                                com.example.gemini.native.AntiBotNative.TokenType.TYPE ->
+                                    SpanStyle(color = CodeSyntaxColors.Type)
+                                com.example.gemini.native.AntiBotNative.TokenType.FUNCTION ->
+                                    SpanStyle(color = CodeSyntaxColors.Function)
+                                com.example.gemini.native.AntiBotNative.TokenType.STRING ->
+                                    SpanStyle(color = CodeSyntaxColors.String)
+                                com.example.gemini.native.AntiBotNative.TokenType.NUMBER ->
+                                    SpanStyle(color = CodeSyntaxColors.Number)
+                                com.example.gemini.native.AntiBotNative.TokenType.COMMENT ->
+                                    SpanStyle(color = CodeSyntaxColors.Comment)
+                                com.example.gemini.native.AntiBotNative.TokenType.TAG ->
+                                    SpanStyle(color = CodeSyntaxColors.Tag)
+                                com.example.gemini.native.AntiBotNative.TokenType.PROPERTY ->
+                                    SpanStyle(color = CodeSyntaxColors.Property)
+                                com.example.gemini.native.AntiBotNative.TokenType.ANNOTATION ->
+                                    SpanStyle(color = CodeSyntaxColors.ControlKeyword, fontWeight = FontWeight.SemiBold)
+                                else -> null
+                            }
+                            if (style != null) {
+                                addStyle(style, s, e)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback JVM regex path
             return buildAnnotatedString {
                 append(code)
 

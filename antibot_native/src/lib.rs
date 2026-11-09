@@ -1,10 +1,11 @@
 use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jstring};
+use jni::sys::{jboolean, jintArray, jstring};
 use jni::JNIEnv;
 
 pub mod crypto;
 pub mod diff;
 pub mod markdown;
+pub mod syntax;
 
 #[no_mangle]
 pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_isNativeAvailable<'local>(
@@ -19,7 +20,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.63-rust-neon").unwrap();
+    let output = env.new_string("1.0.64-rust-syntax-neon").unwrap();
     output.into_raw()
 }
 
@@ -97,3 +98,33 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_sha256Native
     let output = env.new_string(hash).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_highlightSyntaxNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    code: JString<'local>,
+    ext: JString<'local>,
+) -> jintArray {
+    let code_str: String = match env.get_string(&code) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let ext_str: String = match env.get_string(&ext) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let flat = syntax::highlight_code_flat(&code_str, &ext_str);
+    let array = match env.new_int_array(flat.len() as i32) {
+        Ok(arr) => arr,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    if env.set_int_array_region(&array, 0, &flat).is_err() {
+        return std::ptr::null_mut();
+    }
+
+    array.into_raw()
+}
+
