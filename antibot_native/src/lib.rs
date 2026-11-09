@@ -3,6 +3,7 @@ use jni::sys::{jboolean, jbyteArray, jfloatArray, jint, jintArray, jobjectArray,
 use jni::JNIEnv;
 use std::sync::Mutex;
 
+pub mod agent_dag;
 pub mod audio;
 pub mod crypto;
 pub mod diff;
@@ -29,7 +30,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.71-rust-mcp-supervisor").unwrap();
+    let output = env.new_string("1.0.73-rust-agent-dag").unwrap();
     output.into_raw()
 }
 
@@ -579,6 +580,51 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_parseJsonRpc
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_validateAgentDagNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    nodes_json: JString<'local>,
+) -> jstring {
+    let input: String = match env.get_string(&nodes_json) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let nodes: Vec<agent_dag::AgentTaskNode> = serde_json::from_str(&input).unwrap_or_default();
+    let result = agent_dag::validate_and_schedule_dag(&nodes);
+    let json_str = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_evaluateConsensusNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    proposals_json: JString<'local>,
+    strategy_str: JString<'local>,
+) -> jstring {
+    let p_input: String = match env.get_string(&proposals_json) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let s_input: String = match env.get_string(&strategy_str) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let proposals: Vec<agent_dag::AgentProposal> = serde_json::from_str(&p_input).unwrap_or_default();
+    let strat = agent_dag::ConsensusStrategy::parse(&s_input);
+    let result = agent_dag::evaluate_agent_consensus(&proposals, strat);
+    let json_str = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 

@@ -103,6 +103,54 @@ object AntiBotNative {
     @JvmStatic
     external fun parseJsonRpcResponseNative(raw: String): String
 
+    @JvmStatic
+    external fun validateAgentDagNative(nodesJson: String): String
+
+    @JvmStatic
+    external fun evaluateConsensusNative(proposalsJson: String, strategyStr: String): String
+
+    data class AgentTaskNode(
+        val id: String,
+        val title: String,
+        val assignedRole: String = "",
+        val dependencies: List<String> = emptyList(),
+        val status: String = "pending",
+        val priority: Int = 0
+    )
+
+    data class AgentNodeLayout(
+        val taskId: String,
+        val depth: Int,
+        val lane: Int
+    )
+
+    data class AgentDagResult(
+        val isValid: Boolean,
+        val hasCycle: Boolean,
+        val cyclePath: List<String>? = null,
+        val topologicalOrder: List<String> = emptyList(),
+        val readyTasks: List<String> = emptyList(),
+        val nodeLayouts: List<AgentNodeLayout> = emptyList()
+    )
+
+    data class AgentProposal(
+        val agentId: String,
+        val role: String,
+        val value: String,
+        val confidence: Double = 1.0,
+        val rationale: String? = null
+    )
+
+    data class ConsensusEvaluation(
+        val strategy: String,
+        val winner: String? = null,
+        val isConsensusReached: Boolean,
+        val agreementRatio: Double,
+        val totalVotes: Int,
+        val voteTallies: Map<String, Int> = emptyMap(),
+        val confidenceTallies: Map<String, Double> = emptyMap()
+    )
+
     data class NativeJsonRpcResponse(
         val id: Long,
         val result: JSONObject? = null,
@@ -736,6 +784,149 @@ object AntiBotNative {
         } catch (e: Throwable) {
             Log.w(TAG, "parseJsonRpcResponseNative error: ${e.message}")
             NativeJsonRpcResponse(0, null, NativeJsonRpcError(-32700, e.message ?: "Parse error"))
+        }
+    }
+
+    /**
+     * Validates an Agent Task DAG, runs Kahn's topological sort, detects cycles,
+     * computes ready unblocked tasks, and calculates Compose 2D layout coordinates.
+     */
+    fun validateAndScheduleDag(nodes: List<AgentTaskNode>): AgentDagResult {
+        if (!isLoaded || nodes.isEmpty()) {
+            return AgentDagResult(
+                isValid = true,
+                hasCycle = false,
+                topologicalOrder = nodes.map { it.id },
+                readyTasks = nodes.filter { it.status == "pending" && it.dependencies.isEmpty() }.map { it.id }
+            )
+        }
+        return try {
+            val jsonArr = JSONArray()
+            for (node in nodes) {
+                val obj = JSONObject()
+                obj.put("id", node.id)
+                obj.put("title", node.title)
+                obj.put("assigned_role", node.assignedRole)
+                val depArr = JSONArray()
+                for (dep in node.dependencies) depArr.put(dep)
+                obj.put("dependencies", depArr)
+                obj.put("status", node.status)
+                obj.put("priority", node.priority)
+                jsonArr.put(obj)
+            }
+            val resJson = validateAgentDagNative(jsonArr.toString())
+            val resObj = JSONObject(resJson)
+            val isValid = resObj.optBoolean("is_valid", false)
+            val hasCycle = resObj.optBoolean("has_cycle", false)
+
+            val cycleArr = resObj.optJSONArray("cycle_path")
+            val cyclePath = if (cycleArr != null) {
+                (0 until cycleArr.length()).map { cycleArr.getString(it) }
+            } else null
+
+            val topoArr = resObj.optJSONArray("topological_order") ?: JSONArray()
+            val topologicalOrder = (0 until topoArr.length()).map { topoArr.getString(it) }
+
+            val readyArr = resObj.optJSONArray("ready_tasks") ?: JSONArray()
+            val readyTasks = (0 until readyArr.length()).map { readyArr.getString(it) }
+
+            val layoutsArr = resObj.optJSONArray("node_layouts") ?: JSONArray()
+            val nodeLayouts = (0 until layoutsArr.length()).map {
+                val layoutObj = layoutsArr.getJSONObject(it)
+                AgentNodeLayout(
+                    taskId = layoutObj.optString("task_id", ""),
+                    depth = layoutObj.optInt("depth", 0),
+                    lane = layoutObj.optInt("lane", 0)
+                )
+            }
+
+            AgentDagResult(
+                isValid = isValid,
+                hasCycle = hasCycle,
+                cyclePath = cyclePath,
+                topologicalOrder = topologicalOrder,
+                readyTasks = readyTasks,
+                nodeLayouts = nodeLayouts
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "validateAgentDagNative error: ${e.message}")
+            AgentDagResult(
+                isValid = false,
+                hasCycle = false,
+                topologicalOrder = emptyList(),
+                readyTasks = emptyList()
+            )
+        }
+    }
+
+    /**
+     * Evaluates multi-agent consensus across proposals using the specified strategy.
+     */
+    fun evaluateConsensus(
+        proposals: List<AgentProposal>,
+        strategy: String = "majority"
+    ): ConsensusEvaluation {
+        if (!isLoaded || proposals.isEmpty()) {
+            return ConsensusEvaluation(
+                strategy = strategy,
+                winner = null,
+                isConsensusReached = false,
+                agreementRatio = 0.0,
+                totalVotes = proposals.size
+            )
+        }
+        return try {
+            val jsonArr = JSONArray()
+            for (p in proposals) {
+                val obj = JSONObject()
+                obj.put("agent_id", p.agentId)
+                obj.put("role", p.role)
+                obj.put("value", p.value)
+                obj.put("confidence", p.confidence)
+                p.rationale?.let { obj.put("rationale", it) }
+                jsonArr.put(obj)
+            }
+            val resJson = evaluateConsensusNative(jsonArr.toString(), strategy)
+            val resObj = JSONObject(resJson)
+
+            val voteTallies = mutableMapOf<String, Int>()
+            val vObj = resObj.optJSONObject("vote_tallies")
+            if (vObj != null) {
+                val keys = vObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    voteTallies[k] = vObj.optInt(k, 0)
+                }
+            }
+
+            val confTallies = mutableMapOf<String, Double>()
+            val cObj = resObj.optJSONObject("confidence_tallies")
+            if (cObj != null) {
+                val keys = cObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    confTallies[k] = cObj.optDouble(k, 0.0)
+                }
+            }
+
+            ConsensusEvaluation(
+                strategy = resObj.optString("strategy", strategy),
+                winner = resObj.optString("winner").takeIf { it.isNotBlank() },
+                isConsensusReached = resObj.optBoolean("is_consensus_reached", false),
+                agreementRatio = resObj.optDouble("agreement_ratio", 0.0),
+                totalVotes = resObj.optInt("total_votes", 0),
+                voteTallies = voteTallies,
+                confidenceTallies = confTallies
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "evaluateConsensusNative error: ${e.message}")
+            ConsensusEvaluation(
+                strategy = strategy,
+                winner = null,
+                isConsensusReached = false,
+                agreementRatio = 0.0,
+                totalVotes = proposals.size
+            )
         }
     }
 }

@@ -1,11 +1,11 @@
 {
-  "version_code": 192,
-  "version_name": "1.0.72",
+  "version_code": 193,
+  "version_name": "1.0.73",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\udd0c Phase 13 Upgrade: Native Model Context Protocol (MCP) Streaming RPC Supervisor & Tool Sandbox in Rust.",
-    "\u26a1 JSON-RPC 2.0 Streaming Engine: Zero-copy framing and response parser over stdio pipes and HTTP gateways with active child process supervisor.",
-    "\ud83d\udee1\ufe0f Dynamic Tool Sandbox: Multi-server management (browser, terminal, jarvis, notes, themes, plugins), live memory inspection (/proc/statm), and 120+ schema tools index."
+    "🤖 Phase 14 Upgrade: Native Multi-Agent Consensus, Task Delegation & Transcript DAG in Rust.",
+    "⚡ DAG Scheduling Engine: High-performance Kahn topological sorting, cycle detection, ready unblocked task calculation, and layered 2D (depth/lane) Compose layouts.",
+    "🗳️ Multi-Agent Voting & Consensus: Zero-overhead native voting engine supporting Majority, Unanimous, and Confidence-Weighted consensus across distributed agent subtasks."
   ],
   "is_critical": false
 }
