@@ -8,6 +8,7 @@ pub mod crypto;
 pub mod diff;
 pub mod fuzzy;
 pub mod diff_patch;
+pub mod lsp_diagnostics;
 pub mod markdown;
 pub mod mmap_log;
 pub mod syntax;
@@ -27,7 +28,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.69-rust-diff-patch-merge").unwrap();
+    let output = env.new_string("1.0.70-rust-lsp-diagnostics").unwrap();
     output.into_raw()
 }
 
@@ -439,6 +440,93 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_resolveConfl
     let output = env.new_string(resolved).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getCompletionsNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    prefix: JString<'local>,
+    ext: JString<'local>,
+    symbols_json: JString<'local>,
+    limit: jint,
+) -> jstring {
+    let p_str: String = match env.get_string(&prefix) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let ext_str: String = match env.get_string(&ext) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let syms_str: String = match env.get_string(&symbols_json) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let mut trie = lsp_diagnostics::CompletionTrie::new();
+
+    // Default language keywords and types
+    for item in lsp_diagnostics::get_default_completions(&ext_str) {
+        trie.insert(item);
+    }
+
+    // Additional user symbols
+    if !syms_str.is_empty() {
+        if let Ok(extra_items) = serde_json::from_str::<Vec<lsp_diagnostics::CompletionItem>>(&syms_str) {
+            for item in extra_items {
+                trie.insert(item);
+            }
+        }
+    }
+
+    let matches = trie.complete(&p_str, limit.max(1) as usize);
+    let json_str = serde_json::to_string(&matches).unwrap_or_else(|_| "[]".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_extractFileSymbolsNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    content: JString<'local>,
+    ext: JString<'local>,
+) -> jstring {
+    let c_str: String = match env.get_string(&content) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let ext_str: String = match env.get_string(&ext) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let symbols = lsp_diagnostics::extract_file_symbols(&c_str, &ext_str);
+    let json_str = serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_parseDiagnosticsNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    raw_output: JString<'local>,
+) -> jstring {
+    let r_str: String = match env.get_string(&raw_output) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let diags = lsp_diagnostics::parse_diagnostics(&r_str);
+    let json_str = serde_json::to_string(&diags).unwrap_or_else(|_| "[]".to_string());
+
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 

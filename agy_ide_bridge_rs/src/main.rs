@@ -279,6 +279,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/git/config",
             get(handlers::git::git_config_get_handler).post(handlers::git::git_config_set_handler),
         )
+        // LSP Diagnostics & Auto-Completion Gateway
+        .route("/api/lsp/complete", post(handlers::lsp::lsp_complete_handler))
+        .route("/api/lsp/symbols", post(handlers::lsp::lsp_symbols_handler))
+        .route("/api/lsp/diagnostics", post(handlers::lsp::lsp_diagnostics_handler))
         // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))

@@ -210,6 +210,57 @@ pub struct ResolveConflictResponse {
     pub resolved: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct LspCompleteReq {
+    pub prefix: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub ext: Option<String>,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspCompleteResponse {
+    pub completions: Vec<antibot_native::lsp_diagnostics::CompletionItem>,
+    pub total: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LspSymbolsReq {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub ext: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspSymbolsResponse {
+    pub symbols: Vec<antibot_native::lsp_diagnostics::FileSymbol>,
+    pub total: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LspDiagnosticsReq {
+    #[serde(default)]
+    pub raw_output: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspDiagnosticsResponse {
+    pub diagnostics: Vec<antibot_native::lsp_diagnostics::Diagnostic>,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,

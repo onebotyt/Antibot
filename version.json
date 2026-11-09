@@ -1,11 +1,11 @@
 {
-  "version_code": 190,
-  "version_name": "1.0.70",
+  "version_code": 191,
+  "version_name": "1.0.71",
   "min_supported_version_code": 1,
   "changelog": [
-    "\u2694\ufe0f Phase 11 Upgrade: Native Unified Diff Patcher, 3-Way Merge & Conflict Resolver in Rust.",
-    "\u26a1 Fuzzy Patch Application: High-performance unified diff parser with \u00b13 line fuzzy drift tolerance and atomic forward/reverse un-apply modes.",
-    "\ud83e\uddec 3-Way Merge & Conflict Engine: Zero-allocation base/ours/theirs merging producing standard conflict markers and strategy-based automated resolution (ours/theirs/both)."
+    "🧠 Phase 12 Upgrade: Native LSP Diagnostics & Microsecond Auto-Completion Gateway in Rust.",
+    "⚡ High-Speed Symbol Trie: In-memory prefix Trie providing offline language keywords, types, snippets, and live document symbols in < 0.1ms.",
+    "🔍 Universal Diagnostic Parser: Real-time compiler & linter diagnostic extraction (rustc, kotlinc, tsc, pyright) with UTF-16 Compose underline coordinates."
   ],
   "is_critical": false
 }

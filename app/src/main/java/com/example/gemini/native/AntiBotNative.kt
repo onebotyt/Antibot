@@ -88,6 +88,44 @@ object AntiBotNative {
     @JvmStatic
     external fun resolveConflictsNative(mergedText: String, strategy: String): String
 
+    @JvmStatic
+    external fun getCompletionsNative(prefix: String, ext: String, symbolsJson: String, limit: Int): String
+
+    @JvmStatic
+    external fun extractFileSymbolsNative(content: String, ext: String): String
+
+    @JvmStatic
+    external fun parseDiagnosticsNative(rawOutput: String): String
+
+    data class NativeCompletionItem(
+        val label: String,
+        val kind: String,
+        val detail: String? = null,
+        val documentation: String? = null,
+        val insertText: String? = null,
+        val sortPriority: Int = 0
+    )
+
+    data class NativeFileSymbol(
+        val name: String,
+        val kind: String,
+        val line: Int,
+        val character: Int,
+        val containerName: String? = null
+    )
+
+    data class NativeDiagnostic(
+        val file: String? = null,
+        val line: Int,
+        val col: Int,
+        val endLine: Int? = null,
+        val endCol: Int? = null,
+        val severity: String,
+        val message: String,
+        val source: String? = null,
+        val code: String? = null
+    )
+
     data class TranscriptSummary(
         val title: String,
         val totalSteps: Int,
@@ -533,6 +571,104 @@ object AntiBotNative {
         } catch (e: Throwable) {
             Log.w(TAG, "resolveConflictsNative error: ${e.message}")
             mergedText
+        }
+    }
+
+    /**
+     * Fast in-memory auto-completion powered by native prefix Trie in Rust.
+     */
+    fun getCompletions(prefix: String, ext: String, extraSymbols: List<NativeCompletionItem> = emptyList(), limit: Int = 20): List<NativeCompletionItem> {
+        if (!isLoaded || prefix.isEmpty()) return emptyList()
+        return try {
+            val extraJson = if (extraSymbols.isNotEmpty()) {
+                val arr = JSONArray()
+                for (s in extraSymbols) {
+                    val obj = JSONObject()
+                    obj.put("label", s.label)
+                    obj.put("kind", s.kind)
+                    s.detail?.let { obj.put("detail", it) }
+                    s.documentation?.let { obj.put("documentation", it) }
+                    s.insertText?.let { obj.put("insert_text", it) }
+                    obj.put("sort_priority", s.sortPriority)
+                    arr.put(obj)
+                }
+                arr.toString()
+            } else ""
+
+            val jsonStr = getCompletionsNative(prefix, ext, extraJson, limit)
+            val arr = JSONArray(jsonStr)
+            val list = mutableListOf<NativeCompletionItem>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(NativeCompletionItem(
+                    label = o.optString("label"),
+                    kind = o.optString("kind"),
+                    detail = o.optString("detail").takeIf { it.isNotBlank() },
+                    documentation = o.optString("documentation").takeIf { it.isNotBlank() },
+                    insertText = o.optString("insert_text").takeIf { it.isNotBlank() },
+                    sortPriority = o.optInt("sort_priority", 0)
+                ))
+            }
+            list
+        } catch (e: Throwable) {
+            Log.w(TAG, "getCompletionsNative error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Extracts declared symbols (functions, classes, structs) from source files using native Rust scanner.
+     */
+    fun extractFileSymbols(content: String, ext: String): List<NativeFileSymbol> {
+        if (!isLoaded || content.isEmpty()) return emptyList()
+        return try {
+            val jsonStr = extractFileSymbolsNative(content, ext)
+            val arr = JSONArray(jsonStr)
+            val list = mutableListOf<NativeFileSymbol>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(NativeFileSymbol(
+                    name = o.optString("name"),
+                    kind = o.optString("kind"),
+                    line = o.optInt("line", 1),
+                    character = o.optInt("character", 1),
+                    containerName = o.optString("container_name").takeIf { it.isNotBlank() }
+                ))
+            }
+            list
+        } catch (e: Throwable) {
+            Log.w(TAG, "extractFileSymbolsNative error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Parses compiler and linter error/warning output into structured diagnostics with Compose UTF-16 coordinates.
+     */
+    fun parseDiagnostics(rawOutput: String): List<NativeDiagnostic> {
+        if (!isLoaded || rawOutput.isEmpty()) return emptyList()
+        return try {
+            val jsonStr = parseDiagnosticsNative(rawOutput)
+            val arr = JSONArray(jsonStr)
+            val list = mutableListOf<NativeDiagnostic>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(NativeDiagnostic(
+                    file = o.optString("file").takeIf { it.isNotBlank() },
+                    line = o.optInt("line", 1),
+                    col = o.optInt("col", 1),
+                    endLine = if (o.has("end_line")) o.optInt("end_line") else null,
+                    endCol = if (o.has("end_col")) o.optInt("end_col") else null,
+                    severity = o.optString("severity", "error"),
+                    message = o.optString("message"),
+                    source = o.optString("source").takeIf { it.isNotBlank() },
+                    code = o.optString("code").takeIf { it.isNotBlank() }
+                ))
+            }
+            list
+        } catch (e: Throwable) {
+            Log.w(TAG, "parseDiagnosticsNative error: ${e.message}")
+            emptyList()
         }
     }
 }
