@@ -11,7 +11,8 @@ use std::{process::Command, sync::Arc};
 use crate::{
     models::{
         ComputeDiffReq, DiffFile, DiffHunk, DiffLine, DiffResponse, GitActionReq, GitActionResult,
-        GitBranchInfo, GitConfig, GitFileStatus, GitSetConfigReq,
+        GitBranchInfo, GitCommitDetailsResponse, GitCommitFileChange, GitCommitRef, GitConfig,
+        GitFileStatus, GitGraphCommit, GitGraphSegment, GitSetConfigReq,
     },
     AppState,
 };
@@ -23,13 +24,53 @@ pub struct GitQuery {
     pub project: Option<String>,
 }
 
-fn resolve_repo_dir(state: &AppState, q: &GitQuery) -> String {
-    q.project
-        .as_ref()
-        .or(q.dir.as_ref())
-        .or(q.path.as_ref())
-        .cloned()
+#[derive(Debug, Deserialize)]
+pub struct GitLogQuery {
+    pub dir: Option<String>,
+    pub path: Option<String>,
+    pub project: Option<String>,
+    pub limit: Option<usize>,
+    pub skip: Option<usize>,
+    pub branch: Option<String>,
+    pub all: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitCommitDetailsQuery {
+    pub dir: Option<String>,
+    pub path: Option<String>,
+    pub project: Option<String>,
+    pub hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitCommitDiffQuery {
+    pub dir: Option<String>,
+    pub path: Option<String>,
+    pub project: Option<String>,
+    pub hash: String,
+    pub file: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitCommitContentQuery {
+    pub dir: Option<String>,
+    pub path: Option<String>,
+    pub project: Option<String>,
+    pub hash: String,
+    pub file: String,
+}
+
+fn resolve_dir(state: &AppState, project: Option<&str>, dir: Option<&str>, path: Option<&str>) -> String {
+    project
+        .or(dir)
+        .or(path)
+        .map(|s| s.to_string())
         .unwrap_or_else(|| state.workspace_dir.to_string_lossy().to_string())
+}
+
+fn resolve_repo_dir(state: &AppState, q: &GitQuery) -> String {
+    resolve_dir(state, q.project.as_deref(), q.dir.as_deref(), q.path.as_deref())
 }
 
 fn resolve_post_dir(state: &AppState, project: Option<&str>) -> String {
@@ -134,12 +175,29 @@ pub async fn git_status_handler(
 
     let clean = staged.is_empty() && modified.is_empty() && untracked.is_empty();
 
+    let (ahead, behind) = Command::new("git")
+        .args(["rev-list", "--left-right", "--count", "@{u}...HEAD"])
+        .current_dir(&repo_dir)
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| {
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            let b = parts.first().and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+            let a = parts.get(1).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+            (a, b)
+        })
+        .unwrap_or((0, 0));
+
     (
         StatusCode::OK,
         Json(json!({
             "isGitRepo": true,
             "isRepo": true,
             "branch": branch,
+            "ahead": ahead,
+            "behind": behind,
+            "unpushedCount": ahead,
             "stagedFiles": staged_files,
             "unstagedFiles": unstaged_files,
             "untrackedFiles": untracked_files,
@@ -370,37 +428,476 @@ pub async fn compute_diff_handler(
     )
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct RawCommit {
+    pub hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub date: String,
+    pub subject: String,
+    pub body: String,
+    pub parents: Vec<String>,
+    pub refs: Vec<GitCommitRef>,
+    pub is_unpushed: bool,
+}
+
+pub fn parse_commit_refs(ref_str: &str) -> Vec<GitCommitRef> {
+    let mut refs = Vec::new();
+    if ref_str.trim().is_empty() {
+        return refs;
+    }
+    for part in ref_str.split(',') {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("HEAD -> ") {
+            refs.push(GitCommitRef {
+                name: rest.trim().to_string(),
+                is_head: true,
+                is_remote: false,
+                is_tag: false,
+            });
+        } else if let Some(rest) = trimmed.strip_prefix("tag: ") {
+            refs.push(GitCommitRef {
+                name: rest.trim().to_string(),
+                is_head: false,
+                is_remote: false,
+                is_tag: true,
+            });
+        } else if trimmed.starts_with("origin/") || trimmed.starts_with("remotes/") {
+            let name = trimmed.trim_start_matches("remotes/").to_string();
+            refs.push(GitCommitRef {
+                name,
+                is_head: false,
+                is_remote: true,
+                is_tag: false,
+            });
+        } else {
+            refs.push(GitCommitRef {
+                name: trimmed.to_string(),
+                is_head: false,
+                is_remote: false,
+                is_tag: false,
+            });
+        }
+    }
+    refs
+}
+
+pub fn compute_dag_layout(raw_commits: Vec<RawCommit>) -> Vec<GitGraphCommit> {
+    let mut lanes: Vec<Option<String>> = Vec::new();
+    let mut graph_commits = Vec::with_capacity(raw_commits.len());
+
+    for commit in raw_commits {
+        // 1. Locate if commit is already expected in an existing lane
+        let my_lane = lanes.iter().position(|l| l.as_ref() == Some(&commit.hash));
+        let col = match my_lane {
+            Some(idx) => {
+                lanes[idx] = None;
+                idx
+            }
+            None => {
+                let free_idx = lanes.iter().position(|l| l.is_none()).unwrap_or(lanes.len());
+                if free_idx >= lanes.len() {
+                    lanes.resize(free_idx + 1, None);
+                }
+                free_idx
+            }
+        };
+
+        let color_index = col % 6;
+        let mut segments = Vec::new();
+        let is_merge = commit.parents.len() > 1;
+
+        // 2. Connect to parents
+        if let Some(p0) = commit.parents.first() {
+            let existing_p0 = lanes.iter().position(|l| l.as_ref() == Some(p0));
+            match existing_p0 {
+                Some(p0_col) => {
+                    segments.push(GitGraphSegment {
+                        from_col: col,
+                        to_col: p0_col,
+                        segment_type: if p0_col == col { "direct".to_string() } else { "merge".to_string() },
+                        color_index,
+                    });
+                }
+                None => {
+                    if col >= lanes.len() {
+                        lanes.resize(col + 1, None);
+                    }
+                    lanes[col] = Some(p0.clone());
+                    segments.push(GitGraphSegment {
+                        from_col: col,
+                        to_col: col,
+                        segment_type: "direct".to_string(),
+                        color_index,
+                    });
+                }
+            }
+        }
+
+        for p in commit.parents.iter().skip(1) {
+            let existing_p = lanes.iter().position(|l| l.as_ref() == Some(p));
+            match existing_p {
+                Some(p_col) => {
+                    segments.push(GitGraphSegment {
+                        from_col: col,
+                        to_col: p_col,
+                        segment_type: "merge".to_string(),
+                        color_index: p_col % 6,
+                    });
+                }
+                None => {
+                    let new_col = lanes.iter().position(|l| l.is_none()).unwrap_or(lanes.len());
+                    if new_col >= lanes.len() {
+                        lanes.resize(new_col + 1, None);
+                    }
+                    lanes[new_col] = Some(p.clone());
+                    segments.push(GitGraphSegment {
+                        from_col: col,
+                        to_col: new_col,
+                        segment_type: "branch".to_string(),
+                        color_index: new_col % 6,
+                    });
+                }
+            }
+        }
+
+        // 3. Pass-through segments for active lanes that are not current col
+        for (idx, slot) in lanes.iter().enumerate() {
+            if slot.is_some() && idx != col {
+                let already_connected = segments.iter().any(|s| s.to_col == idx && s.from_col == col);
+                if !already_connected {
+                    segments.push(GitGraphSegment {
+                        from_col: idx,
+                        to_col: idx,
+                        segment_type: "pass_through".to_string(),
+                        color_index: idx % 6,
+                    });
+                }
+            }
+        }
+
+        // 4. Trim trailing None
+        while lanes.last().map(|s| s.is_none()).unwrap_or(false) {
+            lanes.pop();
+        }
+
+        graph_commits.push(GitGraphCommit {
+            hash: commit.hash,
+            short_hash: commit.short_hash,
+            author: commit.author,
+            date: commit.date,
+            message: commit.subject.clone(),
+            subject: commit.subject,
+            parents: commit.parents,
+            is_unpushed: commit.is_unpushed,
+            is_merge,
+            graph_column: col,
+            color_index,
+            refs: commit.refs,
+            segments,
+        });
+    }
+
+    graph_commits
+}
+
 pub async fn git_log_handler(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<GitQuery>,
+    Query(params): Query<GitLogQuery>,
 ) -> impl IntoResponse {
-    let repo_dir = resolve_repo_dir(&state, &params);
+    let repo_dir = resolve_dir(&state, params.project.as_deref(), params.dir.as_deref(), params.path.as_deref());
+    let limit = params.limit.unwrap_or(30).clamp(1, 200);
+    let skip = params.skip.unwrap_or(0);
+
+    let mut args = vec![
+        "log".to_string(),
+        format!("-n{}", limit),
+        format!("--skip={}", skip),
+        "--topo-order".to_string(),
+        "--date=short".to_string(),
+        "--pretty=format:%H\x1f%h\x1f%an\x1f%ad\x1f%s\x1f%P\x1f%D\x1f%B\x1e".to_string(),
+    ];
+
+    if params.all.unwrap_or(false) {
+        args.push("--all".to_string());
+    } else if let Some(ref b) = params.branch {
+        if !b.trim().is_empty() {
+            args.push(b.clone());
+        }
+    }
 
     let output = Command::new("git")
-        .args(["log", "-n", "30", "--pretty=format:%H%x09%h%x09%an%x09%ad%x09%s", "--date=short"])
+        .args(&args)
         .current_dir(&repo_dir)
         .output();
 
-    let mut commits = Vec::new();
+    let unpushed_hashes: std::collections::HashSet<String> = {
+        let out = Command::new("git")
+            .args(["rev-list", "@{u}..HEAD"])
+            .current_dir(&repo_dir)
+            .output()
+            .or_else(|_| {
+                Command::new("git")
+                    .args(["rev-list", "origin/main..HEAD"])
+                    .current_dir(&repo_dir)
+                    .output()
+            });
+        if let Ok(o) = out {
+            if o.status.success() {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                std::collections::HashSet::new()
+            }
+        } else {
+            std::collections::HashSet::new()
+        }
+    };
+
+    let mut raw_commits = Vec::new();
+
     if let Ok(out) = output {
         if let Ok(text) = String::from_utf8(out.stdout) {
-            for line in text.lines() {
-                let parts: Vec<&str> = line.split('\t').collect();
-                if parts.len() >= 5 {
-                    commits.push(json!({
-                        "hash": parts[0],
-                        "shortHash": parts[1],
-                        "author": parts[2],
-                        "date": parts[3],
-                        "message": parts[4],
-                        "subject": parts[4]
-                    }));
+            for record in text.split('\x1e') {
+                let trimmed_rec = record.trim();
+                if trimmed_rec.is_empty() {
+                    continue;
+                }
+                let parts: Vec<&str> = trimmed_rec.split('\x1f').collect();
+                if parts.len() >= 6 {
+                    let hash = parts[0].trim().to_string();
+                    let short_hash = parts[1].trim().to_string();
+                    let author = parts[2].trim().to_string();
+                    let date = parts[3].trim().to_string();
+                    let subject = parts[4].trim().to_string();
+                    let parents = parts[5]
+                        .split_whitespace()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    let ref_str = parts.get(6).unwrap_or(&"");
+                    let refs = parse_commit_refs(ref_str);
+                    let body = parts.get(7).map(|s| s.trim().to_string()).unwrap_or_else(|| subject.clone());
+                    let is_unpushed = unpushed_hashes.contains(&hash);
+
+                    raw_commits.push(RawCommit {
+                        hash,
+                        short_hash,
+                        author,
+                        date,
+                        subject,
+                        body,
+                        parents,
+                        refs,
+                        is_unpushed,
+                    });
                 }
             }
         }
     }
 
-    (StatusCode::OK, Json(json!({ "commits": commits })))
+    let graph_commits = compute_dag_layout(raw_commits);
+
+    (StatusCode::OK, Json(json!({ "commits": graph_commits })))
+}
+
+pub async fn git_commit_details_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<GitCommitDetailsQuery>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_dir(&state, params.project.as_deref(), params.dir.as_deref(), params.path.as_deref());
+    let hash = params.hash.trim().to_string();
+
+    let meta_out = Command::new("git")
+        .args(["show", "-s", "--pretty=format:%H\x1f%h\x1f%an\x1f%ad\x1f%s\x1f%B", "--date=short", &hash])
+        .current_dir(&repo_dir)
+        .output();
+
+    let mut full_hash = hash.clone();
+    let mut short_hash = hash.chars().take(7).collect::<String>();
+    let mut author = String::new();
+    let mut date = String::new();
+    let mut subject = String::new();
+    let mut body = String::new();
+
+    if let Ok(out) = meta_out {
+        if let Ok(text) = String::from_utf8(out.stdout) {
+            let parts: Vec<&str> = text.split('\x1f').collect();
+            if parts.len() >= 5 {
+                full_hash = parts[0].trim().to_string();
+                short_hash = parts[1].trim().to_string();
+                author = parts[2].trim().to_string();
+                date = parts[3].trim().to_string();
+                subject = parts[4].trim().to_string();
+                body = parts.get(5).map(|s| s.trim().to_string()).unwrap_or_else(|| subject.clone());
+            }
+        }
+    }
+
+    let status_out = Command::new("git")
+        .args(["diff-tree", "--no-commit-id", "--name-status", "-r", &full_hash])
+        .current_dir(&repo_dir)
+        .output();
+
+    let mut file_statuses: std::collections::HashMap<String, (String, Option<String>)> = std::collections::HashMap::new();
+    if let Ok(out) = status_out {
+        if let Ok(text) = String::from_utf8(out.stdout) {
+            for line in text.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 2 {
+                    let st = parts[0].trim();
+                    let st_code = st.chars().next().unwrap_or('M').to_string();
+                    if st.starts_with('R') && parts.len() >= 3 {
+                        let old_p = parts[1].trim().to_string();
+                        let new_p = parts[2].trim().to_string();
+                        file_statuses.insert(new_p, (st_code, Some(old_p)));
+                    } else {
+                        let path = parts[1].trim().to_string();
+                        file_statuses.insert(path, (st_code, None));
+                    }
+                }
+            }
+        }
+    }
+
+    let numstat_out = Command::new("git")
+        .args(["show", "--numstat", "--pretty=", &full_hash])
+        .current_dir(&repo_dir)
+        .output();
+
+    let mut changed_files = Vec::new();
+    let mut seen_files = std::collections::HashSet::new();
+
+    if let Ok(out) = numstat_out {
+        if let Ok(text) = String::from_utf8(out.stdout) {
+            for line in text.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let adds = parts[0].trim().parse::<usize>().unwrap_or(0);
+                    let dels = parts[1].trim().parse::<usize>().unwrap_or(0);
+                    let raw_path = parts[2].trim().to_string();
+
+                    let (status, old_path) = file_statuses
+                        .get(&raw_path)
+                        .cloned()
+                        .unwrap_or_else(|| ("M".to_string(), None));
+
+                    seen_files.insert(raw_path.clone());
+                    changed_files.push(GitCommitFileChange {
+                        path: raw_path,
+                        status,
+                        old_path,
+                        additions: adds,
+                        deletions: dels,
+                    });
+                }
+            }
+        }
+    }
+
+    for (p, (st, old_p)) in file_statuses {
+        if !seen_files.contains(&p) {
+            changed_files.push(GitCommitFileChange {
+                path: p,
+                status: st,
+                old_path: old_p,
+                additions: 0,
+                deletions: 0,
+            });
+        }
+    }
+
+    let stats = Command::new("git")
+        .args(["show", "--shortstat", "--pretty=", &full_hash])
+        .current_dir(&repo_dir)
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(GitCommitDetailsResponse {
+            hash: full_hash,
+            short_hash,
+            author,
+            date,
+            subject,
+            body: body.clone(),
+            message: body,
+            changed_files,
+            stats,
+        }),
+    )
+}
+
+pub async fn git_commit_diff_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<GitCommitDiffQuery>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_dir(&state, params.project.as_deref(), params.dir.as_deref(), params.path.as_deref());
+    let hash = params.hash.trim().to_string();
+
+    let mut cmd = Command::new("git");
+    cmd.args(["show", "--pretty="]);
+    cmd.arg(&hash);
+    if let Some(ref f) = params.file {
+        if !f.trim().is_empty() {
+            cmd.arg("--");
+            cmd.arg(f.trim());
+        }
+    }
+    cmd.current_dir(&repo_dir);
+
+    let diff = cmd
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "diff": diff,
+            "hash": hash,
+            "file": params.file.unwrap_or_default()
+        })),
+    )
+}
+
+pub async fn git_commit_content_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<GitCommitContentQuery>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_dir(&state, params.project.as_deref(), params.dir.as_deref(), params.path.as_deref());
+    let hash = params.hash.trim();
+    let file = params.file.trim();
+    let spec = format!("{}:{}", hash, file);
+
+    let content = Command::new("git")
+        .args(["show", &spec])
+        .current_dir(&repo_dir)
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "content": content,
+            "hash": hash,
+            "file": file
+        })),
+    )
 }
 
 pub async fn git_init_handler(
@@ -759,3 +1256,110 @@ pub async fn git_config_set_handler(
         }),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_commit_refs() {
+        let refs = parse_commit_refs("HEAD -> main, origin/main, tag: v1.0.60, feature/auth");
+        assert_eq!(refs.len(), 4);
+        assert_eq!(refs[0].name, "main");
+        assert!(refs[0].is_head);
+        assert!(!refs[0].is_remote);
+        assert!(!refs[0].is_tag);
+
+        assert_eq!(refs[1].name, "origin/main");
+        assert!(!refs[1].is_head);
+        assert!(refs[1].is_remote);
+
+        assert_eq!(refs[2].name, "v1.0.60");
+        assert!(refs[2].is_tag);
+
+        assert_eq!(refs[3].name, "feature/auth");
+        assert!(!refs[3].is_head);
+        assert!(!refs[3].is_remote);
+    }
+
+    #[test]
+    fn test_compute_dag_layout_linear() {
+        let c2 = RawCommit {
+            hash: "c2".to_string(),
+            short_hash: "c2".to_string(),
+            author: "dev".to_string(),
+            date: "2026-11-09".to_string(),
+            subject: "Second commit".to_string(),
+            body: "Second commit".to_string(),
+            parents: vec!["c1".to_string()],
+            refs: vec![],
+            is_unpushed: false,
+        };
+        let c1 = RawCommit {
+            hash: "c1".to_string(),
+            short_hash: "c1".to_string(),
+            author: "dev".to_string(),
+            date: "2026-11-08".to_string(),
+            subject: "First commit".to_string(),
+            body: "First commit".to_string(),
+            parents: vec![],
+            refs: vec![],
+            is_unpushed: false,
+        };
+
+        let graph = compute_dag_layout(vec![c2, c1]);
+        assert_eq!(graph.len(), 2);
+        assert_eq!(graph[0].graph_column, 0);
+        assert_eq!(graph[1].graph_column, 0);
+        assert_eq!(graph[0].segments.len(), 1);
+        assert_eq!(graph[0].segments[0].segment_type, "direct");
+    }
+
+    #[test]
+    fn test_compute_dag_layout_merge() {
+        let merge = RawCommit {
+            hash: "m1".to_string(),
+            short_hash: "m1".to_string(),
+            author: "dev".to_string(),
+            date: "2026-11-09".to_string(),
+            subject: "Merge branch 'feat'".to_string(),
+            body: "Merge branch 'feat'".to_string(),
+            parents: vec!["c2".to_string(), "b1".to_string()],
+            refs: vec![],
+            is_unpushed: false,
+        };
+        let c2 = RawCommit {
+            hash: "c2".to_string(),
+            short_hash: "c2".to_string(),
+            author: "dev".to_string(),
+            date: "2026-11-09".to_string(),
+            subject: "Main commit".to_string(),
+            body: "Main commit".to_string(),
+            parents: vec!["c0".to_string()],
+            refs: vec![],
+            is_unpushed: false,
+        };
+        let b1 = RawCommit {
+            hash: "b1".to_string(),
+            short_hash: "b1".to_string(),
+            author: "dev".to_string(),
+            date: "2026-11-09".to_string(),
+            subject: "Feat commit".to_string(),
+            body: "Feat commit".to_string(),
+            parents: vec!["c0".to_string()],
+            refs: vec![],
+            is_unpushed: false,
+        };
+
+        let graph = compute_dag_layout(vec![merge, c2, b1]);
+        assert_eq!(graph.len(), 3);
+        assert_eq!(graph[0].graph_column, 0);
+        assert!(graph[0].is_merge);
+        // Merge should have 2 segments: direct (0->0) and branch (0->1)
+        assert_eq!(graph[0].segments.len(), 2);
+        assert_eq!(graph[1].graph_column, 0);
+        // b1 is on lane 1
+        assert_eq!(graph[2].graph_column, 1);
+    }
+}
+

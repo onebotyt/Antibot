@@ -46,13 +46,33 @@ data class GitBranchInfo(
     val isRemote: Boolean
 )
 
+data class GitCommitRef(
+    val name: String,
+    val isHead: Boolean = false,
+    val isRemote: Boolean = false,
+    val isTag: Boolean = false
+)
+
+data class GitGraphSegment(
+    val fromCol: Int,
+    val toCol: Int,
+    val type: String, // "direct", "branch", "merge", "pass_through"
+    val colorIndex: Int
+)
+
 data class GitCommitLog(
     val hash: String,
     val shortHash: String,
     val author: String,
     val date: String,
     val message: String,
-    val isUnpushed: Boolean = false
+    val isUnpushed: Boolean = false,
+    val graphColumn: Int = 0,
+    val colorIndex: Int = 0,
+    val parents: List<String> = emptyList(),
+    val isMerge: Boolean = false,
+    val refs: List<GitCommitRef> = emptyList(),
+    val segments: List<GitGraphSegment> = emptyList()
 )
 
 data class GitCommitFileChange(
@@ -557,6 +577,47 @@ object GitApiClient {
                 val list = mutableListOf<GitCommitLog>()
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
+
+                    val refsList = mutableListOf<GitCommitRef>()
+                    val refsArr = obj.optJSONArray("refs")
+                    if (refsArr != null) {
+                        for (r in 0 until refsArr.length()) {
+                            val ro = refsArr.getJSONObject(r)
+                            refsList.add(
+                                GitCommitRef(
+                                    name = ro.getString("name"),
+                                    isHead = ro.optBoolean("isHead", false),
+                                    isRemote = ro.optBoolean("isRemote", false),
+                                    isTag = ro.optBoolean("isTag", false)
+                                )
+                            )
+                        }
+                    }
+
+                    val segsList = mutableListOf<GitGraphSegment>()
+                    val segsArr = obj.optJSONArray("segments")
+                    if (segsArr != null) {
+                        for (s in 0 until segsArr.length()) {
+                            val so = segsArr.getJSONObject(s)
+                            segsList.add(
+                                GitGraphSegment(
+                                    fromCol = so.optInt("fromCol", 0),
+                                    toCol = so.optInt("toCol", 0),
+                                    type = so.optString("type", "direct"),
+                                    colorIndex = so.optInt("colorIndex", 0)
+                                )
+                            )
+                        }
+                    }
+
+                    val parentsList = mutableListOf<String>()
+                    val parentsArr = obj.optJSONArray("parents")
+                    if (parentsArr != null) {
+                        for (p in 0 until parentsArr.length()) {
+                            parentsList.add(parentsArr.getString(p))
+                        }
+                    }
+
                     list.add(
                         GitCommitLog(
                             hash = obj.getString("hash"),
@@ -564,7 +625,13 @@ object GitApiClient {
                             author = obj.getString("author"),
                             date = obj.getString("date"),
                             message = obj.getString("message"),
-                            isUnpushed = obj.optBoolean("isUnpushed", false)
+                            isUnpushed = obj.optBoolean("isUnpushed", false),
+                            graphColumn = obj.optInt("graphColumn", 0),
+                            colorIndex = obj.optInt("colorIndex", 0),
+                            parents = parentsList,
+                            isMerge = obj.optBoolean("isMerge", false),
+                            refs = refsList,
+                            segments = segsList
                         )
                     )
                 }

@@ -1,11 +1,11 @@
 {
-  "version_code": 187,
-  "version_name": "1.0.67",
+  "version_code": 188,
+  "version_name": "1.0.68",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\udd0d Phase 8 Upgrade: Deep Transcript Ripgrep Search & Native Fuzzy QuickOpen Engine in Rust.",
-    "\u26a1 High-Speed Transcript Scanning: Multi-threaded full-text search across all historical conversation logs and turn snippets via `/api/conversations/search`.",
-    "\ud83d\ude80 120 FPS QuickOpen Dialog: Zero-allocation Smith-Waterman/FZF subsequence scoring in `libantibot_native.so` with word boundary, camelCase, and path separator bonuses."
+    "🌿 Phase 9 Upgrade: Interactive Git Commit Graph DAG Engine & Commit Inspector in Rust.",
+    "⚡ Native DAG Layout Engine: Microsecond topological lane allocation (`agy_ide_bridge_rs`) rendering multi-branch metro-style Bezier graphs in Android Compose.",
+    "🔎 Deep Commit Inspector: Instant commit details (`/api/git/commit/details`), changed files numstat, shortstats, and single-file diff viewer (`/api/git/commit/diff`)."
   ],
   "is_critical": false
 }

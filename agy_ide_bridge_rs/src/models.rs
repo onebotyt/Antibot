@@ -245,6 +245,82 @@ pub struct GitSetConfigReq {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitRef {
+    pub name: String,
+    #[serde(rename = "isHead", default)]
+    pub is_head: bool,
+    #[serde(rename = "isRemote", default)]
+    pub is_remote: bool,
+    #[serde(rename = "isTag", default)]
+    pub is_tag: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitGraphSegment {
+    #[serde(rename = "fromCol")]
+    pub from_col: usize,
+    #[serde(rename = "toCol")]
+    pub to_col: usize,
+    #[serde(rename = "type")]
+    pub segment_type: String, // "direct", "branch", "merge", "pass_through"
+    #[serde(rename = "colorIndex")]
+    pub color_index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitGraphCommit {
+    pub hash: String,
+    #[serde(rename = "shortHash")]
+    pub short_hash: String,
+    pub author: String,
+    pub date: String,
+    pub message: String,
+    pub subject: String,
+    pub parents: Vec<String>,
+    #[serde(rename = "isUnpushed", default)]
+    pub is_unpushed: bool,
+    #[serde(rename = "isMerge", default)]
+    pub is_merge: bool,
+    #[serde(rename = "graphColumn", default)]
+    pub graph_column: usize,
+    #[serde(rename = "colorIndex", default)]
+    pub color_index: usize,
+    #[serde(default)]
+    pub refs: Vec<GitCommitRef>,
+    #[serde(default)]
+    pub segments: Vec<GitGraphSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitFileChange {
+    pub path: String,
+    pub status: String, // "M", "A", "D", "R"
+    #[serde(rename = "oldPath", skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
+    #[serde(default)]
+    pub additions: usize,
+    #[serde(default)]
+    pub deletions: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitDetailsResponse {
+    pub hash: String,
+    #[serde(rename = "shortHash")]
+    pub short_hash: String,
+    pub author: String,
+    pub date: String,
+    pub subject: String,
+    pub body: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(rename = "changedFiles")]
+    pub changed_files: Vec<GitCommitFileChange>,
+    pub stats: String,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationSummary {
     pub id: String,
     pub title: String,

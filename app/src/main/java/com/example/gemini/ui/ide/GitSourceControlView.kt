@@ -2,12 +2,16 @@ package com.example.gemini.ui.ide
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -711,6 +715,13 @@ fun GitSourceControlView(
                 }
 
                 if (historyExpanded) {
+                    val maxLanes = remember(commitLogs) {
+                        commitLogs.maxOfOrNull { c ->
+                            val segMax = c.segments.maxOfOrNull { maxOf(it.fromCol, it.toCol) } ?: 0
+                            maxOf(c.graphColumn, segMax)
+                        }?.plus(1) ?: 1
+                    }
+
                     items(commitLogs) { commit ->
                         val isExpanded = expandedCommitHash == commit.hash
                         val details = commitDetailsCache[commit.hash]
@@ -718,6 +729,7 @@ fun GitSourceControlView(
 
                         CommitLogRow(
                             commit = commit,
+                            maxLanes = maxLanes,
                             isExpanded = isExpanded,
                             details = details,
                             isLoadingDetails = isLoadingDetails,
@@ -1563,9 +1575,113 @@ private fun GitFileRow(
     }
 }
 
+private val GraphLaneColors = listOf(
+    Color(0xFFE57373), // Terracotta / Coral
+    Color(0xFF64B5F6), // Blue
+    Color(0xFFFFB74D), // Amber
+    Color(0xFF81C784), // Emerald
+    Color(0xFFBA68C8), // Purple
+    Color(0xFF4DD0E1)  // Cyan
+)
+
+@Composable
+private fun GitGraphCanvas(
+    commit: GitCommitLog,
+    totalLanes: Int,
+    modifier: Modifier = Modifier
+) {
+    val laneWidthDp = 14.dp
+    val totalWidth = (totalLanes * 14).coerceAtLeast(16).dp
+
+    Canvas(modifier = modifier.width(totalWidth).fillMaxHeight()) {
+        val laneWidthPx = laneWidthDp.toPx()
+        val rowHeightPx = size.height
+        val centerY = 12.dp.toPx()
+        val nodeRadius = 3.5.dp.toPx()
+        val strokeWidth = 2.dp.toPx()
+
+        fun laneX(col: Int): Float = (col + 0.5f) * laneWidthPx
+
+        // 1. Draw segments
+        for (seg in commit.segments) {
+            val color = GraphLaneColors[seg.colorIndex % GraphLaneColors.size]
+            val fromX = laneX(seg.fromCol)
+            val toX = laneX(seg.toCol)
+
+            when (seg.type) {
+                "pass_through" -> {
+                    drawLine(
+                        color = color,
+                        start = Offset(fromX, 0f),
+                        end = Offset(fromX, rowHeightPx),
+                        strokeWidth = strokeWidth
+                    )
+                }
+                "direct" -> {
+                    drawLine(
+                        color = color,
+                        start = Offset(fromX, centerY),
+                        end = Offset(fromX, rowHeightPx),
+                        strokeWidth = strokeWidth
+                    )
+                }
+                "branch", "merge" -> {
+                    val path = Path().apply {
+                        moveTo(fromX, centerY)
+                        cubicTo(
+                            fromX, centerY + (rowHeightPx - centerY) * 0.5f,
+                            toX, centerY + (rowHeightPx - centerY) * 0.5f,
+                            toX, rowHeightPx
+                        )
+                    }
+                    drawPath(path, color = color, style = Stroke(width = strokeWidth))
+                }
+            }
+        }
+
+        // Draw incoming vertical line from top to centerY for commit's lane
+        val nodeX = laneX(commit.graphColumn)
+        val nodeColor = GraphLaneColors[commit.colorIndex % GraphLaneColors.size]
+        drawLine(
+            color = nodeColor,
+            start = Offset(nodeX, 0f),
+            end = Offset(nodeX, centerY),
+            strokeWidth = strokeWidth
+        )
+
+        // 2. Draw commit node circle at (nodeX, centerY)
+        if (commit.isMerge) {
+            drawCircle(
+                color = nodeColor,
+                radius = nodeRadius + 1.dp.toPx(),
+                center = Offset(nodeX, centerY)
+            )
+            drawCircle(
+                color = Color.White,
+                radius = nodeRadius * 0.5f,
+                center = Offset(nodeX, centerY)
+            )
+        } else if (commit.isUnpushed) {
+            drawCircle(
+                color = nodeColor,
+                radius = nodeRadius,
+                center = Offset(nodeX, centerY),
+                style = Stroke(width = 1.8.dp.toPx())
+            )
+        } else {
+            drawCircle(
+                color = nodeColor,
+                radius = nodeRadius,
+                center = Offset(nodeX, centerY)
+            )
+        }
+    }
+}
+
 @Composable
 private fun CommitLogRow(
     commit: GitCommitLog,
+    maxLanes: Int = 1,
     isExpanded: Boolean = false,
     details: GitCommitDetails? = null,
     isLoadingDetails: Boolean = false,
@@ -1582,160 +1698,208 @@ private fun CommitLogRow(
             .clickable { onToggle() }
             .padding(vertical = 2.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 6.dp, vertical = 4.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        text = commit.shortHash,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ClaudeTerracotta,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
-                }
-                if (commit.isUnpushed) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFFFFF3E0),
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFFB74D))
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudOff,
-                                contentDescription = null,
-                                tint = Color(0xFFE65100),
-                                modifier = Modifier.size(9.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "Not pushed",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFE65100)
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = commit.author,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = commit.date,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = commit.message,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = if (isExpanded) 4 else 2,
-                overflow = TextOverflow.Ellipsis
+            // Git DAG Graph column
+            GitGraphCanvas(
+                commit = commit,
+                totalLanes = maxLanes,
+                modifier = Modifier.padding(end = 4.dp)
             )
 
-            // Expanded Commit Details
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(6.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                Spacer(modifier = Modifier.height(6.dp))
-
-                if (isLoadingDetails) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = ClaudeTerracotta, strokeWidth = 2.dp)
-                    }
-                } else if (details != null) {
-                    if (details.body.isNotBlank()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
                         Text(
-                            text = details.body,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-
-                    if (details.changedFiles.isNotEmpty()) {
-                        Text(
-                            text = "CHANGED FILES (${details.changedFiles.size})",
-                            fontSize = 10.sp,
+                            text = commit.shortHash,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                            color = ClaudeTerracotta,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
+                    }
 
-                        details.changedFiles.forEach { fileChange ->
-                            val (badgeBg, badgeFg) = when (fileChange.status) {
-                                "M" -> Pair(Color(0xFFFFF3E0), Color(0xFFE65100))
-                                "A" -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
-                                "D" -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
-                                else -> Pair(Color(0xFFF5F5F5), Color(0xFF424242))
-                            }
-
+                    if (commit.isUnpushed) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFFFF3E0),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFFB74D))
+                        ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .clickable { onOpenFileDiff(fileChange.path) }
-                                    .padding(vertical = 3.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
-                                Surface(shape = RoundedCornerShape(3.dp), color = badgeBg) {
-                                    Text(
-                                        text = fileChange.status,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = badgeFg,
-                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.CloudOff,
+                                    contentDescription = null,
+                                    tint = Color(0xFFE65100),
+                                    modifier = Modifier.size(9.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
                                 Text(
-                                    text = fileChange.path,
-                                    fontSize = 11.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text = "Not pushed",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFE65100)
                                 )
                             }
                         }
-                    } else {
-                        Text(
-                            text = "No changed files in this commit",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
+                    }
+
+                    // Ref chips (branches, remotes, tags)
+                    if (commit.refs.isNotEmpty()) {
+                        commit.refs.forEach { ref ->
+                            Spacer(modifier = Modifier.width(4.dp))
+                            val (chipBg, chipFg) = when {
+                                ref.isHead -> Pair(ClaudeTerracotta.copy(alpha = 0.15f), ClaudeTerracotta)
+                                ref.isTag -> Pair(Color(0xFFFFA000).copy(alpha = 0.15f), Color(0xFFFFA000))
+                                ref.isRemote -> Pair(Color(0xFF1E88E5).copy(alpha = 0.15f), Color(0xFF1E88E5))
+                                else -> Pair(Color(0xFF43A047).copy(alpha = 0.15f), Color(0xFF43A047))
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = chipBg
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp)
+                                ) {
+                                    if (ref.isTag) {
+                                        Icon(imageVector = Icons.Default.Label, contentDescription = null, tint = chipFg, modifier = Modifier.size(8.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                    } else if (ref.isHead) {
+                                        Icon(imageVector = Icons.Default.AltRoute, contentDescription = null, tint = chipFg, modifier = Modifier.size(8.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                    }
+                                    Text(
+                                        text = if (ref.isHead) "HEAD -> ${ref.name}" else ref.name,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = chipFg
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = commit.author,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = commit.date,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = commit.message,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = if (isExpanded) 4 else 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Expanded Commit Details
+                if (isExpanded) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (isLoadingDetails) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = ClaudeTerracotta, strokeWidth = 2.dp)
+                        }
+                    } else if (details != null) {
+                        if (details.body.isNotBlank()) {
+                            Text(
+                                text = details.body,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+
+                        if (details.changedFiles.isNotEmpty()) {
+                            Text(
+                                text = "CHANGED FILES (${details.changedFiles.size})",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                            )
+
+                            details.changedFiles.forEach { fileChange ->
+                                val (badgeBg, badgeFg) = when (fileChange.status) {
+                                    "M" -> Pair(Color(0xFFFFF3E0), Color(0xFFE65100))
+                                    "A" -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
+                                    "D" -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
+                                    else -> Pair(Color(0xFFF5F5F5), Color(0xFF424242))
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable { onOpenFileDiff(fileChange.path) }
+                                        .padding(vertical = 3.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(shape = RoundedCornerShape(3.dp), color = badgeBg) {
+                                        Text(
+                                            text = fileChange.status,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = badgeFg,
+                                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = fileChange.path,
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "No changed files in this commit",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
-            }
 
-            HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            }
         }
     }
 }
