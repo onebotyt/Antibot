@@ -286,3 +286,25 @@ pub struct ChatMessage {
     #[serde(rename = "tool_calls", default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptSearchMatch {
+    #[serde(rename = "conversationId")]
+    pub conversation_id: String,
+    pub title: String,
+    #[serde(rename = "stepIndex")]
+    pub step_index: u64,
+    pub role: String,
+    pub snippet: String,
+    #[serde(rename = "matchOffset")]
+    pub match_offset: usize,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptSearchResponse {
+    pub query: String,
+    pub total: usize,
+    pub matches: Vec<TranscriptSearchMatch>,
+}
+

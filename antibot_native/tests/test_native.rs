@@ -1,4 +1,4 @@
-use antibot_native::{audio, crypto, diff, markdown, syntax};
+use antibot_native::{audio, crypto, diff, fuzzy, markdown, syntax};
 
 #[test]
 fn test_parse_markdown_blocks() {
@@ -195,6 +195,24 @@ fn test_pcm_to_wav_conversion() {
     // Sample rate check: 16000 in little endian = [0x80, 0x3E, 0x00, 0x00]
     let sample_rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
     assert_eq!(sample_rate, 16000);
+}
+
+#[test]
+fn test_fuzzy_quickopen() {
+    let files = vec![
+        "app/src/main/java/com/example/gemini/ui/ide/IdeScreen.kt",
+        "app/src/main/java/com/example/gemini/ui/ide/GitSourceControlView.kt",
+        "app/src/main/java/com/example/gemini/ui/chat/ChatScreen.kt",
+        "app/src/main/java/com/example/gemini/data/daemon/IdeApiClient.kt",
+    ];
+
+    let results = fuzzy::fuzzy_filter_indices("cs", &files, 10);
+    assert!(!results.is_empty());
+    // "cs" matching ChatScreen.kt (CamelCase C-S)
+    assert_eq!(results[0].0, 2);
+
+    let gresults = fuzzy::fuzzy_filter_indices("git", &files, 10);
+    assert_eq!(gresults[0].0, 1);
 }
 
 

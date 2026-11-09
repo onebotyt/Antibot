@@ -102,6 +102,7 @@ fun IdeScreen(
     var fileTree by remember { mutableStateOf<List<FileNode>>(emptyList()) }
     var isWordWrap by remember { mutableStateOf(false) }
     var showNewProjectDialog by remember { mutableStateOf(false) }
+    var showQuickOpen by remember { mutableStateOf(false) }
     var showFileManager by remember { mutableStateOf(false) }
     var saveAsDialogTab by remember { mutableStateOf<OpenTab?>(null) }
     var tabToClose by remember { mutableStateOf<OpenTab?>(null) }
@@ -456,6 +457,19 @@ fun IdeScreen(
                         )
                     },
                     actions = {
+                        // Quick Open File Search Button (Ctrl+P)
+                        IconButton(
+                            onClick = { showQuickOpen = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Quick Open File (Ctrl+P)",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         val isTextFile = activeTab != null && (!isImageFile || (isSvgFile && showSvgSource))
                         val isTextEditable = isTextFile && !activeTab.isReadOnly
                         var showMoreOptionsMenu by remember { mutableStateOf(false) }
@@ -1604,6 +1618,36 @@ fun IdeScreen(
                     onDismiss = { showFileManager = false }
                 )
             }
+
+            // Quick Open Dialog (Native Rust FZF Subsequence Matcher)
+            if (showQuickOpen) {
+                val allProjectFiles = remember(fileTree) { flattenFileTree(fileTree) }
+                QuickOpenDialog(
+                    projectRootPath = activeProject?.path,
+                    allFilePaths = allProjectFiles,
+                    onSelectFile = { selectedPath ->
+                        coroutineScope.launch {
+                            val res = IdeApiClient.readFileDetailed(selectedPath)
+                            if (res != null) {
+                                val name = java.io.File(selectedPath).name
+                                if (res.category == "binary") {
+                                    binaryWarningDialog = BinaryWarningTab(
+                                        path = selectedPath,
+                                        name = name,
+                                        content = res.content,
+                                        mimeType = res.mimeType
+                                    )
+                                } else {
+                                    TermuxDaemonManager.openOrSelectTab(selectedPath, name, res.content)
+                                }
+                            } else {
+                                Toast.makeText(context, "Cannot open file: IDE bridge offline or unreachable.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onDismiss = { showQuickOpen = false }
+                )
+            }
             // Save As File Manager Dialog (e.g. for externally opened files or save-as)
             saveAsDialogTab?.let { tabToSave ->
                 val initialSavePath = remember(activeProject?.path) {
@@ -1927,4 +1971,18 @@ data class BinaryWarningTab(
     val content: String,
     val mimeType: String
 )
+
+private fun flattenFileTree(nodes: List<FileNode>): List<String> {
+    val result = mutableListOf<String>()
+    fun traverse(node: FileNode) {
+        if (!node.isDir) {
+            result.add(node.path)
+        } else {
+            node.children.forEach { traverse(it) }
+        }
+    }
+    nodes.forEach { traverse(it) }
+    return result
+}
+
 

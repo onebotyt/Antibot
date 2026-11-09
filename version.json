@@ -1,11 +1,11 @@
 {
-  "version_code": 186,
-  "version_name": "1.0.66",
+  "version_code": 187,
+  "version_name": "1.0.67",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83c\udf99\ufe0f Phase 7 Upgrade: Native Zero-Copy Audio DSP & Voice Activity Detection (VAD) in `libantibot_native.so`.",
-    "\u26a1 Microsecond Audio Processing: High-speed SIMD RMS amplitude normalization and adaptive noise floor estimation for 16kHz PCM audio.",
-    "\ud83c\udf0a Instant WAV Encoding & JNI Metrics: Direct primitive float array emission eliminates Dalvik GC pressure during live voice recording and transcription."
+    "🔍 Phase 8 Upgrade: Deep Transcript Ripgrep Search & Native Fuzzy QuickOpen Engine in Rust.",
+    "⚡ High-Speed Transcript Scanning: Multi-threaded full-text search across all historical conversation logs and turn snippets via `/api/conversations/search`.",
+    "🚀 120 FPS QuickOpen Dialog: Zero-allocation Smith-Waterman/FZF subsequence scoring in `libantibot_native.so` with word boundary, camelCase, and path separator bonuses."
   ],
   "is_critical": false
 }

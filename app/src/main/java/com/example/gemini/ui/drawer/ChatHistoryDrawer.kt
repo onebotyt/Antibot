@@ -4,6 +4,9 @@ import com.example.gemini.ui.components.accent
 import com.example.gemini.theme.isAppInDarkTheme
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import com.example.gemini.data.daemon.IdeApiClient
+import com.example.gemini.data.daemon.TranscriptSearchMatch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
@@ -1966,6 +1969,21 @@ fun SearchChatsDialog(
     var query by remember { mutableStateOf("") }
     var selectedTimeFilter by remember { mutableStateOf("All") }
     var selectedWorkspaceFilter by remember { mutableStateOf("All") }
+    var isDeepSearchMode by remember { mutableStateOf(false) }
+    var deepResults by remember { mutableStateOf<List<TranscriptSearchMatch>>(emptyList()) }
+    var isDeepSearching by remember { mutableStateOf(false) }
+
+    LaunchedEffect(query, isDeepSearchMode) {
+        if (isDeepSearchMode && query.trim().length >= 2) {
+            isDeepSearching = true
+            delay(250)
+            deepResults = IdeApiClient.searchTranscript(query.trim(), limit = 60)
+            isDeepSearching = false
+        } else {
+            deepResults = emptyList()
+            isDeepSearching = false
+        }
+    }
 
     val workspaces = remember(conversations) {
         val list = mutableListOf("All")
@@ -2149,54 +2167,80 @@ fun SearchChatsDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Filter chips (Time & Workspace)
+                // Mode Selector Tabs (Titles & Topics vs ⚡ Deep Transcript)
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Time filters
-                    listOf("All", "Today", "Past 7d", "Past 30d").forEach { timeLabel ->
-                        val isSelected = selectedTimeFilter == timeLabel
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) ClaudeTerracotta.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(
-                                alpha = 0.35f
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.outlineVariant.copy(
-                                    alpha = 0.2f
-                                )
-                            ),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { selectedTimeFilter = timeLabel }
-                        ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (!isDeepSearchMode) ClaudeTerracotta.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = BorderStroke(1.dp, if (!isDeepSearchMode) ClaudeTerracotta else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { isDeepSearchMode = false }
+                    ) {
+                        Box(modifier = Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                text = timeLabel,
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(
-                                    alpha = 0.8f
-                                ),
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                text = "Titles (${results.size})",
+                                fontSize = 12.sp,
+                                fontWeight = if (!isDeepSearchMode) FontWeight.Bold else FontWeight.Normal,
+                                color = if (!isDeepSearchMode) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                             )
                         }
                     }
 
-                    if (workspaces.size > 1) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Box(
-                            modifier = Modifier.size(width = 1.dp, height = 16.dp)
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isDeepSearchMode) ClaudeTerracotta.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = BorderStroke(1.dp, if (isDeepSearchMode) ClaudeTerracotta else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { isDeepSearchMode = true }
+                    ) {
+                        Box(modifier = Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "⚡ Deep Transcript (Rust)",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isDeepSearchMode) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isDeepSearchMode) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                )
+                                if (deepResults.isNotEmpty()) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = ClaudeTerracotta
+                                    ) {
+                                        Text(
+                                            text = "${deepResults.size}",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = androidx.compose.ui.graphics.Color.White,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
-                        workspaces.forEach { wsName ->
-                            val isSelected = selectedWorkspaceFilter == wsName
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (!isDeepSearchMode) {
+                    // Filter chips (Time & Workspace)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Time filters
+                        listOf("All", "Today", "Past 7d", "Past 30d").forEach { timeLabel ->
+                            val isSelected = selectedTimeFilter == timeLabel
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = if (isSelected) ClaudeTerracotta.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(
@@ -2210,202 +2254,362 @@ fun SearchChatsDialog(
                                 ),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { selectedWorkspaceFilter = wsName }
+                                    .clickable { selectedTimeFilter = timeLabel }
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                Text(
+                                    text = timeLabel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(
+                                        alpha = 0.8f
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+
+                        if (workspaces.size > 1) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier.size(width = 1.dp, height = 16.dp)
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            workspaces.forEach { wsName ->
+                                val isSelected = selectedWorkspaceFilter == wsName
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) ClaudeTerracotta.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(
+                                        alpha = 0.35f
+                                    ),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.outlineVariant.copy(
+                                            alpha = 0.2f
+                                        )
+                                    ),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { selectedWorkspaceFilter = wsName }
                                 ) {
-                                    if (wsName != "All") {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            tint = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(
-                                                alpha = 0.6f
-                                            ),
-                                            modifier = Modifier.size(12.dp)
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        if (wsName != "All") {
+                                            Icon(
+                                                imageVector = Icons.Default.Folder,
+                                                contentDescription = null,
+                                                tint = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(
+                                                    alpha = 0.6f
+                                                ),
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = wsName,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(
+                                                alpha = 0.8f
+                                            )
                                         )
                                     }
-                                    Text(
-                                        text = wsName,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(
-                                            alpha = 0.8f
-                                        )
-                                    )
                                 }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                // Results count
-                Text(
-                    text = "${results.size} match${if (results.size != 1) "es" else ""}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
+                    // Results count
+                    Text(
+                        text = "${results.size} match${if (results.size != 1) "es" else ""}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                // Results list
-                if (results.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                    // Results list
+                    if (results.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ChatBubbleOutline,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                                modifier = Modifier.size(40.dp)
-                            )
-                            Text(
-                                text = "No conversations found",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (query.isNotBlank()) "No chats match \"$query\". Try different keywords or reset filters." else "No chats in this category.",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(results, key = { it.id }) { conv ->
-                            val isSelected = conv.id == currentConversationId
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) ClaudeTerracotta.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(
-                                    alpha = 0.35f
-                                ),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) ClaudeTerracotta.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(
-                                        alpha = 0.15f
-                                    )
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        Log.d(
-                                            "CHAT_OPEN_DEBUG",
-                                            "📂 [Drawer Dialog] User clicked: id=${conv.id}, title='${conv.title}'"
-                                        )
-                                        onSelectConversation(conv.id)
-                                        onDismiss()
-                                    }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = conv.title,
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
+                                Icon(
+                                    imageVector = Icons.Outlined.ChatBubbleOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Text(
+                                    text = "No conversations found",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (query.isNotBlank()) "No chats match \"$query\". Try different keywords or reset filters." else "No chats in this category.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(results, key = { it.id }) { conv ->
+                                val isSelected = conv.id == currentConversationId
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) ClaudeTerracotta.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(
+                                        alpha = 0.35f
+                                    ),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) ClaudeTerracotta.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(
+                                            alpha = 0.15f
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        val rel = formatRelativeTime(conv.updatedAt)
-                                        if (rel.isNotBlank()) {
-                                            Text(
-                                                text = rel,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            Log.d(
+                                                "CHAT_OPEN_DEBUG",
+                                                "📂 [Drawer Dialog] User clicked: id=${conv.id}, title='${conv.title}'"
                                             )
+                                            onSelectConversation(conv.id)
+                                            onDismiss()
                                         }
-                                    }
-
-                                    if (!conv.summary.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = conv.summary,
-                                            fontSize = 11.5.sp,
-                                            lineHeight = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(6.dp))
-
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        if (conv.workspaceUri.isNotBlank()) {
-                                            val clean = conv.workspaceUri.removePrefix("file://").trimEnd('/')
-                                            val name = java.io.File(clean).name.ifBlank { "Workspace" }
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Folder,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(11.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                                    )
-                                                    Text(
-                                                        text = name,
-                                                        fontSize = 10.5.sp,
-                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        if (conv.modelId.isNotBlank()) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = ClaudeTerracotta.copy(alpha = 0.1f)
-                                            ) {
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = conv.title,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            val rel = formatRelativeTime(conv.updatedAt)
+                                            if (rel.isNotBlank()) {
                                                 Text(
-                                                    text = conv.modelId.substringAfterLast('/'),
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = ClaudeTerracotta,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    text = rel,
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
                                                 )
                                             }
                                         }
 
-                                        if (conv.stepCount > 0) {
+                                        if (!conv.summary.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
                                             Text(
-                                                text = "${conv.stepCount} turns",
-                                                fontSize = 10.5.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                                text = conv.summary,
+                                                fontSize = 11.5.sp,
+                                                lineHeight = 15.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (conv.workspaceUri.isNotBlank()) {
+                                                val clean = conv.workspaceUri.removePrefix("file://").trimEnd('/')
+                                                val name = java.io.File(clean).name.ifBlank { "Workspace" }
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Folder,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(11.dp),
+                                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                        )
+                                                        Text(
+                                                            text = name,
+                                                            fontSize = 10.5.sp,
+                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            if (conv.modelId.isNotBlank()) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = ClaudeTerracotta.copy(alpha = 0.1f)
+                                                ) {
+                                                    Text(
+                                                        text = conv.modelId.substringAfterLast('/'),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = ClaudeTerracotta,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            if (conv.stepCount > 0) {
+                                                Text(
+                                                    text = "${conv.stepCount} turns",
+                                                    fontSize = 10.5.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // --- Deep Transcript Search Mode (Rust) ---
+                    if (isDeepSearching) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                            color = ClaudeTerracotta
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+
+                    Text(
+                        text = if (query.trim().length < 2) "Type at least 2 characters to search" else "${deepResults.size} transcript turn match${if (deepResults.size != 1) "es" else ""}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (deepResults.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(38.dp)
+                                )
+                                Text(
+                                    text = if (query.trim().length < 2) "Deep Transcript Search" else "No matching message content",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (query.trim().length < 2) "Scans all user queries, model responses, and tool calls in your local ~/.gemini/brain archives using Rust." else "No historical transcripts match \"$query\".",
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(deepResults, key = { "${it.conversationId}_${it.stepIndex}" }) { match ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            onSelectConversation(match.conversationId)
+                                            onDismiss()
+                                        }
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = match.title,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = if (match.role == "user") MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else ClaudeTerracotta.copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = if (match.role == "user") "USER" else "AGENT",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (match.role == "user") MaterialTheme.colorScheme.primary else ClaudeTerracotta,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = match.snippet,
+                                                fontSize = 11.5.sp,
+                                                lineHeight = 16.sp,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(7.dp)
                                             )
                                         }
                                     }
@@ -2414,6 +2618,7 @@ fun SearchChatsDialog(
                         }
                     }
                 }
+
             }
         }
     }

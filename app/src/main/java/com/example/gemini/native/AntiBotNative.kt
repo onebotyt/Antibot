@@ -61,6 +61,12 @@ object AntiBotNative {
     @JvmStatic
     external fun pcmToWavNative(pcmBytes: ByteArray, sampleRate: Int, channels: Short, bitsPerSample: Short): ByteArray?
 
+    @JvmStatic
+    external fun fuzzyScoreNative(pattern: String, target: String): Int
+
+    @JvmStatic
+    external fun fuzzyFilterIndicesNative(pattern: String, targets: Array<String>, maxResults: Int): IntArray?
+
     data class NativeAudioMetrics(
         val normalizedAmplitude: Float,
         val peakAmplitude: Float,
@@ -286,6 +292,67 @@ object AntiBotNative {
             Log.w(TAG, "pcmToWavNative error: ${e.message}")
             null
         }
+    }
+
+    /**
+     * Scores a string against a search pattern using zero-allocation FZF fuzzy matching in Rust.
+     * Returns a positive score (higher = better match) or -1 if no match.
+     */
+    fun fuzzyScore(pattern: String, target: String): Int {
+        if (pattern.isBlank()) return 0
+        if (!isLoaded) {
+            val pLower = pattern.lowercase()
+            val tLower = target.lowercase()
+            var pIdx = 0
+            for (ch in tLower) {
+                if (pIdx < pLower.length && ch == pLower[pIdx]) {
+                    pIdx++
+                }
+            }
+            return if (pIdx == pLower.length) {
+                100 - (target.length - pattern.length).coerceAtMost(50)
+            } else -1
+        }
+        return try {
+            fuzzyScoreNative(pattern, target)
+        } catch (_: Throwable) {
+            -1
+        }
+    }
+
+    /**
+     * Batch ranks a list of target strings (e.g. project file paths) using native Rust FZF matching.
+     * Returns matching strings in descending order of relevance.
+     */
+    fun fuzzyFilter(pattern: String, targets: List<String>, maxResults: Int = 30): List<String> {
+        if (targets.isEmpty()) return emptyList()
+        if (pattern.isBlank()) return targets.take(maxResults)
+
+        if (isLoaded) {
+            try {
+                val flat = fuzzyFilterIndicesNative(pattern, targets.toTypedArray(), maxResults)
+                if (flat != null && flat.isNotEmpty()) {
+                    val result = mutableListOf<String>()
+                    var i = 0
+                    while (i < flat.size) {
+                        val idx = flat[i]
+                        if (idx in targets.indices) {
+                            result.add(targets[idx])
+                        }
+                        i += 2
+                    }
+                    return result
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "fuzzyFilterIndicesNative error: ${e.message}")
+            }
+        }
+
+        // JVM fallback
+        return targets.mapNotNull { item ->
+            val score = fuzzyScore(pattern, item)
+            if (score > 0) Pair(item, score) else null
+        }.sortedByDescending { it.second }.take(maxResults).map { it.first }
     }
 }
 

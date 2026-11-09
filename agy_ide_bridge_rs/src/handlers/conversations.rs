@@ -16,6 +16,7 @@ use std::{
 
 use crate::models::{
     ChatMessage, ConversationListResponse, ConversationSummary, ToolCall,
+    TranscriptSearchMatch, TranscriptSearchResponse,
 };
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +24,15 @@ pub struct ConvQuery {
     pub page: Option<usize>,
     pub limit: Option<usize>,
     pub q: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConvSearchQuery {
+    pub q: Option<String>,
+    pub query: Option<String>,
+    pub limit: Option<usize>,
+    pub role: Option<String>,
+    pub case_sensitive: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,3 +271,165 @@ pub async fn delete_conversation_handler(
     }
     (StatusCode::OK, Json(json!({ "status": "deleted", "id": id })))
 }
+
+pub async fn search_conversations_handler(
+    Query(params): Query<ConvSearchQuery>,
+) -> impl IntoResponse {
+    let query_str = params.query.or(params.q).unwrap_or_default();
+    if query_str.trim().is_empty() {
+        return (
+            StatusCode::OK,
+            Json(TranscriptSearchResponse {
+                query: query_str,
+                total: 0,
+                matches: Vec::new(),
+            }),
+        );
+    }
+
+    let limit = params.limit.unwrap_or(50).min(200);
+    let role_filter = params.role.map(|r| r.to_lowercase());
+    let case_sensitive = params.case_sensitive.unwrap_or(false);
+    let needle = if case_sensitive {
+        query_str.clone()
+    } else {
+        query_str.to_lowercase()
+    };
+
+    let brain = brain_dir();
+    let mut matches = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(&brain) {
+        for entry in entries.flatten() {
+            if matches.len() >= limit {
+                break;
+            }
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let conv_id = entry.file_name().to_string_lossy().to_string();
+            let transcript_path = p.join(".system_generated/logs/transcript.jsonl");
+            if !transcript_path.exists() {
+                continue;
+            }
+
+            // Get title
+            let title_file = p.join("custom_title.txt");
+            let mut title = fs::read_to_string(&title_file)
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .unwrap_or_default();
+
+            let file = match File::open(&transcript_path) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+
+            let reader = BufReader::new(file);
+            for line in reader.lines().flatten() {
+                if matches.len() >= limit {
+                    break;
+                }
+
+                // Fast pre-check on line content before expensive parsing
+                let line_matches = if case_sensitive {
+                    line.contains(&needle)
+                } else {
+                    line.to_lowercase().contains(&needle)
+                };
+
+                if !line_matches {
+                    continue;
+                }
+
+                if let Ok(step) = serde_json::from_str::<Value>(&line) {
+                    let step_type = step["type"].as_str().unwrap_or_default();
+                    let role = if step_type == "USER_INPUT" {
+                        "user"
+                    } else if step_type == "PLANNER_RESPONSE" {
+                        "assistant"
+                    } else {
+                        "system"
+                    };
+
+                    if let Some(ref rf) = role_filter {
+                        if rf != "all" && rf != role {
+                            continue;
+                        }
+                    }
+
+                    let raw_content = step["content"].as_str().unwrap_or_default();
+                    let clean_content = if role == "user" {
+                        extract_prompt_text(raw_content)
+                    } else {
+                        raw_content.to_string()
+                    };
+
+                    if title.is_empty() && role == "user" && !clean_content.is_empty() {
+                        title = if clean_content.len() > 36 {
+                            format!("{}...", &clean_content[..36])
+                        } else {
+                            clean_content.clone()
+                        };
+                    }
+
+                    let search_target = if case_sensitive {
+                        clean_content.clone()
+                    } else {
+                        clean_content.to_lowercase()
+                    };
+
+                    if let Some(byte_idx) = search_target.find(&needle) {
+                        let char_indices: Vec<(usize, char)> = clean_content.char_indices().collect();
+                        let match_char_idx = clean_content[..byte_idx].chars().count();
+                        let start_char = match_char_idx.saturating_sub(40);
+                        let end_char = (match_char_idx + query_str.chars().count() + 80).min(char_indices.len());
+
+                        let start_byte = char_indices.get(start_char).map(|&(b, _)| b).unwrap_or(0);
+                        let end_byte = char_indices.get(end_char).map(|&(b, _)| b).unwrap_or(clean_content.len());
+
+                        let mut snippet = clean_content[start_byte..end_byte].trim().to_string();
+                        if start_char > 0 {
+                            snippet = format!("...{snippet}");
+                        }
+                        if end_char < char_indices.len() {
+                            snippet = format!("{snippet}...");
+                        }
+
+                        let step_index = step["step_index"].as_u64().unwrap_or(0);
+                        let timestamp = step["created_at"].as_str().unwrap_or("").to_string();
+
+                        let display_title = if title.is_empty() {
+                            conv_id.clone()
+                        } else {
+                            title.clone()
+                        };
+
+                        matches.push(TranscriptSearchMatch {
+                            conversation_id: conv_id.clone(),
+                            title: display_title,
+                            step_index,
+                            role: role.to_string(),
+                            snippet,
+                            match_offset: match_char_idx,
+                            timestamp,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let total = matches.len();
+    (
+        StatusCode::OK,
+        Json(TranscriptSearchResponse {
+            query: query_str,
+            total,
+            matches,
+        }),
+    )
+}
+

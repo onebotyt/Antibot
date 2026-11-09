@@ -83,6 +83,16 @@ data class SearchMatch(
     val lineText: String
 )
 
+data class TranscriptSearchMatch(
+    val conversationId: String,
+    val title: String,
+    val stepIndex: Long,
+    val role: String,
+    val snippet: String,
+    val matchOffset: Int,
+    val timestamp: String
+)
+
 data class FsBrowseResult(
     val currentPath: String = "",
     val parentPath: String = "",
@@ -527,6 +537,43 @@ object IdeApiClient {
             emptyList()
         }
     }
+
+    suspend fun searchTranscript(query: String, limit: Int = 50, role: String? = null): List<TranscriptSearchMatch> = withContext(Dispatchers.IO) {
+        try {
+            val encodedQ = java.net.URLEncoder.encode(query, "UTF-8")
+            var url = "$baseUrl/api/conversations/search?q=$encodedQ&limit=$limit"
+            if (!role.isNullOrBlank()) {
+                url += "&role=${java.net.URLEncoder.encode(role, "UTF-8")}"
+            }
+            val request = Request.Builder().url(url).get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val bodyStr = response.body?.string() ?: return@withContext emptyList()
+                val obj = JSONObject(bodyStr)
+                val array = obj.optJSONArray("matches") ?: return@withContext emptyList()
+                val matches = mutableListOf<TranscriptSearchMatch>()
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    matches.add(
+                        TranscriptSearchMatch(
+                            conversationId = item.optString("conversationId"),
+                            title = item.optString("title"),
+                            stepIndex = item.optLong("stepIndex"),
+                            role = item.optString("role"),
+                            snippet = item.optString("snippet"),
+                            matchOffset = item.optInt("matchOffset"),
+                            timestamp = item.optString("timestamp")
+                        )
+                    )
+                }
+                matches
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "searchTranscript error: ${e.message}")
+            emptyList()
+        }
+    }
+
 
     fun getEffectiveConfigPath(): String {
         return "~/.gemini/config/mcp_config.json"

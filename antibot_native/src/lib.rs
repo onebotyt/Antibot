@@ -1,11 +1,12 @@
-use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jboolean, jbyteArray, jfloatArray, jint, jintArray, jshort, jstring};
+use jni::objects::{JByteArray, JClass, JObjectArray, JString};
+use jni::sys::{jboolean, jbyteArray, jfloatArray, jint, jintArray, jobjectArray, jshort, jstring};
 use jni::JNIEnv;
 use std::sync::Mutex;
 
 pub mod audio;
 pub mod crypto;
 pub mod diff;
+pub mod fuzzy;
 pub mod markdown;
 pub mod syntax;
 
@@ -24,7 +25,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.65-rust-audio-dsp-neon").unwrap();
+    let output = env.new_string("1.0.67-rust-deep-search-fuzzy").unwrap();
     output.into_raw()
 }
 
@@ -199,6 +200,78 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_pcmToWavNati
     };
 
     output_array.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_fuzzyScoreNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pattern: JString<'local>,
+    target: JString<'local>,
+) -> jint {
+    let p_str: String = match env.get_string(&pattern) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+    let t_str: String = match env.get_string(&target) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    fuzzy::fuzzy_score(&p_str, &t_str).unwrap_or(-1) as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_fuzzyFilterIndicesNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pattern: JString<'local>,
+    targets: jobjectArray,
+    max_results: jint,
+) -> jintArray {
+    let p_str: String = match env.get_string(&pattern) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let obj_array = unsafe { JObjectArray::from_raw(targets) };
+    let count = match env.get_array_length(&obj_array) {
+        Ok(len) => len as usize,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let mut target_strings: Vec<String> = Vec::with_capacity(count);
+
+    for i in 0..count {
+        if let Ok(elem) = env.get_object_array_element(&obj_array, i as i32) {
+            let jstr = JString::from(elem);
+            let s: String = env.get_string(&jstr).map(|js| js.into()).unwrap_or_default();
+            target_strings.push(s);
+        } else {
+            target_strings.push(String::new());
+        }
+    }
+
+    let target_refs: Vec<&str> = target_strings.iter().map(|s| s.as_str()).collect();
+    let matches = fuzzy::fuzzy_filter_indices(&p_str, &target_refs, max_results.max(1) as usize);
+
+    // Flat integer array: [index0, score0, index1, score1, ...]
+    let mut flat = Vec::with_capacity(matches.len() * 2);
+    for (idx, sc) in matches {
+        flat.push(idx as i32);
+        flat.push(sc);
+    }
+
+    let array = match env.new_int_array(flat.len() as i32) {
+        Ok(arr) => arr,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    if env.set_int_array_region(&array, 0, &flat).is_err() {
+        return std::ptr::null_mut();
+    }
+
+    array.into_raw()
 }
 
 
