@@ -1,5 +1,5 @@
 use axum::{
-    routing::{any, get, post},
+    routing::{any, get, post, put},
     Router,
 };
 use clap::{Parser, Subcommand};
@@ -314,6 +314,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/cloud/ports/scan", post(handlers::cloud::cloud_scan_ports_handler))
         .route("/api/cloud/preview/:port", any(handlers::cloud::cloud_reverse_proxy_gateway))
         .route("/api/cloud/preview/:port/*path", any(handlers::cloud::cloud_reverse_proxy_gateway))
+        // OpenAI Codex Protocol & App-Server Daemon
+        .route("/api/codex/status", get(handlers::codex::codex_status_handler))
+        .route("/api/codex/start", post(handlers::codex::codex_start_handler))
+        .route("/api/codex/restart", post(handlers::codex::codex_restart_handler))
+        .route("/api/codex/rpc", post(handlers::codex::codex_rpc_handler))
+        .route("/api/codex/requests", get(handlers::codex::codex_requests_handler))
+        .route("/api/codex/requests/:key/reply", post(handlers::codex::codex_reply_handler))
+        .route("/api/codex/ws", get(handlers::codex::codex_ws_handler))
+        .route("/api/codex/turns-meta", get(handlers::codex::codex_turns_meta_handler))
+        .route("/api/codex/cli/job", get(handlers::codex::codex_cli_job_handler))
+        .route("/api/codex/cli/:action", post(handlers::codex::codex_cli_start_handler))
+        // OpenCode Multi-Provider & Local Server Gateway
+        .route("/api/opencode/status", get(handlers::opencode::opencode_status_handler))
+        .route("/api/opencode/start", post(handlers::opencode::opencode_start_handler))
+        .route("/api/opencode/restart", post(handlers::opencode::opencode_restart_handler))
+        .route(
+            "/api/opencode/custom-providers",
+            get(handlers::opencode::opencode_get_custom_providers_handler)
+                .post(handlers::opencode::opencode_create_custom_provider_handler),
+        )
+        .route(
+            "/api/opencode/custom-providers/:id",
+            put(handlers::opencode::opencode_update_custom_provider_handler)
+                .delete(handlers::opencode::opencode_delete_custom_provider_handler),
+        )
+        .route(
+            "/api/opencode/custom-providers/fetch-models",
+            post(handlers::opencode::opencode_fetch_models_handler),
+        )
+        .route(
+            "/api/opencode/oauth-callback",
+            post(handlers::opencode::opencode_oauth_callback_handler),
+        )
+        .route("/api/opencode/credentials", get(handlers::opencode::opencode_credentials_handler))
+        .route("/api/opencode/mcp", get(handlers::opencode::opencode_get_mcp_handler))
+        .route(
+            "/api/opencode/mcp/:name",
+            put(handlers::opencode::opencode_set_mcp_handler)
+                .delete(handlers::opencode::opencode_delete_mcp_handler),
+        )
+        .route("/api/opencode/cli/job", get(handlers::opencode::opencode_cli_job_handler))
+        .route("/api/opencode/cli/:action", post(handlers::opencode::opencode_cli_start_handler))
+        .route("/api/opencode/x/*path", any(handlers::opencode::opencode_proxy_x_handler))
+        // REA Reverse Engineering Supervisor & Tool Bridge
+        .route("/api/rea/status", get(handlers::rea::rea_status_handler))
+        .route("/api/rea/tools", get(handlers::rea::rea_tools_handler))
+        .route("/api/rea/run", post(handlers::rea::rea_run_handler))
         // SQLite FTS5 / BM25 & Hybrid Vector Search Database
         .route("/api/db/index", post(handlers::db::db_index_handler))
         .route("/api/db/search", post(handlers::db::db_search_handler))

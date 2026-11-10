@@ -117,7 +117,14 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     JARVIS_TASKS("Jarvis · Tasks & Automation", "Autonomous tasks and background monitoring"),
     JARVIS_APPROVALS("Jarvis · Approvals & Security", "Execution safety and tool confirmation"),
     JARVIS_SCREEN("Jarvis · Screen & Context", "Screen awareness and visual context"),
-    JARVIS_CHAT("Jarvis · Chat & Logs", "Voice session history and transcript logs");
+    JARVIS_CHAT("Jarvis · Chat & Logs", "Voice session history and transcript logs"),
+    REA("Reverse engineering (REA)", "JADX, APKTool, Hermes, native binaries & MCP sandbox"),
+    REA_GROUPS("REA tool groups", "Choose active tool groups for agents"),
+    ANDROID_DEV("Android Development", "Gradle, Jetpack Compose, Flutter & React Native on phone"),
+    CODEX("Codex", "OpenAI Codex CLI, models & permissions"),
+    CODEX_PAGE("Codex", "Codex sub-page"),
+    OPENCODE("OpenCode", "OpenCode CLI, custom providers & endpoints"),
+    OPENCODE_PAGE("OpenCode", "OpenCode sub-page");
 
     val jarvisPage: com.example.gemini.ui.jarvis.JarvisSettingsPage? get() = when (this) {
         JARVIS_AGENT -> com.example.gemini.ui.jarvis.JarvisSettingsPage.AGENT
@@ -135,7 +142,10 @@ enum class SettingsSection(val title: String, val subtitle: String) {
 
     /** Where Back goes from this section. */
     val parent: SettingsSection get() = when (this) {
-        ADB_CONNECT, ANDROID_AUTOMATION, X11_DESKTOP -> UTILITIES
+        ADB_CONNECT, ANDROID_AUTOMATION, X11_DESKTOP, ANDROID_DEV -> UTILITIES
+        REA_GROUPS -> REA
+        CODEX_PAGE -> CODEX
+        OPENCODE_PAGE -> OPENCODE
         JARVIS_AGENT, JARVIS_PERSONALITY, JARVIS_SETUP, JARVIS_WAKE, JARVIS_LISTEN,
         JARVIS_VOICE, JARVIS_TASKS, JARVIS_APPROVALS, JARVIS_SCREEN, JARVIS_CHAT -> JARVIS
         else -> MAIN
@@ -623,6 +633,42 @@ fun SettingsDialog(
                         cardBorder = cardBorder,
                         onOpenAdbConnect = { currentSection = SettingsSection.ADB_CONNECT }
                     )
+                    SettingsSection.REA -> com.example.gemini.ui.settings.ReaScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder,
+                        onOpenGroups = { currentSection = SettingsSection.REA_GROUPS },
+                        onOpenAdbConnect = { currentSection = SettingsSection.ADB_CONNECT },
+                        onOpenPlugins = { currentSection = SettingsSection.WEBVIEW_EXTENSIONS }
+                    )
+                    SettingsSection.ANDROID_DEV -> com.example.gemini.ui.settings.AndroidDevScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder,
+                        onOpenAdbConnect = { currentSection = SettingsSection.ADB_CONNECT },
+                        onOpenPlugins = { currentSection = SettingsSection.WEBVIEW_EXTENSIONS }
+                    )
+                    SettingsSection.REA_GROUPS -> com.example.gemini.ui.settings.ReaGroupsScreen(
+                        cardBg = cardBg,
+                        cardBorder = cardBorder,
+                        onOpenRea = { currentSection = SettingsSection.REA }
+                    )
+                    SettingsSection.CODEX_PAGE, SettingsSection.CODEX -> {
+                        val codexBackend = remember { com.example.gemini.data.agent.codex.CodexChatBackend(context.applicationContext as android.app.Application) }
+                        var codexPage by remember { mutableStateOf(com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT) }
+                        com.example.gemini.ui.codex.CodexSettingsScreen(
+                            codexBackend, codexPage,
+                            onOpenRea = { currentSection = SettingsSection.REA },
+                            onOpenReaGroups = { currentSection = SettingsSection.REA_GROUPS }
+                        )
+                    }
+                    SettingsSection.OPENCODE_PAGE, SettingsSection.OPENCODE -> {
+                        val openCodeBackend = remember { com.example.gemini.data.agent.opencode.OpenCodeChatBackend(context.applicationContext as android.app.Application) }
+                        var openCodePage by remember { mutableStateOf(com.example.gemini.ui.opencode.OpenCodeSettingsPage.SERVER) }
+                        com.example.gemini.ui.opencode.OpenCodeSettingsScreen(
+                            openCodeBackend, openCodePage,
+                            onOpenRea = { currentSection = SettingsSection.REA },
+                            onOpenReaGroups = { currentSection = SettingsSection.REA_GROUPS }
+                        )
+                    }
                     SettingsSection.CHANGELOG -> ChangelogScreen(
                         cardBg = cardBg,
                         cardBorder = cardBorder
@@ -756,6 +802,20 @@ private fun MainSettingsMenu(
                 badgeText = if (cloudOn) "On" else "Off",
                 badgeStyle = if (cloudOn) SettingsBadgeStyle.GREEN else null,
                 onClick = { onNavigate(SettingsSection.AGY_CLOUD) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Terminal,
+                title = "Codex",
+                subtitle = "OpenAI Codex CLI, models & permissions",
+                onClick = { onNavigate(SettingsSection.CODEX) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Code,
+                title = "OpenCode",
+                subtitle = "OpenCode CLI, custom providers & endpoints",
+                onClick = { onNavigate(SettingsSection.OPENCODE) }
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             SettingsGroupItemRow(
@@ -1160,6 +1220,59 @@ private fun UtilitiesSubScreen(
             cardBg = cardBg,
             cardBorder = cardBorder,
             onClick = { onNavigate(SettingsSection.X11_DESKTOP) }
+        )
+
+        LaunchedEffect(Unit) {
+            com.example.gemini.data.rea.ReaManager.init(context)
+            com.example.gemini.data.rea.ReaManager.refresh()
+            com.example.gemini.data.androiddev.AndroidDevManager.init(context)
+            com.example.gemini.data.androiddev.AndroidDevManager.refresh()
+        }
+
+        val reaState by com.example.gemini.data.rea.ReaManager.state.collectAsState()
+        val reaBadge = when {
+            reaState.busy -> "Installing…"
+            reaState.usable && reaState.requiredDone -> reaState.reaVersion?.let { "v$it" } ?: "Ready"
+            reaState.installed.isNotEmpty() -> "Partly set up"
+            else -> null
+        }
+        val reaColor = if (reaState.usable && reaState.requiredDone) QuotaGreen else Color(0xFFF59E0B)
+        SettingsCategoryCard(
+            icon = Icons.Outlined.BugReport,
+            iconTint = Color(0xFFEC4899),
+            title = "Reverse engineering (REA)",
+            subtitle = "JADX, APKTool, Hermes, native binaries & MCP sandbox",
+            badgeText = reaBadge,
+            badgeColor = reaColor,
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            onClick = { onNavigate(SettingsSection.REA) }
+        )
+
+        val devState by com.example.gemini.data.androiddev.AndroidDevManager.state.collectAsState()
+        val devBadge = when {
+            devState.busy -> "Working…"
+            devState.anyReady -> com.example.gemini.data.androiddev.AndroidDevManager.Framework.entries
+                .filter { devState.ready(it) }
+                .joinToString(" · ") { when (it) {
+                    com.example.gemini.data.androiddev.AndroidDevManager.Framework.KOTLIN -> "Kotlin"
+                    com.example.gemini.data.androiddev.AndroidDevManager.Framework.FLUTTER -> "Flutter"
+                    com.example.gemini.data.androiddev.AndroidDevManager.Framework.REACT_NATIVE -> "RN"
+                } }
+            devState.installed.any { it == com.example.gemini.data.androiddev.AndroidDevManager.Component.SDK || it == com.example.gemini.data.androiddev.AndroidDevManager.Component.LAUNCHER } -> "Partly set up"
+            else -> null
+        }
+        val devColor = if (devState.anyReady) QuotaGreen else Color(0xFFF59E0B)
+        SettingsCategoryCard(
+            icon = Icons.Outlined.Android,
+            iconTint = Color(0xFF10B981),
+            title = "Android Development",
+            subtitle = "Gradle, Jetpack Compose, Flutter & React Native on phone",
+            badgeText = devBadge,
+            badgeColor = devColor,
+            cardBg = cardBg,
+            cardBorder = cardBorder,
+            onClick = { onNavigate(SettingsSection.ANDROID_DEV) }
         )
     }
 }

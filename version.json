@@ -1,13 +1,14 @@
 {
-  "version_code": 202,
-  "version_name": "2.3.82",
+  "version_code": 204,
+  "version_name": "2.4.0",
   "min_supported_version_code": 1,
   "changelog": [
-    "\u2601\ufe0f Phase 23: Antigravity Cloud Agents & Cloud Web Preview.",
-    "\ud83c\udf10 Cloud Agents & Remote VM: Antigravity chat support in Google-managed VMs with GitHub repository checkout and persistent background execution.",
-    "\ud83d\ude80 Native Rust Reverse Proxy: Pure Tokio/Axum streaming reverse proxy (/api/cloud/preview/:port/*) with zero-copy forwarding and automatic CORS header rewriting.",
-    "\ud83d\udcf1 In-App Web Preview & Sandbox: Live WebView preview dialog with port detection, CORS bypass, and system browser loopback proxy (CloudPreviewServer).",
-    "\ud83d\udd0d Active Port Scanner: Background TCP port scanner (/api/cloud/ports/scan) detecting active local and cloud development servers."
+    "🔬 Phase 24: REA Reverse Engineering Suite, Multi-Agent Codex & OpenCode Bridge.",
+    "🛠️ Reverse Engineering Anything (REA): JADX decompiler, APKTool resources, Hermes bytecode recovery, Rizin disassembler, and GDB debugger integration via on-demand tool supervisor.",
+    "🤖 OpenAI Codex Protocol Integration: High-performance pure Rust bridge daemon handlers (/api/codex/*) supporting JSON-RPC methods, request approvals, turn metadata, and WebSocket event replays.",
+    "🌐 OpenCode Multi-Provider Gateway: Pure Rust handlers (/api/opencode/*) with custom provider CRUD, endpoint model probing, OAuth callbacks, MCP supervisor, and SSE relay.",
+    "📱 Android Development Suite: Jetpack Compose, Kotlin, Flutter, and React Native phone-based build and tooling supervisor.",
+    "⚡ 100% Rust-First Native Architecture: Zero Go dependencies for new modules, fully validated with unit tests across all native layers."
   ],
   "is_critical": false
 }
