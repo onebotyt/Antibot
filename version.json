@@ -1,6 +1,6 @@
 {
-  "version_code": 205,
-  "version_name": "2.4.85",
+  "version_code": 206,
+  "version_name": "2.4.86",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udd2c Phase 24: REA Reverse Engineering Suite, Multi-Agent Codex & OpenCode Bridge.",
