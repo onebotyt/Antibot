@@ -1,8 +1,24 @@
 package com.example.gemini.data.remote.inspector
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
+
+data class NativeNetworkMetrics(
+    val totalBytesSent: Long,
+    val totalBytesReceived: Long,
+    val activeConnections: Int,
+    val requestCount: Long,
+    val responseCount: Long,
+    val errorCount: Long,
+    val uploadBps: Float,
+    val downloadBps: Float
+)
 
 /**
  * Thread-safe singleton manager for capturing and inspecting real-time network activity.
@@ -10,6 +26,12 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object NetworkInspectorManager {
     private const val MAX_LOG_CAPACITY = 1000
+
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val http = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(2, TimeUnit.SECONDS)
+        .build()
 
     @Volatile
     var isEnabled: Boolean = false
@@ -48,6 +70,7 @@ object NetworkInspectorManager {
         durationMs: Long
     ) {
         if (!isEnabled) return
+        var entryToSync: NetworkLogEntry? = null
         synchronized(lock) {
             val idx = buffer.indexOfFirst { it.id == id }
             if (idx != -1) {
@@ -60,12 +83,15 @@ object NetworkInspectorManager {
                 buffer[idx] = updated
                 _logs.value = buffer.toList()
                 recomputeCounts()
+                entryToSync = updated
             }
         }
+        entryToSync?.let { syncToRustBridge(it) }
     }
 
     fun recordError(id: String, errorMsg: String, durationMs: Long) {
         if (!isEnabled) return
+        var entryToSync: NetworkLogEntry? = null
         synchronized(lock) {
             val idx = buffer.indexOfFirst { it.id == id }
             if (idx != -1) {
@@ -77,8 +103,64 @@ object NetworkInspectorManager {
                 buffer[idx] = updated
                 _logs.value = buffer.toList()
                 recomputeCounts()
+                entryToSync = updated
             }
         }
+        entryToSync?.let { syncToRustBridge(it) }
+    }
+
+    private fun syncToRustBridge(entry: NetworkLogEntry) {
+        ioScope.launch {
+            try {
+                val bridgeBase = com.example.gemini.data.preferences.AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+                val payload = org.json.JSONObject().apply {
+                    put("id", entry.id)
+                    put("timestamp", entry.timestamp / 1000)
+                    put("method", entry.method)
+                    put("url", entry.url)
+                    put("status_code", if (entry.statusCode > 0) entry.statusCode else 200)
+                    put("duration_ms", entry.durationMs.coerceAtLeast(0L))
+                    put("bytes_sent", 0)
+                    put("bytes_received", 0)
+                    put("client_ip", "127.0.0.1")
+                    if (entry.error != null) {
+                        put("error", entry.error)
+                    }
+                }.toString()
+
+                val mediaType = okhttp3.MediaType.parse("application/json")
+                val request = okhttp3.Request.Builder()
+                    .url("$bridgeBase/api/network/record")
+                    .post(okhttp3.RequestBody.create(mediaType, payload))
+                    .build()
+                http.newCall(request).execute().close()
+            } catch (_: Exception) {}
+        }
+    }
+
+    suspend fun fetchMetricsViaBridge(): NativeNetworkMetrics? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val bridgeBase = com.example.gemini.data.preferences.AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+            val request = okhttp3.Request.Builder()
+                .url("$bridgeBase/api/network/stats")
+                .get()
+                .build()
+            val resp = http.newCall(request).execute()
+            if (resp.isSuccessful) {
+                val json = org.json.JSONObject(resp.body()?.string() ?: "{}")
+                return@withContext NativeNetworkMetrics(
+                    totalBytesSent = json.optLong("total_bytes_sent"),
+                    totalBytesReceived = json.optLong("total_bytes_received"),
+                    activeConnections = json.optInt("active_connections"),
+                    requestCount = json.optLong("request_count"),
+                    responseCount = json.optLong("response_count"),
+                    errorCount = json.optLong("error_count"),
+                    uploadBps = json.optDouble("upload_bps", 0.0).toFloat(),
+                    downloadBps = json.optDouble("download_bps", 0.0).toFloat()
+                )
+            }
+        } catch (_: Exception) {}
+        null
     }
 
     fun clearLogs() {
