@@ -21,12 +21,15 @@ import androidx.compose.ui.unit.sp
 import com.example.gemini.theme.ClaudeTerracotta
 import com.example.gemini.theme.GeminiBlue
 
+import android.net.Uri
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttachmentSelectorBottomSheet(
     onPickImage: () -> Unit,
     onPickFile: () -> Unit,
-    onPickFromFiles: () -> Unit,
+    onPickFromFiles: () -> Unit = onPickFile,
+    onPasteClipboardImage: ((Uri) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(

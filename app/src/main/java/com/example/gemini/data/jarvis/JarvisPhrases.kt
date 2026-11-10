@@ -32,6 +32,44 @@ object JarvisPhrases {
         "rehne do", "chhod do", "chod do", "mat bhejo", "cancel kar do"
     )
 
+    val SUGGESTED_SEND = DEFAULT_SEND
+    val SUGGESTED_CANCEL = DEFAULT_CANCEL
+
+    /** Phrases offered for each voice shortcut in Settings (none is active until the user adds it). */
+    val SUGGESTED_SHORTCUTS = mapOf(
+        "stop" to listOf("stop talking", "jarvis stop", "be quiet"),
+        "bye" to listOf("thanks jarvis", "that's all", "goodbye jarvis"),
+        "repeat" to listOf("repeat that", "say that again", "what did you say"),
+        "slower" to listOf("speak slower", "slow down"),
+        "faster" to listOf("speak faster", "speed up"),
+        "quiet_on" to listOf("quiet mode on", "text only mode"),
+        "quiet_off" to listOf("quiet mode off", "use your voice"),
+        "new_session" to listOf("start over", "new session", "fresh start"),
+        "interrupt" to listOf("wait", "actually", "no stop", "change of plans")
+    )
+
+    /** Leading address and trailing politeness that do not change which shortcut was said. */
+    private val address = Regex("^(hey |ok |okay )?jarvis ")
+    private val politeEnd = Regex(" (please|jarvis|now)$")
+
+    /** [text] (the whole utterance) is one of the phrases in [stored] (one per line), maybe with "Jarvis" or "please" around it. */
+    fun isShortcut(text: String, stored: String): Boolean {
+        val list = parse(stored)
+        if (list.isEmpty()) return false
+        val t = normalize(text)
+        if (t in list) return true
+        val bare = politeEnd.replace(address.replace(t, ""), "").trim()
+        return bare in list
+    }
+
+    /** [text] starts with one of the phrases in [stored] (whole words). */
+    fun startsWithAny(text: String, stored: String): Boolean {
+        val list = parse(stored)
+        if (list.isEmpty()) return false
+        val t = address.replace(normalize(text), "")
+        return list.any { p -> t == p || t.startsWith("$p ") }
+    }
+
     /** Pause before a short phrase that makes it "said on its own". */
     private const val SEPARATE_GAP_MS = 600L
 
