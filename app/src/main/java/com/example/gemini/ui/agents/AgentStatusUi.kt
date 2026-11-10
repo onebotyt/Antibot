@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.RocketLaunch
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +49,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.gemini.data.agent.claude.ClaudeCliStatus
+import com.example.gemini.data.agent.claude.ClaudeStatus
+import com.example.gemini.data.agent.opencode.OpenCodeState
+import com.example.gemini.data.agent.codex.CodexState
 import com.example.gemini.data.remote.AgyHubClient
 import com.example.gemini.data.remote.SystemConnectionState
 import com.example.gemini.data.remote.SystemStatus
@@ -89,15 +94,15 @@ fun agyStatusEntry(
         isAuthBusy -> entry("Signing in…", SystemStatus.ACQUIRING_CSRF.dotColor, "Finish signing in with Google in your browser.", AgentStatusAction("Check", onCheckAuth), pending = true)
         status == SystemStatus.OFFLINE && inStartupGrace -> entry("Starting…", SystemStatus.STARTING.dotColor, "Starting the local server.", pending = true)
         status == SystemStatus.OFFLINE && state is SystemConnectionState.Connected -> entry(
-            if (authInfo.isLoggedIn) "Offline" else "Sign in",
-            detail = if (authInfo.isLoggedIn) "The Antigravity hub is stopped." else "Sign in with Google to chat with Antigravity.",
-            action = if (authInfo.isLoggedIn) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Sign in", onSignIn)
-        ).copy(isSignedOut = !authInfo.isLoggedIn)
+            "Offline",
+            detail = "The Antigravity hub is stopped.",
+            action = AgentStatusAction("Restart", onRestartServer)
+        )
         status == SystemStatus.OFFLINE -> entry(
-            if (authInfo.isLoggedIn) "Offline" else "Sign in",
-            detail = if (authInfo.isLoggedIn) "The local server is not running." else "Sign in with Google to chat with Antigravity.",
-            action = if (authInfo.isLoggedIn) AgentStatusAction("Start", onRestartServer) else AgentStatusAction("Sign in", onSignIn)
-        ).copy(isSignedOut = !authInfo.isLoggedIn)
+            "Offline",
+            detail = "The local server is not running.",
+            action = AgentStatusAction("Start", onRestartServer)
+        )
         status == SystemStatus.STARTING -> entry("Starting…", detail = "The Antigravity hub is starting.", pending = true)
         status == SystemStatus.ACQUIRING_CSRF -> entry("Connecting…", detail = "Getting a session token from the hub.", pending = true)
         status == SystemStatus.CHECKING_AUTH -> entry("Checking sign-in…", pending = true)
@@ -112,29 +117,167 @@ fun agyStatusEntry(
                 .filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null }
         )
         else -> entry(
-            if (authInfo.isLoggedIn) "Error" else "Sign in",
-            detail = (state as? SystemConnectionState.Connected)?.error ?: (state as? SystemConnectionState.Error)?.message ?: "Sign in to connect to Antigravity.",
-            action = if (!authInfo.isLoggedIn) AgentStatusAction("Sign in", onSignIn) else if (state is SystemConnectionState.Connected) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Retry", onRetry)
-        ).copy(isSignedOut = !authInfo.isLoggedIn)
+            "Error",
+            detail = (state as? SystemConnectionState.Connected)?.error ?: (state as? SystemConnectionState.Error)?.message,
+            action = if (state is SystemConnectionState.Connected) AgentStatusAction("Restart", onRestartServer) else AgentStatusAction("Retry", onRetry)
+        )
     }
 }
 
+fun claudeStatusEntry(
+    state: ClaudeStatus,
+    status: ClaudeCliStatus?,
+    error: String?,
+    serverRestarting: Boolean,
+    onSignIn: () -> Unit,
+    onSetup: () -> Unit,
+    onRestartServer: () -> Unit,
+    onRetry: () -> Unit
+): AgentStatusEntry {
+    if (serverRestarting) {
+        return AgentStatusEntry(AgentKind.CLAUDE, "Restarting…", ClaudeStatus.CHECKING.dotColor, "The local server is restarting.", pending = true)
+    }
+    val auth = status?.auth
+    fun entry(detail: String? = null, action: AgentStatusAction? = null) = AgentStatusEntry(
+        AgentKind.CLAUDE, state.label, state.dotColor, detail, action,
+        pending = state == ClaudeStatus.CHECKING || state == ClaudeStatus.SIGNING_IN,
+        isReady = state == ClaudeStatus.READY,
+        isSignedOut = state == ClaudeStatus.SIGNED_OUT
+    )
+    return when (state) {
+        ClaudeStatus.CHECKING -> entry("Looking for the Claude Code CLI and its sign-in.")
+        ClaudeStatus.BRIDGE_OFFLINE -> entry(error ?: "The local server is not running.", AgentStatusAction("Start", onRestartServer))
+        ClaudeStatus.BRIDGE_OUTDATED -> entry(error, AgentStatusAction("Restart", onRestartServer))
+        ClaudeStatus.NOT_INSTALLED -> entry("The claude CLI is not installed on this device.", AgentStatusAction("Set up", onSetup))
+        ClaudeStatus.SIGNED_OUT -> entry("Sign in with your Claude subscription or an Anthropic Console account.", AgentStatusAction("Sign in", onSignIn))
+        ClaudeStatus.SIGNING_IN -> entry("Finish signing in in your browser.", AgentStatusAction("Open", onSignIn))
+        ClaudeStatus.READY -> entry(
+            listOfNotNull(auth?.email, auth?.subscriptionType?.let { claudePlanLabel(it) }, status?.version?.substringBefore(" "))
+                .joinToString(" · ").ifBlank { null }
+        )
+        ClaudeStatus.ERROR -> entry(error, AgentStatusAction("Retry", onRetry))
+    }
+}
+
+fun openCodeStatusEntry(
+    state: com.example.gemini.data.agent.opencode.OpenCodeState,
+    status: com.example.gemini.data.agent.opencode.OpenCodeStatus?,
+    serverRestarting: Boolean,
+    onSetup: () -> Unit,
+    onRestartServer: () -> Unit,
+    onRetry: () -> Unit
+): AgentStatusEntry {
+    val color = when (state) {
+        OpenCodeState.READY -> SystemStatus.READY.dotColor
+        OpenCodeState.CHECKING -> SystemStatus.STARTING.dotColor
+        OpenCodeState.OFFLINE, OpenCodeState.DISABLED, OpenCodeState.OUTDATED -> SystemStatus.OFFLINE.dotColor
+        else -> ClaudeStatus.ERROR.dotColor
+    }
+    if (serverRestarting) {
+        return AgentStatusEntry(AgentKind.OPENCODE, "Restarting…", SystemStatus.STARTING.dotColor, "The local server is restarting.", pending = true)
+    }
+    fun entry(detail: String? = null, action: AgentStatusAction? = null) = AgentStatusEntry(
+        AgentKind.OPENCODE, state.label, color, detail, action,
+        pending = state == OpenCodeState.CHECKING,
+        isReady = state == OpenCodeState.READY
+    )
+    return when (state) {
+        OpenCodeState.CHECKING -> entry("Starting… waiting for the server.")
+        OpenCodeState.READY -> entry(listOfNotNull(status?.version?.let { "OpenCode $it" }, if (status?.running == true) "running" else "starts with the first message").joinToString(" · "))
+        OpenCodeState.NOT_INSTALLED -> entry("OpenCode is not installed yet. The app can install it for you.", AgentStatusAction("Install", onSetup))
+        OpenCodeState.DISABLED -> entry("The server was started with OpenCode off.", AgentStatusAction("Restart", onRestartServer))
+        OpenCodeState.OUTDATED -> entry("This server has no OpenCode support yet. Update it.", AgentStatusAction("Restart", onRestartServer))
+        OpenCodeState.OFFLINE -> entry("The server is not running.", AgentStatusAction("Start", onRestartServer))
+        OpenCodeState.ERROR -> entry(status?.error, AgentStatusAction("Retry", onRetry))
+    }
+}
+
+fun codexStatusEntry(
+    state: com.example.gemini.data.agent.codex.CodexState,
+    status: com.example.gemini.data.agent.codex.CodexStatus?,
+    account: com.example.gemini.data.agent.codex.CodexAccount?,
+    serverRestarting: Boolean,
+    onSetup: () -> Unit,
+    onSignIn: () -> Unit,
+    onRestartServer: () -> Unit,
+    onRetry: () -> Unit
+): AgentStatusEntry {
+    val color = when (state) {
+        CodexState.READY -> SystemStatus.READY.dotColor
+        CodexState.CHECKING -> SystemStatus.STARTING.dotColor
+        CodexState.SIGNED_OUT -> ClaudeStatus.SIGNED_OUT.dotColor
+        CodexState.OFFLINE, CodexState.DISABLED, CodexState.OUTDATED -> SystemStatus.OFFLINE.dotColor
+        else -> ClaudeStatus.ERROR.dotColor
+    }
+    if (serverRestarting) {
+        return AgentStatusEntry(AgentKind.CODEX, "Restarting…", SystemStatus.STARTING.dotColor, "The local server is restarting.", pending = true)
+    }
+    fun entry(detail: String? = null, action: AgentStatusAction? = null) = AgentStatusEntry(
+        AgentKind.CODEX, state.label, color, detail, action,
+        pending = state == CodexState.CHECKING,
+        isReady = state == CodexState.READY,
+        isSignedOut = state == CodexState.SIGNED_OUT
+    )
+    return when (state) {
+        CodexState.CHECKING -> entry("Starting… waiting for the server.")
+        CodexState.READY -> entry(
+            listOfNotNull(account?.email, account?.plan?.replaceFirstChar { it.uppercase() }, status?.version?.let { "Codex $it" })
+                .joinToString(" · ").ifBlank { null }
+        )
+        CodexState.SIGNED_OUT -> entry("Sign in with your ChatGPT account to use Codex.", AgentStatusAction("Sign in", onSignIn))
+        CodexState.NOT_INSTALLED -> entry(
+            if (status?.termux_package == true) "Codex is not installed yet (pkg install codex). The app can install it for you."
+            else "Codex is not installed yet. The app can install it for you.",
+            AgentStatusAction("Install", onSetup)
+        )
+        CodexState.DISABLED -> entry("The server was started with Codex off.", AgentStatusAction("Restart", onRestartServer))
+        CodexState.OUTDATED -> entry("This server has no Codex support yet. Update it.", AgentStatusAction("Restart", onRestartServer))
+        CodexState.OFFLINE -> entry("The server is not running.", AgentStatusAction("Start", onRestartServer))
+        CodexState.ERROR -> entry(status?.error, AgentStatusAction("Retry", onRetry))
+    }
+}
+
+fun claudePlanLabel(raw: String): String = when (raw.lowercase()) {
+    "pro" -> "Pro"
+    "max" -> "Max"
+    "team" -> "Team"
+    "enterprise" -> "Enterprise"
+    "free" -> "Free"
+    else -> raw.replaceFirstChar { it.uppercase() }
+}
 
 /**
- * Connection dot for an agent.
+ * Connection dot for one or two agents. With two different states the upper half is [top] (Antigravity) and the
+ * lower half [bottom] (Claude Code); the same state (or one agent) draws one solid dot.
  */
 @Composable
-fun AgentStatusDot(top: Color, bottom: Color?, modifier: Modifier = Modifier, size: Dp = 11.dp, pulsing: Boolean = false) {
+fun AgentStatusDot(top: Color, bottom: Color?, modifier: Modifier = Modifier, size: Dp = 11.dp, pulsing: Boolean = false) =
+    AgentStatusDot(listOfNotNull(top, bottom), modifier, size, pulsing)
+
+/**
+ * Connection dot for up to three or four agents, one slice each in the order given (Antigravity, Claude Code, OpenCode, Codex):
+ * one agent is a solid dot, two are an upper and a lower half, three are thirds, four are quarters.
+ * Agents in the same state draw one solid dot.
+ */
+@Composable
+fun AgentStatusDot(colors: List<Color>, modifier: Modifier = Modifier, size: Dp = 11.dp, pulsing: Boolean = false) {
     val alpha = if (pulsing) {
         val transition = rememberInfiniteTransition(label = "agent_dot")
         transition.animateFloat(1f, 0.4f, infiniteRepeatable(tween(850), RepeatMode.Reverse), label = "agent_dot_alpha").value
     } else 1f
+    val slices = colors.ifEmpty { listOf(SystemStatus.OFFLINE.dotColor) }
     Canvas(modifier.size(size).graphicsLayer { this.alpha = alpha }) {
-        if (bottom == null || bottom == top) {
-            drawCircle(top)
-        } else {
-            drawArc(top, startAngle = 180f, sweepAngle = 180f, useCenter = true)
-            drawArc(bottom, startAngle = 0f, sweepAngle = 180f, useCenter = true)
+        when {
+            slices.distinct().size == 1 -> drawCircle(slices.first())
+            slices.size == 2 -> {
+                drawArc(slices[0], startAngle = 180f, sweepAngle = 180f, useCenter = true)
+                drawArc(slices[1], startAngle = 0f, sweepAngle = 180f, useCenter = true)
+            }
+            else -> {
+                // the first slice is centred on top (-90°), then clockwise
+                val sweep = 360f / slices.size
+                slices.forEachIndexed { i, c -> drawArc(c, startAngle = -90f - sweep / 2 + i * sweep, sweepAngle = sweep, useCenter = true) }
+            }
         }
     }
 }
@@ -223,7 +366,7 @@ fun AgentActionPill(text: String, color: Color, onClick: () -> Unit) {
 }
 
 /**
- * Top-bar status: the dot; tapping opens each agent's state with its fix (sign in, set up, restart)
+ * Top-bar status: the (split) dot; tapping opens each agent's state with its fix (sign in, set up, restart)
  * and the server logs.
  */
 @Composable
@@ -231,76 +374,119 @@ fun AgentStatusIndicator(
     entries: List<AgentStatusEntry>,
     onOpenServerLogs: () -> Unit,
     onOpenDaemonLogs: (() -> Unit)? = null,
+    onRestartServer: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var open by remember { mutableStateOf(false) }
     val agy = entries.find { it.agent == AgentKind.AGY }
-    val top = agy?.color ?: SystemStatus.OFFLINE.dotColor
+    val claude = entries.find { it.agent == AgentKind.CLAUDE }
+    val openCode = entries.find { it.agent == AgentKind.OPENCODE }
+    val codex = entries.find { it.agent == AgentKind.CODEX }
+    // one slice per enabled agent
+    val colors = listOfNotNull(agy, claude, openCode, codex).map { it.color }
     Box(
         modifier = modifier.size(36.dp).clip(CircleShape).clickable { open = true },
         contentAlignment = Alignment.Center
     ) {
         AgentStatusDot(
-            top = top,
-            bottom = null,
-            size = 11.dp,
+            colors = colors,
+            size = if (colors.distinct().size > 1) 12.dp else 11.dp,
             pulsing = entries.any { it.pending }
         )
-        DropdownMenu(
+        AgentStatusMenu(
+            entries = entries,
             expanded = open,
-            onDismissRequest = { open = false },
-            shape = RoundedCornerShape(16.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
-            shadowElevation = 8.dp,
-            modifier = Modifier.width(300.dp)
+            onDismiss = { open = false },
+            onOpenServerLogs = onOpenServerLogs,
+            onOpenDaemonLogs = onOpenDaemonLogs,
+            onRestartServer = onRestartServer
+        )
+    }
+}
+
+/**
+ * The agents' status popup (each agent's state with its fix, the server logs and, with [onRestartServer], a restart
+ * of the server, which many did not find inside the logs); anchored to its parent.
+ */
+@Composable
+fun AgentStatusMenu(
+    entries: List<AgentStatusEntry>,
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onOpenServerLogs: () -> Unit,
+    onOpenDaemonLogs: (() -> Unit)? = null,
+    onRestartServer: (() -> Unit)? = null
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(16.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+        shadowElevation = 8.dp,
+        modifier = Modifier.width(300.dp)
+    ) {
+        Text(
+            "AGENTS",
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 8.dp)
+        )
+        Column(Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            entries.forEach { AgentStatusRow(it) { onDismiss() } }
+        }
+        HorizontalDivider(
+            Modifier.padding(top = 12.dp),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    onDismiss()
+                    onOpenServerLogs()
+                }
+                .padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "AGENTS",
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 8.dp)
-            )
-            Column(Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                entries.forEach { AgentStatusRow(it) { open = false } }
-            }
-            HorizontalDivider(
-                Modifier.padding(top = 12.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-            )
+            Icon(Icons.Outlined.Terminal, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("Server logs", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+        }
+        if (onOpenDaemonLogs != null) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .clickable {
-                        open = false
-                        onOpenServerLogs()
+                        onDismiss()
+                        onOpenDaemonLogs()
                     }
                     .padding(horizontal = 16.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Outlined.Terminal, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
+                Icon(Icons.Outlined.Dns, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Server logs", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text("Socket & daemon monitor", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
             }
-            if (onOpenDaemonLogs != null) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            open = false
-                            onOpenDaemonLogs()
-                        }
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Outlined.Dns, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text("Socket & daemon monitor", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
-                }
+        }
+        if (onRestartServer != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onDismiss()
+                        onRestartServer()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.RestartAlt, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Restart server", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -350,12 +536,4 @@ fun AgentSetupPrompt(
             }
         }
     }
-}
-
-fun claudePlanLabel(raw: String): String = when (raw.lowercase()) {
-    "pro" -> "Pro"
-    "team" -> "Team"
-    "enterprise" -> "Enterprise"
-    "free" -> "Free"
-    else -> raw.replaceFirstChar { it.uppercase() }
 }

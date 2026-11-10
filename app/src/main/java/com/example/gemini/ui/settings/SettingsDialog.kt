@@ -97,7 +97,11 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     BACKUPS("Backups & Restore", "Backup rootfs environment and AGY chat histories"),
     DATA_PROTECTION("Data Loss Protection", "Uninstall shield & App Info clear data protection"),
     COMMANDS("Commands & Permissions", "Auto-run policy, sandbox mode, and tool approvals"),
+    ANTIGRAVITY("Antigravity", "CLI, MCP servers, skills & plugins, commands & permissions"),
+    AGY_CLI("Antigravity CLI", "agy version and install, on this device or the server"),
     AGY_CLOUD("Cloud agents", "Antigravity chats on a Google cloud machine (Remote Agents)"),
+    CLAUDE("Claude Code", "Account, models, permissions, MCP, plugins & memory"),
+    CLAUDE_PAGE("Claude Code", "Account, models, permissions, MCP, plugins & memory"),
     AGENTS("Agents", "Configure active intelligence engine"),
     DIAGNOSTICS("Diagnostics & Performance", "Live network connections, active streams & thread HUD"),
     UTILITIES("Utilities", "Handy device tools"),
@@ -142,10 +146,12 @@ enum class SettingsSection(val title: String, val subtitle: String) {
 
     /** Where Back goes from this section. */
     val parent: SettingsSection get() = when (this) {
-        ADB_CONNECT, ANDROID_AUTOMATION, X11_DESKTOP, ANDROID_DEV -> UTILITIES
-        REA_GROUPS -> REA
+        AGY_CLI, AGY_CLOUD, MCP, SKILLS_PLUGINS, COMMANDS -> ANTIGRAVITY
+        CLAUDE_PAGE -> CLAUDE
         CODEX_PAGE -> CODEX
         OPENCODE_PAGE -> OPENCODE
+        ADB_CONNECT, ANDROID_AUTOMATION, X11_DESKTOP, ANDROID_DEV -> UTILITIES
+        REA_GROUPS -> REA
         JARVIS_AGENT, JARVIS_PERSONALITY, JARVIS_SETUP, JARVIS_WAKE, JARVIS_LISTEN,
         JARVIS_VOICE, JARVIS_TASKS, JARVIS_APPROVALS, JARVIS_SCREEN, JARVIS_CHAT -> JARVIS
         else -> MAIN
@@ -280,6 +286,13 @@ fun SettingsDialog(
     isFloatingNetworkInspectorEnabled: Boolean = false,
     onToggleFloatingNetworkInspector: (Boolean) -> Unit = {},
     onOpenNetworkInspector: () -> Unit = {},
+    claude: com.example.gemini.ui.claude.ClaudeSettingsDeps? = null,
+    initialClaudePage: com.example.gemini.ui.claude.ClaudeSettingsPage? = null,
+    openCode: com.example.gemini.data.agent.opencode.OpenCodeChatBackend? = null,
+    initialOpenCodePage: com.example.gemini.ui.opencode.OpenCodeSettingsPage? = null,
+    codex: com.example.gemini.data.agent.codex.CodexChatBackend? = null,
+    initialCodexPage: com.example.gemini.ui.codex.CodexSettingsPage? = null,
+    initialSection: SettingsSection? = null,
     enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
     isApplyingAgents: Boolean = false,
     onApplyAgents: (Set<com.example.gemini.domain.model.AgentKind>) -> Unit = {},
@@ -289,7 +302,10 @@ fun SettingsDialog(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val authPrefs = remember(context) { AuthPreferences(context) }
-    var currentSection by remember { mutableStateOf(SettingsSection.MAIN) }
+    var currentSection by remember { mutableStateOf(initialSection ?: if (initialClaudePage != null && claude != null) SettingsSection.CLAUDE_PAGE else SettingsSection.MAIN) }
+    var claudePage by remember { mutableStateOf(initialClaudePage ?: com.example.gemini.ui.claude.ClaudeSettingsPage.ACCOUNT) }
+    var openCodePage by remember { mutableStateOf(initialOpenCodePage ?: com.example.gemini.ui.opencode.OpenCodeSettingsPage.SERVER) }
+    var codexPage by remember { mutableStateOf(initialCodexPage ?: com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT) }
     // Hoisted so the main list keeps its position while a sub-section is open
     val mainMenuScrollState = rememberScrollState()
 
@@ -318,11 +334,17 @@ fun SettingsDialog(
                 .windowInsetsPadding(WindowInsets.imeAnimationTarget)
         ) {
             // Top App Bar (Image 6)
+            val isClaudePage = currentSection == SettingsSection.CLAUDE_PAGE && claude != null
+            val isOpenCodePage = currentSection == SettingsSection.OPENCODE_PAGE && openCode != null
+            val isCodexPage = currentSection == SettingsSection.CODEX_PAGE && codex != null
             TopAppBar(
                 title = {
                     Column {
                         Text(
-                            text = currentSection.title,
+                            text = if (isClaudePage) "Claude Code · ${claudePage.title}"
+                                else if (isOpenCodePage) "OpenCode · ${openCodePage.title}"
+                                else if (isCodexPage) "Codex · ${codexPage.title}"
+                                else currentSection.title,
                             fontSize = 17.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -330,7 +352,10 @@ fun SettingsDialog(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = currentSection.subtitle,
+                            text = if (isClaudePage) claudePage.subtitle
+                                else if (isOpenCodePage) openCodePage.subtitle
+                                else if (isCodexPage) codexPage.subtitle
+                                else currentSection.subtitle,
                             fontSize = 11.5.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                             maxLines = 1,
@@ -651,26 +676,78 @@ fun SettingsDialog(
                         cardBorder = cardBorder,
                         onOpenRea = { currentSection = SettingsSection.REA }
                     )
-                    SettingsSection.CODEX_PAGE, SettingsSection.CODEX -> {
-                        val app = context.applicationContext as android.app.Application
-                        val store = remember { com.example.gemini.data.agent.ChatSessionStore() }
-                        val codexPrefs = remember { com.example.gemini.data.agent.codex.CodexPreferences(app) }
-                        val codexBackend = remember { com.example.gemini.data.agent.codex.CodexChatBackend(app, coroutineScope, store, codexPrefs) }
-                        var codexPage by remember { mutableStateOf(com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT) }
+                    SettingsSection.ANTIGRAVITY -> AntigravitySettingsMenu(
+                        mcpServers = mcpServers,
+                        allSkills = allSkills,
+                        installedPlugins = installedPlugins,
+                        commandAutoExecutionPolicy = commandAutoExecutionPolicy,
+                        cardBg = cardBg,
+                        onNavigate = { currentSection = it }
+                    )
+                    SettingsSection.AGY_CLI -> Column(
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+                    ) {
+                        com.example.gemini.ui.agents.AgyCliCard()
+                    }
+                    SettingsSection.CLAUDE -> if (claude != null) {
+                        com.example.gemini.ui.claude.ClaudeSettingsGroup(claude, cardBg) { page ->
+                            claudePage = page
+                            currentSection = SettingsSection.CLAUDE_PAGE
+                        }
+                    }
+                    SettingsSection.CLAUDE_PAGE -> if (claude != null) {
+                        com.example.gemini.ui.claude.ClaudeSettingsScreen(
+                            claude, claudePage,
+                            onOpenRea = { currentSection = SettingsSection.REA },
+                            onOpenReaGroups = { currentSection = SettingsSection.REA_GROUPS }
+                        ) { currentSection = SettingsSection.CLAUDE }
+                    }
+                    SettingsSection.CODEX -> {
+                        val backend = codex ?: remember {
+                            val app = context.applicationContext as android.app.Application
+                            val store = com.example.gemini.data.agent.ChatSessionStore()
+                            val codexPrefs = com.example.gemini.data.agent.codex.CodexPreferences(app)
+                            com.example.gemini.data.agent.codex.CodexChatBackend(app, coroutineScope, store, codexPrefs)
+                        }
+                        com.example.gemini.ui.codex.CodexSettingsGroup(backend, cardBg) { page ->
+                            codexPage = page
+                            currentSection = SettingsSection.CODEX_PAGE
+                        }
+                    }
+                    SettingsSection.CODEX_PAGE -> {
+                        val backend = codex ?: remember {
+                            val app = context.applicationContext as android.app.Application
+                            val store = com.example.gemini.data.agent.ChatSessionStore()
+                            val codexPrefs = com.example.gemini.data.agent.codex.CodexPreferences(app)
+                            com.example.gemini.data.agent.codex.CodexChatBackend(app, coroutineScope, store, codexPrefs)
+                        }
                         com.example.gemini.ui.codex.CodexSettingsScreen(
-                            codexBackend, codexPage,
+                            backend, codexPage,
                             onOpenRea = { currentSection = SettingsSection.REA },
                             onOpenReaGroups = { currentSection = SettingsSection.REA_GROUPS }
                         )
                     }
-                    SettingsSection.OPENCODE_PAGE, SettingsSection.OPENCODE -> {
-                        val app = context.applicationContext as android.app.Application
-                        val store = remember { com.example.gemini.data.agent.ChatSessionStore() }
-                        val openCodePrefs = remember { com.example.gemini.data.agent.opencode.OpenCodePreferences(app) }
-                        val openCodeBackend = remember { com.example.gemini.data.agent.opencode.OpenCodeChatBackend(app, coroutineScope, store, openCodePrefs) }
-                        var openCodePage by remember { mutableStateOf(com.example.gemini.ui.opencode.OpenCodeSettingsPage.SERVER) }
+                    SettingsSection.OPENCODE -> {
+                        val backend = openCode ?: remember {
+                            val app = context.applicationContext as android.app.Application
+                            val store = com.example.gemini.data.agent.ChatSessionStore()
+                            val openCodePrefs = com.example.gemini.data.agent.opencode.OpenCodePreferences(app)
+                            com.example.gemini.data.agent.opencode.OpenCodeChatBackend(app, coroutineScope, store, openCodePrefs)
+                        }
+                        com.example.gemini.ui.opencode.OpenCodeSettingsGroup(backend, cardBg) { page ->
+                            openCodePage = page
+                            currentSection = SettingsSection.OPENCODE_PAGE
+                        }
+                    }
+                    SettingsSection.OPENCODE_PAGE -> {
+                        val backend = openCode ?: remember {
+                            val app = context.applicationContext as android.app.Application
+                            val store = com.example.gemini.data.agent.ChatSessionStore()
+                            val openCodePrefs = com.example.gemini.data.agent.opencode.OpenCodePreferences(app)
+                            com.example.gemini.data.agent.opencode.OpenCodeChatBackend(app, coroutineScope, store, openCodePrefs)
+                        }
                         com.example.gemini.ui.opencode.OpenCodeSettingsScreen(
-                            openCodeBackend, openCodePage,
+                            backend, openCodePage,
                             onOpenRea = { currentSection = SettingsSection.REA },
                             onOpenReaGroups = { currentSection = SettingsSection.REA_GROUPS }
                         )
@@ -811,6 +888,13 @@ private fun MainSettingsMenu(
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             SettingsGroupItemRow(
+                icon = Icons.Outlined.AutoAwesome,
+                title = "Claude Code",
+                subtitle = "Anthropic Claude CLI, account, models & permissions",
+                onClick = { onNavigate(SettingsSection.CLAUDE) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
                 icon = Icons.Outlined.Terminal,
                 title = "Codex",
                 subtitle = "OpenAI Codex CLI, models & permissions",
@@ -865,6 +949,13 @@ private fun MainSettingsMenu(
                 commandAutoExecutionPolicy.contains("AUTO", ignoreCase = true) -> "🛡️ Smart Safety"
                 else -> "✋ Ask User"
             }
+            val cli by com.example.gemini.data.remote.BridgeInfo.agyCli.collectAsState()
+            LaunchedEffect(Unit) { if (cli == null) com.example.gemini.data.remote.BridgeInfo.refreshAgyCli() }
+            val (cliBadgeText, cliBadgeStyle) = when {
+                cli == null -> "Checking…" to SettingsBadgeStyle.GREY
+                cli!!.installed -> cli!!.version.ifBlank { "Installed" } to SettingsBadgeStyle.GREEN
+                else -> "Not Installed" to SettingsBadgeStyle.AMBER
+            }
 
             SettingsCategoryContainer(
                 headerIcon = Icons.Outlined.ChangeHistory,
@@ -873,6 +964,15 @@ private fun MainSettingsMenu(
                 cardBg = cardBg,
                 cardBorder = cardBorder
             ) {
+                SettingsGroupItemRow(
+                    icon = Icons.Outlined.Terminal,
+                    title = "Antigravity CLI (agy)",
+                    subtitle = "Official Google CLI binary, version and installer",
+                    badgeText = cliBadgeText,
+                    badgeStyle = cliBadgeStyle,
+                    onClick = { onNavigate(SettingsSection.AGY_CLI) }
+                )
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
                 SettingsGroupItemRow(
                     icon = Icons.Outlined.ViewInAr,
                     title = "MCP Servers & Tools",
@@ -1012,6 +1112,55 @@ private fun MainSettingsMenu(
             )
         }
     }
+}
+
+/** Antigravity's own page: its CLI, MCP servers, skills & plugins, and commands & permissions. */
+@Composable
+private fun AntigravitySettingsMenu(
+    mcpServers: List<com.example.gemini.domain.model.McpServerState>,
+    allSkills: List<com.example.gemini.data.remote.dto.SkillDefinitionDto>,
+    installedPlugins: List<com.example.gemini.data.remote.dto.InstalledPluginDto>,
+    commandAutoExecutionPolicy: String,
+    cardBg: Color,
+    onNavigate: (SettingsSection) -> Unit
+) {
+    val c = com.example.gemini.theme.AppColors
+    val activeMcp = mcpServers.count { it.isEnabled }
+    val (mcpValue, mcpColor) = when {
+        mcpServers.isEmpty() -> "None" to null
+        activeMcp > 0 -> "$activeMcp active" to QuotaGreen
+        else -> "All off" to c.warning
+    }
+    val (policyValue, policyColor) = when {
+        commandAutoExecutionPolicy.contains("EAGER", ignoreCase = true) -> "Auto-run" to QuotaGreen
+        commandAutoExecutionPolicy.contains("AUTO", ignoreCase = true) -> "Smart safety" to c.accentTeal
+        else -> "Ask first" to c.warning
+    }
+    // the CLI row shows the installed version (like Claude Code's Account & CLI row)
+    val cli by com.example.gemini.data.remote.BridgeInfo.agyCli.collectAsState()
+    LaunchedEffect(Unit) { if (cli == null) com.example.gemini.data.remote.BridgeInfo.refreshAgyCli() }
+    val (cliValue, cliColor) = when {
+        cli == null -> null to null
+        cli!!.installed -> cli!!.version.ifBlank { "Installed" } to QuotaGreen
+        else -> "Not installed" to c.warning
+    }
+    val cloudOn by com.example.gemini.data.agent.agy.AgyCloud.enabled.collectAsState()
+    SettingsRowList(
+        cardBg = cardBg,
+        groups = listOf(
+            listOf(
+                SettingsRowItem(Icons.Outlined.Terminal, com.example.gemini.theme.GeminiBlue, SettingsSection.AGY_CLI.title, cliValue, cliColor) { onNavigate(SettingsSection.AGY_CLI) },
+                SettingsRowItem(Icons.Outlined.Cloud, com.example.gemini.theme.GeminiBlue, SettingsSection.AGY_CLOUD.title,
+                    if (cloudOn) "On" else "Off", if (cloudOn) QuotaGreen else null) { onNavigate(SettingsSection.AGY_CLOUD) }
+            ),
+            listOf(
+                SettingsRowItem(Icons.Outlined.Hub, com.example.gemini.theme.GeminiBlue, SettingsSection.MCP.title, mcpValue, mcpColor) { onNavigate(SettingsSection.MCP) },
+                SettingsRowItem(Icons.Outlined.AutoAwesome, c.accentAlt, SettingsSection.SKILLS_PLUGINS.title,
+                    "${allSkills.size} skills · ${installedPlugins.size} plugins") { onNavigate(SettingsSection.SKILLS_PLUGINS) },
+                SettingsRowItem(Icons.Outlined.Security, c.warning, SettingsSection.COMMANDS.title, policyValue, policyColor) { onNavigate(SettingsSection.COMMANDS) }
+            )
+        )
+    )
 }
 
 @Composable

@@ -3,6 +3,7 @@ package com.example.gemini.ui.agents
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,9 +29,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,50 +51,65 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.gemini.domain.model.AgentKind
 import com.example.gemini.theme.AntiBotCyan
 import com.example.gemini.ui.components.accent
+import com.example.gemini.ui.components.label
 
-private data class AgentOption(val agents: Set<AgentKind>, val title: String, val description: String)
+private data class AgentOption(val agent: AgentKind, val title: String, val description: String)
 
 private val AGENT_OPTIONS = listOf(
     AgentOption(
-        setOf(AgentKind.LOCAL),
+        AgentKind.AGY,
+        "Antigravity",
+        "Google's coding agent through the agy hub: Gemini and Claude models on your Google plan."
+    ),
+    AgentOption(
+        AgentKind.LOCAL,
         "AntiBot Local Model (Offline)",
         "100% Offline & 0 Tokens: On-device coding, dev server recipes, and terminal execution without cloud tokens."
     ),
     AgentOption(
-        setOf(AgentKind.AGY),
-        "Antigravity",
-        "Google's cloud coding agent through the agy hub: Gemini and Claude models on your Google plan."
+        AgentKind.CLAUDE,
+        "Claude Code",
+        "Anthropic's Claude Code CLI on this device: your Claude subscription or Anthropic Console account."
     ),
     AgentOption(
-        setOf(AgentKind.LOCAL, AgentKind.AGY),
-        "Hybrid (Both)",
-        "Pick the agent for each new chat. Seamlessly toggle between AntiBot Local Model and Antigravity."
+        AgentKind.OPENCODE,
+        "OpenCode",
+        "Open-source coding agent: 200+ providers with your own keys, any OpenAI-compatible API, and free models."
+    ),
+    AgentOption(
+        AgentKind.CODEX,
+        "Codex",
+        "OpenAI's Codex CLI on this device: sign in with your ChatGPT account (or an API key)."
     )
 )
 
-/** Three choices: AntiBot Local Model, Antigravity, or both. */
+/**
+ * The agents to run: tap to turn each on or off (at least one stays on). With several on, the new-chat screen
+ * lets you pick the agent per chat; they share the chat list, status and accounts.
+ */
 @Composable
-fun AgentSelector(selected: Set<AgentKind>, onSelect: (Set<AgentKind>) -> Unit, modifier: Modifier = Modifier) {
+fun AgentSelector(
+    selected: Set<AgentKind>,
+    onSelect: (Set<AgentKind>) -> Unit,
+    modifier: Modifier = Modifier,
+    allowEmpty: Boolean = false
+) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         AGENT_OPTIONS.forEach { option ->
-            val isOn = option.agents == selected
-            val accent = if (option.agents.size == 1) option.agents.first().accent() else MaterialTheme.colorScheme.primary
+            val isOn = option.agent in selected
+            val accent = option.agent.accent()
             Surface(
-                onClick = { onSelect(option.agents) },
+                onClick = {
+                    val next = if (isOn) selected - option.agent else selected + option.agent
+                    if (allowEmpty || next.isNotEmpty()) onSelect(next)
+                },
                 shape = RoundedCornerShape(16.dp),
                 color = if (isOn) accent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
                 border = BorderStroke(if (isOn) 1.5.dp else 1.dp, if (isOn) accent.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (option.agents.size == 1) {
-                        AgentMark(option.agents.first(), size = 40.dp)
-                    } else {
-                        Box(Modifier.size(width = 52.dp, height = 40.dp)) {
-                            AgentMark(AgentKind.LOCAL, size = 34.dp)
-                            AgentMark(AgentKind.AGY, size = 34.dp, modifier = Modifier.offset(x = 18.dp, y = 6.dp))
-                        }
-                    }
+                    AgentMark(option.agent, size = 40.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(option.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -101,14 +119,23 @@ fun AgentSelector(selected: Set<AgentKind>, onSelect: (Set<AgentKind>) -> Unit, 
                     Box(
                         Modifier
                             .size(20.dp)
-                            .clip(CircleShape)
-                            .border(1.5.dp, if (isOn) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), CircleShape),
+                            .clip(RoundedCornerShape(6.dp))
+                            .border(1.5.dp, if (isOn) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                            .background(if (isOn) accent else Color.Transparent),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isOn) Box(Modifier.size(10.dp).clip(CircleShape).background(accent))
+                        if (isOn) Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
+        }
+        if (selected.size > 1) {
+            Text(
+                "With several agents on, pick the agent for each new chat on the empty chat screen.",
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
         }
     }
 }
@@ -128,15 +155,17 @@ fun AgentChoiceDialog(onConfirm: (Set<AgentKind>) -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp)
         ) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(width = 76.dp, height = 56.dp)) {
-                    AgentMark(AgentKind.LOCAL, size = 48.dp)
-                    AgentMark(AgentKind.AGY, size = 48.dp, modifier = Modifier.offset(x = 28.dp, y = 8.dp))
+                Box(Modifier.size(52.dp)) {
+                    val corners = listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd)
+                    AgentKind.entries.take(corners.size).forEachIndexed { i, agent ->
+                        AgentMark(agent, size = 26.dp, modifier = Modifier.align(corners[i]))
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
-                Text("Choose your agent", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Choose your agents", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "AntiBot can run 100% offline with zero cloud tokens or connect to Antigravity. You can change this later in Settings → Agents.",
+                    "Tick the coding agents you want to use. AntiBot runs only the ones you pick; you can change this anytime in Settings → Agents.",
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     textAlign = TextAlign.Center,
@@ -147,11 +176,22 @@ fun AgentChoiceDialog(onConfirm: (Set<AgentKind>) -> Unit) {
                 Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = { onConfirm(selected) },
+                    enabled = selected.isNotEmpty(),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AntiBotCyan, contentColor = Color.Black),
                     contentPadding = PaddingValues(vertical = 12.dp),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Continue", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                ) {
+                    Text(
+                        when (selected.size) {
+                            0 -> "Pick at least one agent"
+                            1 -> "Continue with ${selected.first().label()}"
+                            else -> "Continue with ${selected.size} agents"
+                        },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }
@@ -186,7 +226,7 @@ fun AgentsSettingsPage(
             modifier = Modifier.fillMaxWidth()
         ) {
             if (isApplying) {
-                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.Black)
                 Spacer(Modifier.width(10.dp))
                 Text("Restarting…")
             } else {

@@ -39,6 +39,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.example.gemini.data.agent.claude.ClaudeCliStatus
 import com.example.gemini.data.remote.AgyHubClient
 import com.example.gemini.domain.model.AgentKind
 import com.example.gemini.ui.components.accent
@@ -111,18 +115,24 @@ private fun InitialCircle(initial: Char?, accent: Color, size: Dp) {
 }
 
 /**
- * Drawer footer button for the agent account: avatar (sign-in glyph when signed out) with
+ * Drawer footer button for the agent accounts: one avatar per enabled agent (sign-in glyph when signed out) with
  * its status badge. Opens [AccountsDialog].
  */
 @Composable
 fun AccountsButton(
     agy: AgentStatusEntry?,
+    claude: AgentStatusEntry? = null,
     agyAuth: AgyHubClient.AgyAuthInfo,
+    claudeStatus: ClaudeCliStatus? = null,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    openCode: AgentStatusEntry? = null,
+    codex: AgentStatusEntry? = null,
+    codexEmail: String? = null
 ) {
-    val single = agy
-    val needsSignIn = single?.isSignedOut == true
+    val entries = listOfNotNull(agy, claude, openCode, codex)
+    val needsSignIn = entries.any { it.isSignedOut }
+    val single = entries.singleOrNull()
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
@@ -131,13 +141,21 @@ fun AccountsButton(
         modifier = modifier
     ) {
         Row(Modifier.padding(start = 5.dp, end = 10.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            agy?.let { AccountAvatar(AgentKind.AGY, it, agyAuth.displayName.firstOrNull(), agyAuth.profilePictureUrl?.takeIf { u -> u.isNotBlank() }) }
+            Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
+                agy?.let { AccountAvatar(AgentKind.AGY, it, agyAuth.displayName.firstOrNull(), agyAuth.profilePictureUrl?.takeIf { u -> u.isNotBlank() }) }
+                claude?.let { AccountAvatar(AgentKind.CLAUDE, it, claudeStatus?.auth?.email?.firstOrNull()) }
+                openCode?.let { AccountAvatar(AgentKind.OPENCODE, it, null) }
+                codex?.let { AccountAvatar(AgentKind.CODEX, it, codexEmail?.firstOrNull()) }
+            }
             Spacer(Modifier.width(7.dp))
             val text = when {
                 needsSignIn -> "Sign in"
                 single?.agent == AgentKind.AGY && single.isReady -> agyAuth.displayName.ifBlank { "Account" }
+                single?.agent == AgentKind.CLAUDE && single.isReady -> claudeStatus?.auth?.email?.substringBefore('@') ?: "Account"
+                single?.agent == AgentKind.OPENCODE && single.isReady -> "OpenCode"
+                single?.agent == AgentKind.CODEX && single.isReady -> codexEmail?.substringBefore('@') ?: "Codex"
                 single != null -> single.label
-                else -> "Account"
+                else -> "Accounts"
             }
             Text(
                 text,
@@ -157,12 +175,32 @@ fun AccountsButton(
 @Composable
 fun AccountsDialog(
     agy: AgentStatusEntry?,
+    claude: AgentStatusEntry? = null,
     agyAuth: AgyHubClient.AgyAuthInfo,
+    claudeStatus: ClaudeCliStatus? = null,
     onAgySignOut: () -> Unit,
-    onAgyCancelSignIn: () -> Unit,
-    onDismiss: () -> Unit
+    onClaudeSignOut: () -> Unit = {},
+    onClaudeSettings: () -> Unit = {},
+    onAgyCancelSignIn: () -> Unit = {},
+    onDismiss: () -> Unit,
+    openCode: AgentStatusEntry? = null,
+    /** Provider count, models count, running/stopped. */
+    openCodeFacts: List<String> = emptyList(),
+    onOpenCodeSettings: () -> Unit = {},
+    codex: AgentStatusEntry? = null,
+    codexEmail: String? = null,
+    /** Plan, version, usage. */
+    codexFacts: List<String> = emptyList(),
+    onCodexSignOut: () -> Unit = {},
+    onCodexSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    // `agy --version`, asked from the bridge (this phone's or the server's) each time the dialog opens
+    val agyCli by com.example.gemini.data.remote.BridgeInfo.agyCli.collectAsState()
+    LaunchedEffect(Unit) { com.example.gemini.data.remote.BridgeInfo.refreshAgyCli() }
+    val agyVersion = agyCli?.takeIf { it.installed }?.version?.let { v ->
+        Regex("\\d+(\\.\\d+)+\\S*").find(v)?.value ?: v.takeIf { it.isNotBlank() }
+    }
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
@@ -172,11 +210,16 @@ fun AccountsDialog(
         ) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Account", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("Accounts", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Outlined.Close, "Close", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                 }
+                Text(
+                    "Each agent signs in on its own.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
                 Spacer(Modifier.height(14.dp))
 
                 agy?.let { entry ->
@@ -186,8 +229,9 @@ fun AccountsDialog(
                         title = if (entry.isReady) agyAuth.displayName.ifBlank { AgentKind.AGY.label() } else AgentKind.AGY.label(),
                         subtitle = if (entry.isReady) agyAuth.email.ifBlank { null } else entry.detail,
                         facts = if (entry.isReady) listOfNotNull(
-                            agyAuth.userTier.ifBlank { agyAuth.planName }.ifBlank { null }
-                        ) else emptyList()
+                            agyAuth.userTier.ifBlank { agyAuth.planName }.ifBlank { null },
+                            agyVersion?.let { "CLI $it" }
+                        ) else listOfNotNull(agyVersion?.let { "CLI $it" })
                     ) {
                         when {
                             entry.isReady -> {
@@ -214,9 +258,120 @@ fun AccountsDialog(
                         }
                     }
                 }
+
+                if (agy != null && claude != null) Spacer(Modifier.height(12.dp))
+
+                claude?.let { entry ->
+                    val auth = claudeStatus?.auth
+                    AccountSection(
+                        entry = entry,
+                        avatar = { AccountAvatar(AgentKind.CLAUDE, entry, auth?.email?.firstOrNull(), size = 44.dp) },
+                        title = AgentKind.CLAUDE.label(),
+                        subtitle = if (entry.isReady) auth?.email else entry.detail,
+                        facts = if (entry.isReady) listOfNotNull(
+                            auth?.subscriptionType?.let { claudePlanLabel(it) },
+                            auth?.authMethod?.let { claudeAuthMethodLabel(it) },
+                            claudeStatus?.version?.substringBefore(" ")?.let { "CLI $it" }
+                        ) else listOfNotNull(claudeStatus?.version?.substringBefore(" ")?.let { "CLI $it" })
+                    ) {
+                        if (entry.isReady) {
+                            SectionButton("Claude settings", Icons.Outlined.Settings) {
+                                onClaudeSettings()
+                                onDismiss()
+                            }
+                            SectionButton("Sign out", Icons.AutoMirrored.Outlined.Logout, danger = true) { onClaudeSignOut() }
+                        } else {
+                            entry.action?.let {
+                                SectionButton(it.label, primary = AgentKind.CLAUDE.accent()) {
+                                    it.onClick()
+                                    onDismiss()
+                                }
+                            }
+                            if (!entry.pending) SectionButton("Claude settings", Icons.Outlined.Settings) {
+                                onClaudeSettings()
+                                onDismiss()
+                            }
+                        }
+                    }
+                }
+
+                openCode?.let { entry ->
+                    if (agy != null || claude != null) Spacer(Modifier.height(12.dp))
+                    OpenCodeAccountSection(entry, openCodeFacts, onOpenCodeSettings, onDismiss)
+                }
+
+                codex?.let { entry ->
+                    if (agy != null || claude != null || openCode != null) Spacer(Modifier.height(12.dp))
+                    CodexAccountSection(entry, codexEmail, codexFacts, onCodexSignOut, onCodexSettings, onDismiss)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun CodexAccountSection(
+    entry: AgentStatusEntry,
+    email: String?,
+    facts: List<String>,
+    onSignOut: () -> Unit,
+    onSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AccountSection(
+        entry = entry,
+        avatar = { AccountAvatar(AgentKind.CODEX, entry, email?.firstOrNull(), size = 44.dp) },
+        title = AgentKind.CODEX.label(),
+        subtitle = if (entry.isReady) email ?: "Signed in" else entry.detail,
+        facts = facts
+    ) {
+        if (entry.isReady) {
+            SectionButton("Codex settings", Icons.Outlined.Settings) {
+                onSettings()
+                onDismiss()
+            }
+            SectionButton("Sign out", Icons.AutoMirrored.Outlined.Logout, danger = true) { onSignOut() }
+        } else {
+            entry.action?.let {
+                SectionButton(it.label, primary = AgentKind.CODEX.accent()) {
+                    it.onClick()
+                    onDismiss()
+                }
+            }
+            if (!entry.pending) SectionButton("Codex settings", Icons.Outlined.Settings) {
+                onSettings()
+                onDismiss()
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenCodeAccountSection(entry: AgentStatusEntry, facts: List<String>, onSettings: () -> Unit, onDismiss: () -> Unit) {
+    AccountSection(
+        entry = entry,
+        avatar = { AccountAvatar(AgentKind.OPENCODE, entry, null, size = 44.dp) },
+        title = AgentKind.OPENCODE.label(),
+        subtitle = if (entry.isReady) "No sign-in: each provider uses its own API key (free models need none)." else entry.detail,
+        facts = facts
+    ) {
+        if (!entry.isReady) entry.action?.let {
+            SectionButton(it.label, primary = AgentKind.OPENCODE.accent()) {
+                it.onClick()
+                onDismiss()
+            }
+        }
+        SectionButton(if (entry.isReady) "Providers & settings" else "OpenCode settings", Icons.Outlined.Settings) {
+            onSettings()
+            onDismiss()
+        }
+    }
+}
+
+private fun claudeAuthMethodLabel(raw: String): String = when (raw.lowercase()) {
+    "claude.ai", "claudeai", "oauth" -> "Claude account"
+    "console", "api_key", "apikey" -> "Anthropic Console"
+    else -> raw
 }
 
 @OptIn(ExperimentalLayoutApi::class)

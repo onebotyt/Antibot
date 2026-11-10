@@ -1,14 +1,13 @@
 {
-  "version_code": 207,
-  "version_name": "2.4.87",
+  "version_code": 208,
+  "version_name": "2.4.88",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\udd2c Phase 24: REA Reverse Engineering Suite, Multi-Agent Codex & OpenCode Bridge.",
-    "\ud83d\udee0\ufe0f Reverse Engineering Anything (REA): JADX decompiler, APKTool resources, Hermes bytecode recovery, Rizin disassembler, and GDB debugger integration via on-demand tool supervisor.",
-    "\ud83e\udd16 OpenAI Codex Protocol Integration: High-performance pure Rust bridge daemon handlers (/api/codex/*) supporting JSON-RPC methods, request approvals, turn metadata, and WebSocket event replays.",
-    "\ud83c\udf10 OpenCode Multi-Provider Gateway: Pure Rust handlers (/api/opencode/*) with custom provider CRUD, endpoint model probing, OAuth callbacks, MCP supervisor, and SSE relay.",
-    "\ud83d\udcf1 Android Development Suite: Jetpack Compose, Kotlin, Flutter, and React Native phone-based build and tooling supervisor.",
-    "\u26a1 100% Rust-First Native Architecture: Zero Go dependencies for new modules, fully validated with unit tests across all native layers."
+    "🤖 Multi-CLI Coding Agent Suite: Full support for Antigravity (agy), Claude Code (claude), OpenCode (opencode), OpenAI Codex (codex), and Local SLM offline engine.",
+    "🎯 Multi-Agent Split Status Indicator: Dynamic top-bar status dot rendering per-agent health slices with quick-action menu (Server logs, daemon monitor, server restart).",
+    "⚙️ OpenCode Model Visibility Controls: Provider-level and per-model visibility switches to hide or show specific models across endpoints.",
+    "🛡️ Robust Codex Protocol Reconnection: Proactive auto-reconnect and state synchronization on WebSocket disconnections.",
+    "💬 Dedicated Agent Sheets & Setup Prompts: Native model pickers and setup guidance for Claude Code, OpenCode, and Codex."
   ],
   "is_critical": false
 }
