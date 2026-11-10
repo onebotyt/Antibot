@@ -17,6 +17,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 
 /**
  * Result produced by LocalIntelligenceEngine for an agent conversational turn.
@@ -28,6 +34,12 @@ data class LocalEngineResult(
     val durationMs: Long = 0L
 )
 
+data class LocalIntentClassification(
+    val intent: String,
+    val extractedCommand: String?,
+    val extractedQuery: String?
+)
+
 /**
  * LocalIntelligenceEngine: 100% on-device generative intelligence engine.
  * Consumes 0 remote cloud tokens, works completely offline, and behaves like a full-featured
@@ -35,6 +47,34 @@ data class LocalEngineResult(
  * file & workspace inspection, natural command execution, and deep reasoning.
  */
 object LocalIntelligenceEngine {
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(2, TimeUnit.SECONDS)
+        .build()
+
+    suspend fun classifyIntentViaBridge(prompt: String): LocalIntentClassification? = withContext(Dispatchers.IO) {
+        try {
+            val bridgeBase = AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+            val body = JSONObject().apply {
+                put("prompt", prompt)
+            }.toString()
+            val request = Request.Builder()
+                .url("$bridgeBase/api/ai/intent/classify")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+            val resp = http.newCall(request).execute()
+            if (resp.isSuccessful) {
+                val json = JSONObject(resp.body?.string().orEmpty())
+                return@withContext LocalIntentClassification(
+                    intent = json.optString("intent", "GENERAL_CONVERSATION"),
+                    extractedCommand = json.optString("extracted_command").takeIf { it.isNotBlank() },
+                    extractedQuery = json.optString("extracted_query").takeIf { it.isNotBlank() }
+                )
+            }
+        } catch (_: Exception) {}
+        null
+    }
 
     suspend fun generateResponse(
         prompt: String,
@@ -49,8 +89,11 @@ object LocalIntelligenceEngine {
         val projectDir = File(workspaceUri.ifBlank { "/data/user/0/com.termux/files/home/projects" })
         val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(modelId)
 
+        // Query Rust Bridge for Intent Classification
+        val bridgeIntent = classifyIntentViaBridge(trimmed)
+
         // 1. Direct Shell Execution ($cmd, !cmd, run <cmd>, exec <cmd>)
-        if (isDirectCommand(trimmed, lower)) {
+        if (bridgeIntent?.intent == "DIRECT_COMMAND" || isDirectCommand(trimmed, lower)) {
             return@withContext handleDirectCommand(trimmed, lower, projectDir, context, startTime)
         }
 
@@ -69,7 +112,7 @@ object LocalIntelligenceEngine {
         }
 
         // 2. Dev Server Start / Launch requests
-        if (isDevServerRequest(lower)) {
+        if (bridgeIntent?.intent == "DEV_SERVER" || isDevServerRequest(lower)) {
             return@withContext handleDevServerRequest(projectDir, context, startTime)
         }
 
@@ -98,23 +141,23 @@ object LocalIntelligenceEngine {
         }
 
         // 5. Conversational Greetings & Identity
-        if (isGreetingOrIdentity(lower)) {
+        if (bridgeIntent?.intent == "GREETING_OR_IDENTITY" || isGreetingOrIdentity(lower)) {
             return@withContext handleDomainGreetingAndIdentity(domain, trimmed, lower, startTime)
         }
 
         // 5.4. Inbuilt Browser Web Search Tool for Local Models
-        if (isInbuiltBrowserSearchRequest(lower)) {
+        if (bridgeIntent?.intent == "INBUILT_BROWSER_SEARCH" || isInbuiltBrowserSearchRequest(lower)) {
             val searchResult = handleInbuiltBrowserSearch(trimmed, lower, startTime)
             if (searchResult != null) return@withContext searchResult
         }
 
         // 5.5. Autonomous Multi-Model Dev Team Pipeline (Backend + Frontend + Cyber Security)
-        if (domain == LocalCodingDomain.DEV_TEAM || isDevTeamFullstackRequest(lower)) {
+        if (domain == LocalCodingDomain.DEV_TEAM || bridgeIntent?.intent == "DEV_TEAM_FULLSTACK" || isDevTeamFullstackRequest(lower)) {
             return@withContext handleDevTeamPipeline(trimmed, lower, projectDir, context, startTime)
         }
 
         // 5.6. File-First Web & Project Code Generation (Instant Inbuilt Browser Live Preview)
-        if (isWebOrFileGenerationRequest(lower)) {
+        if (bridgeIntent?.intent == "WEB_OR_FILE_GENERATION" || isWebOrFileGenerationRequest(lower)) {
             return@withContext handleFileFirstCodeGeneration(domain, trimmed, lower, projectDir, context, startTime)
         }
 

@@ -300,6 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ai/similarity", post(handlers::ai::similarity_handler))
         .route("/api/ai/rag/search", post(handlers::ai::rag_search_handler))
         .route("/api/ai/tokens", post(handlers::ai::tokens_handler))
+        .route("/api/ai/intent/classify", post(handlers::ai::intent_classify_handler))
         // Real-Time Audio DSP, Ring-Buffer & Spectral Telemetry
         .route("/api/audio/telemetry", post(handlers::audio::audio_telemetry_handler))
         .route("/api/audio/voice/analyze", post(handlers::audio::voice_analyze_handler))
