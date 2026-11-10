@@ -3,7 +3,7 @@
   "version_name": "2.4.97",
   "min_supported_version_code": 1,
   "changelog": [
-    "🦀 Rust SmartModelRouter: AI model routing is now handled by the Rust bridge daemon via POST /api/models/route — 8-step priority chain (manual → offline → shell → security → coding → fast-QA → fallback → local), with Kotlin routeViaBridge() falling back gracefully when daemon unavailable."
+    "\ud83e\udd80 Rust SmartModelRouter: AI model routing is now handled by the Rust bridge daemon via POST /api/models/route \u2014 8-step priority chain (manual \u2192 offline \u2192 shell \u2192 security \u2192 coding \u2192 fast-QA \u2192 fallback \u2192 local), with Kotlin routeViaBridge() falling back gracefully when daemon unavailable."
   ],
   "is_critical": false
 }
