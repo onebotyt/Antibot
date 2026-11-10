@@ -1,13 +1,13 @@
 {
-  "version_code": 201,
-  "version_name": "2.1.0",
+  "version_code": 200,
+  "version_name": "2.1.80",
   "min_supported_version_code": 1,
   "changelog": [
-    "🎨 Phase 21: UI Modernization & Streaming File Attachments (Ported from Antigem v1.1.6).",
-    "⚡ Streaming File Uploads: Zero-memory-pressure file streaming with live upload progress indicators and 'From Files' direct attachment.",
-    "🖼️ Smart Image Shrinker: Automatic downscaling of large photos before upload to conserve mobile bandwidth and LLM token budgets.",
-    "📱 Edge-to-Edge Experience: Fully transparent system status bars and dynamic animated splash prism with custom smooth interpolators.",
-    "🎬 Integrated Video Player: Fullscreen video host and overlay controls for media playback directly inside chats and files."
+    "\ud83c\udfa8 Phase 21: UI Modernization & Streaming File Attachments (Ported from Antigem v1.1.6).",
+    "\u26a1 Streaming File Uploads: Zero-memory-pressure file streaming with live upload progress indicators and 'From Files' direct attachment.",
+    "\ud83d\uddbc\ufe0f Smart Image Shrinker: Automatic downscaling of large photos before upload to conserve mobile bandwidth and LLM token budgets.",
+    "\ud83d\udcf1 Edge-to-Edge Experience: Fully transparent system status bars and dynamic animated splash prism with custom smooth interpolators.",
+    "\ud83c\udfac Integrated Video Player: Fullscreen video host and overlay controls for media playback directly inside chats and files."
   ],
   "is_critical": false
 }
