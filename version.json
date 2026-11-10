@@ -1,13 +1,13 @@
 {
-  "version_code": 203,
-  "version_name": "2.3.0",
+  "version_code": 202,
+  "version_name": "2.3.82",
   "min_supported_version_code": 1,
   "changelog": [
-    "☁️ Phase 23: Antigravity Cloud Agents & Cloud Web Preview.",
-    "🌐 Cloud Agents & Remote VM: Antigravity chat support in Google-managed VMs with GitHub repository checkout and persistent background execution.",
-    "🚀 Native Rust Reverse Proxy: Pure Tokio/Axum streaming reverse proxy (/api/cloud/preview/:port/*) with zero-copy forwarding and automatic CORS header rewriting.",
-    "📱 In-App Web Preview & Sandbox: Live WebView preview dialog with port detection, CORS bypass, and system browser loopback proxy (CloudPreviewServer).",
-    "🔍 Active Port Scanner: Background TCP port scanner (/api/cloud/ports/scan) detecting active local and cloud development servers."
+    "\u2601\ufe0f Phase 23: Antigravity Cloud Agents & Cloud Web Preview.",
+    "\ud83c\udf10 Cloud Agents & Remote VM: Antigravity chat support in Google-managed VMs with GitHub repository checkout and persistent background execution.",
+    "\ud83d\ude80 Native Rust Reverse Proxy: Pure Tokio/Axum streaming reverse proxy (/api/cloud/preview/:port/*) with zero-copy forwarding and automatic CORS header rewriting.",
+    "\ud83d\udcf1 In-App Web Preview & Sandbox: Live WebView preview dialog with port detection, CORS bypass, and system browser loopback proxy (CloudPreviewServer).",
+    "\ud83d\udd0d Active Port Scanner: Background TCP port scanner (/api/cloud/ports/scan) detecting active local and cloud development servers."
   ],
   "is_critical": false
 }
