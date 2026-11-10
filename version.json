@@ -1,13 +1,13 @@
 {
-  "version_code": 199,
-  "version_name": "2.0.79",
+  "version_code": 201,
+  "version_name": "2.1.0",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83d\ude80 Antibot 2.0.0 GRAND FINALE: 100% Complete 20-Phase Native Rust Upgrade!",
-    "\ud83e\udde0 Phase 20: Native Offline Model Runtime Bridge & GGUF Binary Inspector in pure Rust.",
-    "\ud83d\udd2c GGUF Metadata Engine: Zero-overhead binary header parsing (architecture, layers, KV heads, context window, quantization type).",
-    "\ud83d\udee1\ufe0f Hardware Feasibility Validator: Real-time KV cache and model memory requirements calculated against available device RAM to prevent out-of-memory crashes.",
-    "\u26a1 Full Native Rust Stack: High-speed diffing, Ripper search, AST lexer, Audio DSP, Vector RAG, BM25 FTS5, DAG consensus, and thermal governor."
+    "🎨 Phase 21: UI Modernization & Streaming File Attachments (Ported from Antigem v1.1.6).",
+    "⚡ Streaming File Uploads: Zero-memory-pressure file streaming with live upload progress indicators and 'From Files' direct attachment.",
+    "🖼️ Smart Image Shrinker: Automatic downscaling of large photos before upload to conserve mobile bandwidth and LLM token budgets.",
+    "📱 Edge-to-Edge Experience: Fully transparent system status bars and dynamic animated splash prism with custom smooth interpolators.",
+    "🎬 Integrated Video Player: Fullscreen video host and overlay controls for media playback directly inside chats and files."
   ],
-  "is_critical": true
+  "is_critical": false
 }

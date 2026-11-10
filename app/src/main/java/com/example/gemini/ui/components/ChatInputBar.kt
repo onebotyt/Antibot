@@ -12,7 +12,6 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -25,6 +24,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -32,11 +35,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,13 +57,10 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import android.net.Uri
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,7 +71,6 @@ import com.example.gemini.domain.model.AiModel
 import com.example.gemini.domain.model.ChatAttachment
 import com.example.gemini.domain.model.ModelFamily
 import com.example.gemini.domain.model.ModelQuota
-import com.example.gemini.domain.model.SmartModelRouter
 import com.example.gemini.domain.model.ThinkingPreference
 import com.example.gemini.theme.*
 import kotlinx.coroutines.Job
@@ -82,10 +81,10 @@ import java.io.File
 import java.util.UUID
 
 /**
- * Elegant 4-bar audio waveform icon.
+ * Elegant 4-bar audio waveform icon matching Claude's signature voice mode button.
  */
 @Composable
-fun AudioWaveformIcon(
+fun ClaudeWaveformIcon(
     modifier: Modifier = Modifier,
     color: Color = Color.Black
 ) {
@@ -120,7 +119,7 @@ fun LiveAudioWaveform(
     amplitudes: List<Float>,
     isPaused: Boolean,
     modifier: Modifier = Modifier,
-    barColor: Color = Color(0xFFE53935)
+    barColor: Color = com.example.gemini.theme.AppColors.danger
 ) {
     Canvas(modifier = modifier) {
         val count = amplitudes.size.coerceAtLeast(1)
@@ -156,18 +155,21 @@ fun LiveAudioWaveform(
 fun ChatInputBar(
     selectedModel: AiModel,
     quota: ModelQuota?,
-    textFieldValue: TextFieldValue,
-    onTextFieldValueChange: (TextFieldValue) -> Unit,
+    thinkingPreference: ThinkingPreference,
+    /** The typed text; the keyboard edits it directly, so typing never waits on the screen redrawing. */
+    textFieldState: TextFieldState,
     onOpenModelSelector: () -> Unit,
+    onOpenThinkingSelector: () -> Unit,
     isStreaming: Boolean,
     isBackgroundActive: Boolean = false,
     onSendMessage: (String) -> Unit,
     onStopStreaming: () -> Unit,
     attachments: List<ChatAttachment> = emptyList(),
     isUploadingAttachment: Boolean = false,
+    /** Files being copied to the agent's machine: attachment id → 0..1. */
+    attachmentProgress: Map<String, Float> = emptyMap(),
     onRemoveAttachment: (String) -> Unit = {},
     onAddAttachment: (ChatAttachment) -> Unit = {},
-    onAddAttachmentFromUri: (Uri) -> Unit = {},
     onAttachClick: () -> Unit = {},
     onTranscribeAudioFile: ((File, onDone: (String) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
     isTranscribingAudio: Boolean = false,
@@ -177,13 +179,19 @@ fun ChatInputBar(
     isAuth: Boolean = true,
     /** Shown when sending is blocked because [isOnline] is false. */
     offlineMessage: String = "Server is offline. Start the server to send messages.",
-    /** The mic records and transcribes to text instead of attaching an audio file. */
+    /** The agent cannot read audio (Claude): the mic records and transcribes to text instead of attaching a file. */
     voiceNotesAsText: Boolean = false,
+    /** The agent has no voice input (OpenCode): no dictation or voice-note buttons; Send stays in their place. */
+    voiceEnabled: Boolean = true,
     focusRequester: FocusRequester = remember { FocusRequester() },
+    /** Messages sent while the agent was working, waiting to be delivered (card above the box). */
     queuedMessages: List<com.example.gemini.domain.model.QueuedMessage> = emptyList(),
     onSendQueuedNow: (String) -> Unit = {},
-    onEditQueued: (String) -> Unit = {},
     onDeleteQueued: (String) -> Unit = {},
+    /** Antigravity chats: start a live voice call with the agent (null = no call button). */
+    onStartVoiceCall: (() -> Unit)? = null,
+    /** A voice call is running (the call button lights up and opens it). */
+    voiceCallActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -399,15 +407,15 @@ fun ChatInputBar(
             return
         }
 
-        baseTextBeforeDictation = textFieldValue.text
+        baseTextBeforeDictation = textFieldState.text.toString()
         isLiveDictating = true
         isDictationPaused = false
         recordMode = AudioRecordMode.LIVE_DICTATION
 
-        val selStart = textFieldValue.selection.start.coerceIn(0, textFieldValue.text.length)
-        val selEnd = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
-        val pre = textFieldValue.text.substring(0, selStart)
-        val post = textFieldValue.text.substring(selEnd)
+        val selStart = textFieldState.selection.start.coerceIn(0, textFieldState.text.length)
+        val selEnd = textFieldState.selection.end.coerceIn(0, textFieldState.text.length)
+        val pre = textFieldState.text.substring(0, selStart)
+        val post = textFieldState.text.substring(selEnd)
 
         sm.startTranscriptionSession(
             scope = coroutineScope,
@@ -417,12 +425,12 @@ fun ChatInputBar(
             onPartialText = { partial ->
                 val sep = if (baseTextBeforeDictation.isNotBlank() && !baseTextBeforeDictation.endsWith(" ")) " " else ""
                 val combined = baseTextBeforeDictation + sep + partial
-                onTextFieldValueChange(TextFieldValue(combined, selection = TextRange(combined.length)))
+                textFieldState.setTextAndPlaceCursorAtEnd(combined)
             },
             onFinalText = { finalText ->
                 val sep = if (baseTextBeforeDictation.isNotBlank() && !baseTextBeforeDictation.endsWith(" ")) " " else ""
                 val combined = baseTextBeforeDictation + sep + finalText
-                onTextFieldValueChange(TextFieldValue(combined, selection = TextRange(combined.length)))
+                textFieldState.setTextAndPlaceCursorAtEnd(combined)
                 baseTextBeforeDictation = combined
             },
             onError = { err ->
@@ -440,7 +448,7 @@ fun ChatInputBar(
             if (finalText.isNotBlank()) {
                 val sep = if (baseTextBeforeDictation.isNotBlank() && !baseTextBeforeDictation.endsWith(" ")) " " else ""
                 val combined = baseTextBeforeDictation + sep + finalText
-                onTextFieldValueChange(TextFieldValue(combined, selection = TextRange(combined.length)))
+                textFieldState.setTextAndPlaceCursorAtEnd(combined)
             }
         }
         isLiveDictating = false
@@ -466,7 +474,7 @@ fun ChatInputBar(
             return
         }
 
-        baseTextBeforeDictation = textFieldValue.text
+        baseTextBeforeDictation = textFieldState.text.toString()
         recordMode = AudioRecordMode.TRANSCRIBE
         isRecordingAudio = true
         isRecordingPaused = false
@@ -483,10 +491,10 @@ fun ChatInputBar(
             }
         }
 
-        val selStart = textFieldValue.selection.start.coerceIn(0, textFieldValue.text.length)
-        val selEnd = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
-        val pre = textFieldValue.text.substring(0, selStart)
-        val post = textFieldValue.text.substring(selEnd)
+        val selStart = textFieldState.selection.start.coerceIn(0, textFieldState.text.length)
+        val selEnd = textFieldState.selection.end.coerceIn(0, textFieldState.text.length)
+        val pre = textFieldState.text.substring(0, selStart)
+        val post = textFieldState.text.substring(selEnd)
 
         sm.startTranscriptionSession(
             scope = coroutineScope,
@@ -497,7 +505,7 @@ fun ChatInputBar(
             onFinalText = { finalText ->
                 val sep = if (baseTextBeforeDictation.isNotBlank() && !baseTextBeforeDictation.endsWith(" ")) " " else ""
                 val combined = baseTextBeforeDictation + sep + finalText
-                onTextFieldValueChange(TextFieldValue(combined, selection = TextRange(combined.length)))
+                textFieldState.setTextAndPlaceCursorAtEnd(combined)
             },
             onError = { err ->
                 Toast.makeText(context, "Transcribe: $err", Toast.LENGTH_SHORT).show()
@@ -518,13 +526,13 @@ fun ChatInputBar(
                     val cur = baseTextBeforeDictation
                     val sep = if (cur.isNotBlank() && !cur.endsWith(" ")) " " else ""
                     val combined = cur + sep + finalText
-                    onTextFieldValueChange(TextFieldValue(combined, selection = TextRange(combined.length)))
+                    textFieldState.setTextAndPlaceCursorAtEnd(combined)
                     if (andSend) {
                         if (!isAuth) {
                             Toast.makeText(context, "Please sign in first to send messages.", Toast.LENGTH_SHORT).show()
                         } else {
                             onSendMessage(combined.trim())
-                            onTextFieldValueChange(TextFieldValue(""))
+                            textFieldState.clearText()
                         }
                     }
                 } else {
@@ -572,9 +580,9 @@ fun ChatInputBar(
                     onAddAttachment(att)
                 } else {
                     onAddAttachment(att)
-                    val trimmed = textFieldValue.text.trim()
+                    val trimmed = textFieldState.text.toString().trim()
                     onSendMessage(trimmed)
-                    onTextFieldValueChange(TextFieldValue(""))
+                    textFieldState.clearText()
                 }
             } else {
                 onAddAttachment(att)
@@ -582,26 +590,12 @@ fun ChatInputBar(
         }
     }
 
-    val isAuto = SmartModelRouter.isAuto(selectedModel.id)
-    val dynamicDecision = remember(isAuto, textFieldValue.text, isOnline) {
-        if (isAuto) {
-            SmartModelRouter.route(
-                prompt = textFieldValue.text,
-                hasAttachments = attachments.isNotEmpty(),
-                isOnline = isOnline,
-                currentSelectedModelId = SmartModelRouter.AUTO_MODEL_ID
-            )
-        } else null
-    }
-
-    val canSend = textFieldValue.text.trim().isNotEmpty() || attachments.isNotEmpty()
-    val familyColor = when {
-        dynamicDecision != null -> dynamicDecision.badgeColor
-        isAuto -> Color(0xFF3B82F6)
-        selectedModel.family == ModelFamily.LOCAL || selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> Color(0xFF10B981)
-        selectedModel.family == ModelFamily.CLAUDE -> ClaudeTerracotta
-        else -> GeminiBlue
-    }
+    // derived, so the bar redraws only when the box turns empty / non-empty, not on every key press
+    val hasText by remember(textFieldState) { derivedStateOf { textFieldState.text.isNotBlank() } }
+    val canSend = hasText || attachments.isNotEmpty()
+    // attachments still being prepared or copied must be ready first (they go with the message)
+    val attachmentsBusy = isUploadingAttachment || attachmentProgress.isNotEmpty()
+    val familyColor = if (selectedModel.family == ModelFamily.CLAUDE) ClaudeTerracotta else GeminiBlue
     val fileLinkHandler = LocalFileLinkHandler.current
     var previewImageUrl by remember { mutableStateOf<String?>(null) }
 
@@ -625,7 +619,6 @@ fun ChatInputBar(
             QueuedMessagesCard(
                 messages = queuedMessages,
                 onSendNow = onSendQueuedNow,
-                onEdit = onEditQueued,
                 onDelete = onDeleteQueued,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
@@ -637,7 +630,7 @@ fun ChatInputBar(
                 color = com.example.gemini.theme.AppColors.card,
                 border = BorderStroke(
                     1.dp,
-                    com.example.gemini.theme.AppColors.border
+                    if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                 )
             ) {
                 if (isRecordingAudio) {
@@ -664,8 +657,8 @@ fun ChatInputBar(
                                 .size(9.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (isRecordingPaused) Color(0xFFFFA000)
-                                    else Color(0xFFE53935).copy(alpha = pulseAlpha)
+                                    if (isRecordingPaused) com.example.gemini.theme.AppColors.warning
+                                    else com.example.gemini.theme.AppColors.danger.copy(alpha = pulseAlpha)
                                 )
                         )
 
@@ -677,7 +670,7 @@ fun ChatInputBar(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            color = if (isRecordingPaused) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurface
+                            color = if (isRecordingPaused) com.example.gemini.theme.AppColors.warning else MaterialTheme.colorScheme.onSurface
                         )
 
                         if (recordMode == AudioRecordMode.TRANSCRIBE) {
@@ -717,7 +710,7 @@ fun ChatInputBar(
                                 .weight(1f)
                                 .height(26.dp)
                                 .padding(horizontal = 4.dp),
-                            barColor = if (isRecordingPaused) Color(0xFFFFA000) else Color(0xFFE53935)
+                            barColor = if (isRecordingPaused) com.example.gemini.theme.AppColors.warning else com.example.gemini.theme.AppColors.danger
                         )
 
                         Spacer(modifier = Modifier.width(4.dp))
@@ -726,15 +719,15 @@ fun ChatInputBar(
                         Surface(
                             onClick = { togglePauseAudioRecording() },
                             shape = CircleShape,
-                            color = if (isRecordingPaused) Color(0xFFFFA000).copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
-                            border = BorderStroke(1.dp, if (isRecordingPaused) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)),
+                            color = if (isRecordingPaused) com.example.gemini.theme.AppColors.warning.copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
+                            border = BorderStroke(1.dp, if (isRecordingPaused) com.example.gemini.theme.AppColors.warning else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)),
                             modifier = Modifier.size(34.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (isRecordingPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                                     contentDescription = if (isRecordingPaused) "Resume" else "Pause",
-                                    tint = if (isRecordingPaused) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurface,
+                                    tint = if (isRecordingPaused) com.example.gemini.theme.AppColors.warning else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(17.dp)
                                 )
                             }
@@ -804,10 +797,10 @@ fun ChatInputBar(
                         if (isLiveDictating) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (isDictationPaused) Color(0xFFFFA000).copy(alpha = 0.12f) else GeminiBlue.copy(alpha = 0.12f),
+                                color = if (isDictationPaused) com.example.gemini.theme.AppColors.warning.copy(alpha = 0.12f) else GeminiBlue.copy(alpha = 0.12f),
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isDictationPaused) Color(0xFFFFA000).copy(alpha = 0.4f) else GeminiBlue.copy(alpha = 0.4f)
+                                    if (isDictationPaused) com.example.gemini.theme.AppColors.warning.copy(alpha = 0.4f) else GeminiBlue.copy(alpha = 0.4f)
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -821,7 +814,7 @@ fun ChatInputBar(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(if (isDictationPaused) Color(0xFFFFA000) else Color(0xFFE53935))
+                                            .background(if (isDictationPaused) com.example.gemini.theme.AppColors.warning else com.example.gemini.theme.AppColors.danger)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
@@ -844,14 +837,14 @@ fun ChatInputBar(
                                             }
                                         },
                                         shape = CircleShape,
-                                        color = if (isDictationPaused) Color(0xFFFFA000).copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                        color = if (isDictationPaused) com.example.gemini.theme.AppColors.warning.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                                         modifier = Modifier.size(26.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
                                                 imageVector = if (isDictationPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                                                 contentDescription = if (isDictationPaused) "Resume" else "Pause",
-                                                tint = if (isDictationPaused) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                tint = if (isDictationPaused) com.example.gemini.theme.AppColors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(15.dp)
                                             )
                                         }
@@ -863,14 +856,14 @@ fun ChatInputBar(
                                     Surface(
                                         onClick = { stopLiveDictation() },
                                         shape = CircleShape,
-                                        color = Color(0xFFE53935).copy(alpha = 0.12f),
+                                        color = com.example.gemini.theme.AppColors.danger.copy(alpha = 0.12f),
                                         modifier = Modifier.size(26.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
                                                 imageVector = Icons.Default.Stop,
                                                 contentDescription = "Stop",
-                                                tint = Color(0xFFE53935),
+                                                tint = com.example.gemini.theme.AppColors.danger,
                                                 modifier = Modifier.size(15.dp)
                                             )
                                         }
@@ -909,106 +902,12 @@ fun ChatInputBar(
                             }
                         }
 
-                        // Clipboard Image Paste Banner
-                        var dismissedClipboardUri by remember { mutableStateOf<Uri?>(null) }
-                        val clipboardImageUri = remember(attachments.size, textFieldValue.text, dismissedClipboardUri) {
-                            val uri = ClipboardImageHelper.getClipboardImageUri(context)
-                            if (uri != null && uri != dismissedClipboardUri) uri else null
-                        }
-
-                        AnimatedVisibility(visible = clipboardImageUri != null) {
-                            if (clipboardImageUri != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 4.dp, vertical = 3.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            onAddAttachmentFromUri(clipboardImageUri)
-                                            dismissedClipboardUri = clipboardImageUri
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            AsyncImage(
-                                                model = clipboardImageUri,
-                                                contentDescription = null,
-                                                modifier = Modifier
-                                                    .size(28.dp)
-                                                    .clip(RoundedCornerShape(6.dp)),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                            Column {
-                                                Text(
-                                                    text = "Paste Image from Clipboard",
-                                                    fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                Text(
-                                                    text = "Tap to attach copied image",
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                        IconButton(
-                                            onClick = { dismissedClipboardUri = clipboardImageUri },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.Close,
-                                                contentDescription = "Dismiss",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                    // 1. Multiline Text Prompt Input ("Ask AntiBot...")
-                    TextField(
-                        value = textFieldValue,
-                        onValueChange = { newVal ->
-                            val trimmed = newVal.text.trim()
-                            if (trimmed.startsWith("content://") || (trimmed.startsWith("file://") && trimmed.lowercase().let { s -> s.endsWith(".png") || s.endsWith(".jpg") || s.endsWith(".jpeg") || s.endsWith(".webp") })) {
-                                try {
-                                    val parsed = Uri.parse(trimmed)
-                                    val mime = context.contentResolver.getType(parsed)
-                                    if (mime?.startsWith("image/") == true || trimmed.lowercase().let { s -> s.endsWith(".png") || s.endsWith(".jpg") || s.endsWith(".jpeg") || s.endsWith(".webp") }) {
-                                        onAddAttachmentFromUri(parsed)
-                                        onTextFieldValueChange(TextFieldValue(""))
-                                        return@TextField
-                                    }
-                                } catch (_: Exception) {}
-                            }
-                            onTextFieldValueChange(newVal)
-                        },
+                        // 1. Text Field Area on Top
+                        TextField(
+                        state = textFieldState,
                         placeholder = {
-                            val inputPlaceholder = when {
-                                selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
-                                    val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id)
-                                    domain.placeholderPrompt
-                                }
-                                selectedModel.family == ModelFamily.CLAUDE -> "Reply to Claude..."
-                                selectedModel.displayName.isNotBlank() && !isAuto -> "Reply to ${selectedModel.displayName.split(" ").firstOrNull() ?: "Gemini"}..."
-                                else -> "Reply to Gemini..."
-                            }
                             Text(
-                                text = inputPlaceholder,
+                                text = "Reply to ${selectedModel.displayName.split(" ").firstOrNull() ?: "Gemini"}...",
                                 fontSize = 15.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                             )
@@ -1016,16 +915,6 @@ fun ChatInputBar(
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(focusRequester)
-                            .onKeyEvent { keyEvent ->
-                                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.isCtrlPressed && keyEvent.key == Key.V) {
-                                    val imgUri = ClipboardImageHelper.getClipboardImageUri(context)
-                                    if (imgUri != null) {
-                                        onAddAttachmentFromUri(imgUri)
-                                        dismissedClipboardUri = imgUri
-                                        true
-                                    } else false
-                                } else false
-                            }
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -1035,13 +924,13 @@ fun ChatInputBar(
                             unfocusedIndicatorColor = Color.Transparent,
                             focusedTextColor = MaterialTheme.colorScheme.onSurface,
                             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            cursorColor = com.example.gemini.theme.AppColors.primary
+                            cursorColor = ClaudeTerracotta
                         ),
                         textStyle = TextStyle(
                             fontSize = 15.sp,
                             lineHeight = 21.sp
                         ),
-                        maxLines = 6,
+                        lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
                     )
 
@@ -1050,7 +939,7 @@ fun ChatInputBar(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
                                 .horizontalScroll(rememberScrollState()),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1072,7 +961,7 @@ fun ChatInputBar(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "Uploading attachment...",
+                                            text = "Preparing attachment…",
                                             fontSize = 11.5.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -1081,9 +970,13 @@ fun ChatInputBar(
                             }
 
                             for (att in attachments) {
-                                val isImg = att.isImage || att.name.endsWith(".jpg", true) || att.name.endsWith(".png", true) ||
+                                // an image sent only by path (too big to shrink, TIFF, …) shows as a file
+                                val isImg = !(att.reference && att.base64.isNullOrBlank()) && (
+                                    att.isImage || att.name.endsWith(".jpg", true) || att.name.endsWith(".png", true) ||
                                         att.name.endsWith(".jpeg", true) || att.name.endsWith(".webp", true) ||
                                         att.name.endsWith(".gif", true) || att.mimeType?.startsWith("image/") == true
+                                )
+                                val copyProgress = attachmentProgress[att.id]
 
                                 val imgSource = remember(att) {
                                     when {
@@ -1102,9 +995,16 @@ fun ChatInputBar(
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        // Clickable preview + name container
                                         Row(
                                             modifier = Modifier
                                                 .clickable {
+                                                    if (att.reference && !isImg) {
+                                                        // a file on the agent's machine: opened like any file link (encoded, the handler decodes);
+                                                        // still copying: nothing to open yet
+                                                        if (att.path.isNotBlank()) fileLinkHandler.onOpenFile(java.net.URLEncoder.encode(att.path, "UTF-8"))
+                                                        return@clickable
+                                                    }
                                                     val ext = (att.name.ifBlank { att.path }).substringAfterLast('.', "").lowercase()
                                                     val isText = att.mimeType?.startsWith("text/") == true ||
                                                             att.mimeType?.contains("json") == true ||
@@ -1183,15 +1083,41 @@ fun ChatInputBar(
                                                 )
                                             }
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = att.name,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.widthIn(max = 130.dp)
-                                            )
+                                            Column(modifier = Modifier.widthIn(max = 130.dp)) {
+                                                Text(
+                                                    text = att.name,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                // a file sent by path: its size, or how far its copy to the agent's machine is
+                                                if (copyProgress != null) {
+                                                    Text(
+                                                        text = "Copying ${(copyProgress * 100).toInt()}%",
+                                                        fontSize = 10.5.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1
+                                                    )
+                                                    LinearProgressIndicator(
+                                                        progress = { copyProgress },
+                                                        modifier = Modifier
+                                                            .width(110.dp)
+                                                            .padding(top = 2.dp)
+                                                            .height(3.dp)
+                                                            .clip(RoundedCornerShape(2.dp)),
+                                                        color = ClaudeTerracotta
+                                                    )
+                                                } else if (att.reference && att.size > 0) {
+                                                    Text(
+                                                        text = com.example.gemini.data.files.FileKinds.formatSize(att.size),
+                                                        fontSize = 10.5.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
                                         }
 
                                         Spacer(modifier = Modifier.width(2.dp))
@@ -1212,14 +1138,14 @@ fun ChatInputBar(
                         }
                     }
 
-                    // 3. Bottom Action Row inside the card: [+] [Model Chip] ... [Dictation GraphicEq] [Send / Stop / Mic]
+                    // 3. Bottom Action Row: [+] [Model Chip] ... [Voice / Send / Stop Button]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 6.dp, end = 6.dp, bottom = 6.dp, top = 2.dp),
+                            .padding(start = 4.dp, end = 4.dp, bottom = 2.dp, top = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Left: [+] Attachment Button
+                        // [+] Attachment Button
                         Surface(
                             onClick = onAttachClick,
                             shape = CircleShape,
@@ -1237,192 +1163,232 @@ fun ChatInputBar(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        // Model Selector Pill (expands gracefully, truncating text while preserving badge & chevron)
-                        Surface(
-                            onClick = {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                                onOpenModelSelector()
-                            },
-                            shape = RoundedCornerShape(17.dp),
-                            color = MaterialTheme.colorScheme.background,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                        // Middle Area: Model Selector Pill (takes up to 100% of the available space between [+] and right actions)
+                        Box(
                             modifier = Modifier
-                                .height(34.dp)
-                                .weight(1f, fill = false)
+                                .weight(1f)
+                                .padding(horizontal = 6.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .padding(horizontal = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Surface(
+                                onClick = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                    onOpenModelSelector()
+                                },
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                )
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = familyColor,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                val modelName = when {
-                                    isAuto -> "Auto"
-                                    selectedModel.id.startsWith("local-") || selectedModel.id == "local-model-only" -> {
-                                        com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModel.id).shortName
-                                    }
-                                    else -> selectedModel.displayName
-                                }
-                                Text(
-                                    text = modelName,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = familyColor,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = selectedModel.displayName,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
 
-                                val pct = quota?.percentage
-                                if (pct != null && pct > 0) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    val badgeColor = if (pct > 50) QuotaGreen else if (pct > 20) QuotaAmber else QuotaRed
-                                    val badgeBg = if (pct > 50) Color(0xFF143823) else badgeColor.copy(alpha = 0.18f)
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(badgeBg)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "$pct%",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = badgeColor
-                                        )
+                                    // 5h or 7d share left (picked in the model sheet; 7d when the model has no 5h limit)
+                                    val left = quota?.pillRemaining
+                                    val pctText = quota?.pillText
+                                    if (left != null && pctText != null) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        // same colour as the model picker's meter for this limit
+                                        val badgeColor = com.example.gemini.ui.models.quotaLeftColor(left)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(badgeColor.copy(alpha = 0.15f))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = if (quota?.pillIsWeekly == true) "7d $pctText" else pctText,
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = badgeColor
+                                            )
+                                        }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Switch Model",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(14.dp)
-                                )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Switch Model",
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
                         }
 
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        // Right Group: [Waveform Dictation] [Stop / Send / Voice Note Mic]
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Dedicated Live Dictation (Waveform GraphicEq) Button
-                            if (!isStreaming && !isRecordingAudio) {
-                                Surface(
-                                    onClick = {
-                                        if (isLiveDictating) {
-                                            stopLiveDictation()
-                                        } else {
-                                            startLiveDictation()
-                                        }
-                                    },
-                                    shape = CircleShape,
-                                    color = if (isLiveDictating) GeminiBlue.copy(alpha = 0.18f) else MaterialTheme.colorScheme.background,
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isLiveDictating) GeminiBlue.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                    ),
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.GraphicEq,
-                                            contentDescription = if (isLiveDictating) "Stop Dictation" else "Live Dictation",
-                                            tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                                            modifier = Modifier.size(19.dp)
-                                        )
-                                    }
+                        // Live voice call with the agent (Antigravity voice mode); also while the agent works
+                        if (onStartVoiceCall != null && !isRecordingAudio && !isLiveDictating) {
+                            Surface(
+                                onClick = onStartVoiceCall,
+                                shape = CircleShape,
+                                color = if (voiceCallActive) GeminiBlue else MaterialTheme.colorScheme.background,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (voiceCallActive) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                ),
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.HeadsetMic,
+                                        contentDescription = if (voiceCallActive) "Open voice call" else "Start voice call",
+                                        tint = if (voiceCallActive) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
                             }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
 
-                            // Primary Action Button (Stop / Send / Voice Note Mic)
-                            if (isStreaming && !canSend) {
-                                Surface(
-                                    onClick = onStopStreaming,
-                                    shape = CircleShape,
-                                    color = ClaudeTerracotta,
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.Stop,
-                                            contentDescription = "Stop",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                        // Dedicated Speech-to-Text Live Dictation Button (AGY Hub)
+                        if (voiceEnabled && !isStreaming && !isRecordingAudio) {
+                            Surface(
+                                onClick = {
+                                    if (isLiveDictating) {
+                                        stopLiveDictation()
+                                    } else {
+                                        startLiveDictation()
                                     }
+                                },
+                                shape = CircleShape,
+                                color = if (isLiveDictating) GeminiBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.background,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isLiveDictating) GeminiBlue.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                ),
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.GraphicEq,
+                                        contentDescription = if (isLiveDictating) "Stop Dictation" else "Live Dictation",
+                                        tint = if (isLiveDictating) GeminiBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
-                            } else if (canSend) {
-                                val sendEnabled = isOnline && isAuth
-                                val sendBtnColor = if (!sendEnabled) com.example.gemini.theme.AppColors.textSecondary else if (isBackgroundActive) com.example.gemini.theme.AppColors.warning else com.example.gemini.theme.AppColors.primary
-                                Surface(
-                                    onClick = {
-                                        val trimmed = textFieldValue.text.trim()
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
+                        // Action Button (Send / Stop / Voice Recorder). While the agent works, a typed message is
+                        // sent (it is queued, or injected by Claude); Stop shows when the box is empty.
+                        if (isStreaming && !canSend) {
+                            Surface(
+                                onClick = onStopStreaming,
+                                shape = CircleShape,
+                                color = ClaudeTerracotta,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Stop,
+                                        contentDescription = "Stop",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        } else if (canSend) {
+                            val sendBtnColor = if (!isAuth) com.example.gemini.theme.AppColors.textSecondary else if (!isOnline) com.example.gemini.theme.AppColors.textSecondary else if (attachmentsBusy) com.example.gemini.theme.AppColors.textSecondary else if (isBackgroundActive) com.example.gemini.theme.AppColors.warning else ClaudeTerracotta
+                            Surface(
+                                onClick = {
+                                    val trimmed = textFieldState.text.toString().trim()
                                         if (!isAuth) {
                                             Toast.makeText(context, "Please sign in first to send messages.", Toast.LENGTH_SHORT).show()
+                                            return@Surface
+                                        }
+                                        if (attachmentsBusy) {
+                                            Toast.makeText(context, "Wait until the attachments are ready.", Toast.LENGTH_SHORT).show()
                                             return@Surface
                                         }
                                         if (!isOnline) {
                                             Toast.makeText(context, offlineMessage, Toast.LENGTH_SHORT).show()
                                             return@Surface
                                         }
-                                        if (isLiveDictating) stopLiveDictation()
-                                        onSendMessage(trimmed)
-                                        onTextFieldValueChange(TextFieldValue(""))
-                                    },
-                                    shape = CircleShape,
-                                    color = sendBtnColor,
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowUpward,
-                                            contentDescription = "Send",
-                                            tint = if (sendEnabled) (if (isDark) Color.Black else Color.White) else com.example.gemini.theme.AppColors.textSecondary,
-                                            modifier = Modifier.size(19.dp)
-                                        )
-                                    }
-                                }
-                            } else {
-                                // Antigem signature white microphone button
-                                val voiceBgColor = if (isDark) Color.White else Color(0xFF1E1E1E)
-                                val voiceIconColor = if (isDark) Color.Black else Color.White
-
-                                Surface(
-                                    onClick = {
-                                        if (voiceNotesAsText) {
-                                            startAutoTranscribe()
-                                        } else {
-                                            recordMode = AudioRecordMode.VOICE_NOTE
-                                            triggerMicClick()
+                                        if (isLiveDictating) {
+                                            stopLiveDictation()
                                         }
-                                    },
-                                    shape = CircleShape,
-                                    color = voiceBgColor,
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Mic,
-                                            contentDescription = if (voiceNotesAsText) "Record and transcribe" else "Record voice note",
-                                            tint = voiceIconColor,
-                                            modifier = Modifier.size(20.dp)
-                                        )
+                                        onSendMessage(trimmed)
+                                        textFieldState.clearText()
+                                },
+                                shape = CircleShape,
+                                color = sendBtnColor,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowUpward,
+                                        contentDescription = "Send",
+                                        tint = if (isAuth && isOnline) (if (isBackgroundActive) com.example.gemini.theme.AppColors.onBackground else Color.White) else com.example.gemini.theme.AppColors.textSecondary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
+                        } else if (!voiceEnabled) {
+                            // no voice input for this agent: an inactive Send until something is typed
+                            Surface(
+                                onClick = {},
+                                enabled = false,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowUpward,
+                                        contentDescription = "Send",
+                                        tint = com.example.gemini.theme.AppColors.textSecondary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            // Claude-style Microphone Voice Recorder Button
+                            val voiceBgColor = com.example.gemini.theme.AppColors.onBackground
+                            val voiceIconColor = com.example.gemini.theme.AppColors.background
+
+                            Surface(
+                                onClick = {
+                                    if (voiceNotesAsText) {
+                                        startAutoTranscribe()
+                                    } else {
+                                        recordMode = AudioRecordMode.VOICE_NOTE
+                                        triggerMicClick()
                                     }
+                                },
+                                shape = CircleShape,
+                                color = voiceBgColor,
+                                shadowElevation = 1.dp,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Mic,
+                                        contentDescription = if (voiceNotesAsText) "Record and transcribe" else "Record voice note",
+                                        tint = voiceIconColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }

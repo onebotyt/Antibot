@@ -77,6 +77,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         com.example.gemini.data.jarvis.JarvisPreferences.init(this)
+        com.example.gemini.data.files.ExplorerPrefs.init(this)
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.example.gemini.data.files.CacheJanitor.trimAll(applicationContext, force = true)
+        }
         com.example.gemini.data.jarvis.JarvisController.attach(application, chatViewModel)
         handleJarvisIntent(intent)
         handleOAuthIntent(intent)
@@ -179,7 +183,9 @@ class MainActivity : ComponentActivity() {
                         insetsController.isAppearanceLightNavigationBars = false
                     } else {
                         val bgArgb = com.example.gemini.theme.AppColors.background.toArgb()
-                        window.statusBarColor = bgArgb
+                        // Transparent like Theme.kt: screens draw their own background behind it, and the
+                        // sidebar + scrim can extend over it.
+                        window.statusBarColor = android.graphics.Color.TRANSPARENT
                         window.navigationBarColor = bgArgb
                         val isLight = themeMode.equals("LIGHT", ignoreCase = true) || (!useDarkTheme && themeMode.equals("SYSTEM", ignoreCase = true))
                         insetsController.isAppearanceLightStatusBars = isLight
@@ -432,6 +438,7 @@ class MainActivity : ComponentActivity() {
 
                                 // Floating Video Player Overlay for active background/in-app playback controls
                                 com.example.gemini.ui.components.FloatingVideoPlayerOverlay()
+                                com.example.gemini.ui.components.FullscreenVideoHost()
 
                                 // Real-time floating live diagnostics overlay (JVM Threads, OkHttp queues, connections, lag)
                                 if (isFloatingDiagnosticsEnabled) {

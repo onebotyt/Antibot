@@ -10,7 +10,6 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,12 +26,9 @@ import com.example.gemini.theme.GeminiBlue
 fun AttachmentSelectorBottomSheet(
     onPickImage: () -> Unit,
     onPickFile: () -> Unit,
-    onPasteClipboardImage: ((android.net.Uri) -> Unit)? = null,
+    onPickFromFiles: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val clipboardImageUri = remember { ClipboardImageHelper.getClipboardImageUri(context) }
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -55,25 +51,11 @@ fun AttachmentSelectorBottomSheet(
             )
             Spacer(modifier = Modifier.height(14.dp))
 
-            if (clipboardImageUri != null && onPasteClipboardImage != null) {
-                AttachmentOptionRow(
-                    icon = Icons.Outlined.Image,
-                    iconColor = com.example.gemini.theme.NeonCyan,
-                    title = "Paste Image from Clipboard",
-                    subtitle = "Attach the copied image currently in your clipboard",
-                    onClick = {
-                        onDismiss()
-                        onPasteClipboardImage(clipboardImageUri)
-                    }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
             AttachmentOptionRow(
                 icon = Icons.Outlined.Image,
                 iconColor = ClaudeTerracotta,
                 title = "Photo / Image",
-                subtitle = "Attach an image for multimodal vision & analysis",
+                subtitle = "The model sees the image directly. Big photos are shrunk first.",
                 onClick = {
                     onDismiss()
                     onPickImage()
@@ -86,10 +68,23 @@ fun AttachmentSelectorBottomSheet(
                 icon = Icons.Outlined.Description,
                 iconColor = GeminiBlue,
                 title = "Document / File",
-                subtitle = "Attach a PDF, text, or binary file from your device",
+                subtitle = "Copied from your phone to the agent's machine. Avoid large files here: copying takes time and storage. Use \"From Files\" for big files.",
                 onClick = {
                     onDismiss()
                     onPickFile()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            AttachmentOptionRow(
+                icon = Icons.Outlined.Folder,
+                iconColor = ClaudeTerracotta,
+                title = "From Files",
+                subtitle = "Attach any file, any size: nothing is copied. The agent opens the original file, so it could change it (it is told not to, and usually won't).",
+                onClick = {
+                    onDismiss()
+                    onPickFromFiles()
                 }
             )
         }
