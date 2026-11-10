@@ -1,14 +1,14 @@
 {
-  "version_code": 204,
-  "version_name": "2.4.0",
+  "version_code": 203,
+  "version_name": "2.4.83",
   "min_supported_version_code": 1,
   "changelog": [
-    "🔬 Phase 24: REA Reverse Engineering Suite, Multi-Agent Codex & OpenCode Bridge.",
-    "🛠️ Reverse Engineering Anything (REA): JADX decompiler, APKTool resources, Hermes bytecode recovery, Rizin disassembler, and GDB debugger integration via on-demand tool supervisor.",
-    "🤖 OpenAI Codex Protocol Integration: High-performance pure Rust bridge daemon handlers (/api/codex/*) supporting JSON-RPC methods, request approvals, turn metadata, and WebSocket event replays.",
-    "🌐 OpenCode Multi-Provider Gateway: Pure Rust handlers (/api/opencode/*) with custom provider CRUD, endpoint model probing, OAuth callbacks, MCP supervisor, and SSE relay.",
-    "📱 Android Development Suite: Jetpack Compose, Kotlin, Flutter, and React Native phone-based build and tooling supervisor.",
-    "⚡ 100% Rust-First Native Architecture: Zero Go dependencies for new modules, fully validated with unit tests across all native layers."
+    "\ud83d\udd2c Phase 24: REA Reverse Engineering Suite, Multi-Agent Codex & OpenCode Bridge.",
+    "\ud83d\udee0\ufe0f Reverse Engineering Anything (REA): JADX decompiler, APKTool resources, Hermes bytecode recovery, Rizin disassembler, and GDB debugger integration via on-demand tool supervisor.",
+    "\ud83e\udd16 OpenAI Codex Protocol Integration: High-performance pure Rust bridge daemon handlers (/api/codex/*) supporting JSON-RPC methods, request approvals, turn metadata, and WebSocket event replays.",
+    "\ud83c\udf10 OpenCode Multi-Provider Gateway: Pure Rust handlers (/api/opencode/*) with custom provider CRUD, endpoint model probing, OAuth callbacks, MCP supervisor, and SSE relay.",
+    "\ud83d\udcf1 Android Development Suite: Jetpack Compose, Kotlin, Flutter, and React Native phone-based build and tooling supervisor.",
+    "\u26a1 100% Rust-First Native Architecture: Zero Go dependencies for new modules, fully validated with unit tests across all native layers."
   ],
   "is_critical": false
 }
