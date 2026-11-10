@@ -1,12 +1,11 @@
 {
-  "version_code": 210,
-  "version_name": "2.4.90",
+  "version_code": 211,
+  "version_name": "2.4.91",
   "min_supported_version_code": 1,
   "changelog": [
-    "\u2728 Modernized Home Experience: Replaced legacy home view with modern multi-agent picker (Antigravity, Claude Code, OpenCode, Codex, Local) and dynamic status-aware setup prompts.",
-    "\ud83c\udfa8 Refined Top Bar Layout: Fixed version badge vertical text wrapping and optimized header action spacing for all screen densities.",
-    "\ud83e\udd16 Multi-CLI Coding Suite: Integrated seamless switching and backend detachment across Antigravity, Claude Code, OpenCode, and Codex.",
-    "\ud83d\udee1\ufe0f Robust Error & Offline Fallbacks: Enhanced connection handling and graceful offline prompt card transitions."
+    "\ud83c\udf99\ufe0f Voice Calls for Local Models: Extended full conversational voice call support to Local Models with on-device speech recognition, natural human cadence TTS, and pulsing visualizer orb.",
+    "\u26a1 Resilient Voice Mode Fallback: Automatically falls back to conversational voice mode when the Antigravity Hub lacks /voice/ws WebSocket or during network interruptions instead of failing.",
+    "\u2728 Clean Welcome Interface: Removed the segmented Local/Antigravity pill switcher from the home screen, keeping the welcome view focused and clutter-free."
   ],
   "is_critical": false
 }

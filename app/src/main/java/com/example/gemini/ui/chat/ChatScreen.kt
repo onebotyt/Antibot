@@ -586,8 +586,28 @@ fun ChatScreen(
     val voiceCall by com.example.gemini.data.voice.AgyVoiceCall.state.collectAsState()
     val agyPickedModel by viewModel.agyBackend.selectedModelId.collectAsState()
     val beginVoiceCall: () -> Unit = {
-        val title = currentConv?.title?.takeIf { it.isNotBlank() && it != "New Chat" } ?: "Voice chat"
-        com.example.gemini.data.voice.AgyVoiceCall.start(context, title) { viewModel.agyBackend.prepareVoiceCall() }
+        val title = currentConv?.title?.takeIf { it.isNotBlank() && it != "New Chat" } ?: (if (isLocalChat) "Local voice chat" else "Voice chat")
+        com.example.gemini.data.voice.AgyVoiceCall.start(
+            context = context,
+            title = title,
+            isLocal = isLocalChat,
+            conversationId = currentConv?.id,
+            onSendPrompt = { prompt ->
+                viewModel.sendMessage(prompt)
+            },
+            messagesFlow = viewModel.messages,
+            prepare = {
+                if (isLocalChat) {
+                    val cid = currentConv?.id ?: run {
+                        viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.LOCAL)
+                        viewModel.currentConversation.value?.id ?: "local_${System.currentTimeMillis()}"
+                    }
+                    cid to 0
+                } else {
+                    viewModel.agyBackend.prepareVoiceCall()
+                }
+            }
+        )
     }
     val voiceCallPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) beginVoiceCall()
@@ -607,11 +627,11 @@ fun ChatScreen(
         com.example.gemini.data.voice.AgyVoicePreferences.init(context)
         when {
             voiceCall.active -> com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
-            !systemConnectionState.canSend -> com.example.gemini.ui.components.AppToastHelper.showToast(
+            !isLocalChat && !systemConnectionState.canSend -> com.example.gemini.ui.components.AppToastHelper.showToast(
                 "Start the server to call Antigravity.", com.example.gemini.ui.components.ChatToastType.ERROR
             )
             // agy refuses voice calls for cloud chats (its /voice/ws answers 404 for them)
-            currentConv?.cloudProjectId != null -> com.example.gemini.ui.components.AppToastHelper.showToast(
+            !isLocalChat && currentConv?.cloudProjectId != null -> com.example.gemini.ui.components.AppToastHelper.showToast(
                 com.example.gemini.data.voice.AgyVoiceCall.CLOUD_CHAT_NO_VOICE, com.example.gemini.ui.components.ChatToastType.INFO
             )
             !com.example.gemini.data.voice.AgyVoicePreferences.picked.value -> showVoicePicker = true
@@ -657,9 +677,9 @@ fun ChatScreen(
     LaunchedEffect(currentConv?.id, isAgyChat) {
         if (isAgyChat) currentConv?.id?.let { com.example.gemini.data.voice.AgyVoiceChats.refresh(it) }
     }
-    val voiceCallItems = remember(agyVoiceChats, currentConv?.id, isAgyChat, voiceCall.active, voiceCall.conversationId, voiceCall.startedAtWall) {
+    val voiceCallItems = remember(agyVoiceChats, currentConv?.id, isAgyChat, isLocalChat, voiceCall.active, voiceCall.conversationId, voiceCall.startedAtWall) {
         val id = currentConv?.id
-        if (!isAgyChat || id == null) emptyList() else {
+        if ((!isAgyChat && !isLocalChat) || id == null) emptyList() else {
             val live = voiceCall.active && voiceCall.conversationId == id && voiceCall.startedAtWall > 0
             buildList {
                 agyVoiceChats[id].orEmpty().forEach { r ->
@@ -1505,7 +1525,7 @@ fun ChatScreen(
                             }
                         }
                     } else if (isAgyChat && isServerInitializing && messages.isEmpty()) {
-                        if (isFreshNewChat && enabledAgents.size > 1) {
+                        if (isFreshNewChat && enabledAgents.filter { it != com.example.gemini.domain.model.AgentKind.LOCAL }.size > 1) {
                             BoxWithConstraints(
                                 modifier = Modifier.fillMaxSize()
                             ) {
@@ -2374,7 +2394,7 @@ fun ChatScreen(
                     voiceNotesAsText = false,
                     cascadeId = activeConversationKey,
                     focusRequester = chatInputFocusRequester,
-                    onStartVoiceCall = if (isAgyChat) onStartVoiceCall else null,
+                    onStartVoiceCall = if (isAgyChat || isLocalChat) onStartVoiceCall else null,
                     voiceCallActive = voiceCall.active
                 )
 

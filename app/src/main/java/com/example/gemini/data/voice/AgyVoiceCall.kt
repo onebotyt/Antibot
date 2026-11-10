@@ -47,6 +47,10 @@ import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import com.example.gemini.assistant.voice.HumanVoiceEngine
+import com.example.gemini.data.jarvis.AndroidSpeechTranscriber
+import com.example.gemini.domain.model.ChatMessage
+import com.example.gemini.domain.model.MessageRole
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.PI
 import kotlin.math.max
@@ -106,7 +110,8 @@ object AgyVoiceCall {
         val lines: List<Line> = emptyList(),
         val minimized: Boolean = false,
         /** What happened in the call, newest last ("mm:ss  text"): to see why the voice did or did not answer. */
-        val log: List<String> = emptyList()
+        val log: List<String> = emptyList(),
+        val isLocal: Boolean = false
     ) {
         val active: Boolean get() = phase != Phase.IDLE
         val inCall: Boolean get() = phase == Phase.CONNECTING || phase == Phase.LIVE || phase == Phase.RECONNECTING
@@ -132,7 +137,15 @@ object AgyVoiceCall {
     private val lineKeys = AtomicLong(0)
 
     @Volatile private var session: Session? = null
-    private var lastStart: Pair<String, suspend () -> Pair<String, Int>>? = null
+    data class StartCallParams(
+        val title: String,
+        val isLocal: Boolean,
+        val conversationId: String?,
+        val onSendPrompt: ((String) -> Unit)?,
+        val messagesFlow: StateFlow<List<ChatMessage>>?,
+        val prepare: suspend () -> Pair<String, Int>
+    )
+    private var lastStartParams: StartCallParams? = null
     /** "Try again" keeps the failed attempt's log (its details) above the new attempt's. */
     private var carryLog: List<String> = emptyList()
 
@@ -157,10 +170,19 @@ object AgyVoiceCall {
             "Pick a local project for this chat (before sending), or call from a local chat."
 
     /**
-     * Starts a call. [prepare] makes sure the chat exists on the hub and returns its id and the model the agent plans
-     * with (a `Model` number); it runs after the call screen is up. A call already running is just brought back.
+     * Starts a call. [prepare] makes sure the chat exists on the hub (or local store) and returns its id and model.
+     * When [isLocal] is true or the hub voice WebSocket is not available, conversational mode is activated with
+     * device speech recognition and natural human voice synthesis.
      */
-    fun start(context: Context, title: String, prepare: suspend () -> Pair<String, Int>) {
+    fun start(
+        context: Context,
+        title: String,
+        isLocal: Boolean = false,
+        conversationId: String? = null,
+        onSendPrompt: ((String) -> Unit)? = null,
+        messagesFlow: StateFlow<List<ChatMessage>>? = null,
+        prepare: suspend () -> Pair<String, Int>
+    ) {
         val cur = _state.value
         if (cur.inCall || cur.phase == Phase.ENDING) {
             _state.update { it.copy(minimized = false) }
@@ -169,11 +191,14 @@ object AgyVoiceCall {
         val app = context.applicationContext
         AgyVoicePreferences.init(app)
         session?.let { teardown(it) }
-        lastStart = title to prepare
+        lastStartParams = StartCallParams(title, isLocal, conversationId, onSendPrompt, messagesFlow, prepare)
         val voice = AgyVoicePreferences.voice.value
         val language = AgyVoicePreferences.language.value
         val s = Session(app, voice)
         s.language = language
+        s.isLocal = isLocal
+        s.onSendPrompt = onSendPrompt
+        s.messagesFlow = messagesFlow
         session = s
         _micLevel.value = 0f
         _voiceLevel.value = 0f
@@ -183,12 +208,29 @@ object AgyVoiceCall {
             voice = voice,
             language = language,
             speaker = AgyVoicePreferences.speaker.value && !AudioRoute.hasHeadset(app),
-            statusText = "Getting the chat ready…",
+            statusText = if (isLocal) "Starting local voice call…" else "Getting the chat ready…",
             startedAtWall = System.currentTimeMillis(),
-            log = carryLog
+            log = carryLog,
+            isLocal = isLocal
         )
         carryLog = emptyList()
         runCatching { AgyVoiceCallService.start(app) }.onFailure { Log.w(TAG, "foreground service: ${it.message}") }
+
+        if (isLocal) {
+            s.job = scope.launch {
+                val cid = try {
+                    prepare().first.ifBlank { conversationId ?: "local_${System.currentTimeMillis()}" }
+                } catch (_: Exception) {
+                    conversationId ?: "local_${System.currentTimeMillis()}"
+                }
+                if (session !== s) return@launch
+                s.conversationId = cid
+                _state.update { it.copy(conversationId = cid) }
+                startConversationalSession(s)
+            }
+            return
+        }
+
         s.job = scope.launch {
             val (cid, model) = try {
                 prepare()
@@ -208,17 +250,15 @@ object AgyVoiceCall {
             val base = AuthPreferences.currentHubUrl.trimEnd('/')
             when (val h = checkHealth(base)) {
                 is Health.Missing -> {
-                    val remote = !AuthPreferences.isLoopbackHost(AuthPreferences.hostOf(base))
-                    fail(
-                        s,
-                        if (remote) "This hub has no voice calls. The server's agy must be 1.5 or newer, and a reverse proxy in front of the hub must pass /voice/ (WebSocket) to it."
-                        else "Voice calls need agy 1.5 or newer. Update agy in Settings → Antigravity CLI → Check for updates (the server restarts by itself).",
-                        Problem.UPDATE_AGY
-                    )
+                    note(s, "Hub voice WebSocket missing (/voice/health 404). Falling back to conversational voice mode.")
+                    _state.update { it.copy(isLocal = true, statusText = "Connecting voice…") }
+                    startConversationalSession(s)
                     return@launch
                 }
                 is Health.Unreachable -> {
-                    fail(s, "Can't reach the Antigravity hub (${h.message}). Is the server running?")
+                    note(s, "Antigravity hub unreachable (${h.message}). Falling back to conversational voice mode.")
+                    _state.update { it.copy(isLocal = true, statusText = "Connecting voice…") }
+                    startConversationalSession(s)
                     return@launch
                 }
                 else -> Unit
@@ -235,10 +275,18 @@ object AgyVoiceCall {
 
     /** Starts the last call again (after it failed). */
     fun retry(context: Context) {
-        val (title, prepare) = lastStart ?: return
+        val p = lastStartParams ?: return
         carryLog = (_state.value.log + "──── Try again ────").takeLast(LOG_MAX)
         _state.value = State()
-        start(context, title, prepare)
+        start(
+            context = context,
+            title = p.title,
+            isLocal = p.isLocal,
+            conversationId = p.conversationId,
+            onSendPrompt = p.onSendPrompt,
+            messagesFlow = p.messagesFlow,
+            prepare = p.prepare
+        )
     }
 
     /** Hangs up (or closes the screen of a failed call). */
@@ -256,6 +304,10 @@ object AgyVoiceCall {
         s.endRequested = true
         _state.update { it.copy(phase = Phase.ENDING, statusText = "Ending…", agentSpeaking = false, userSpeaking = false) }
         s.micRunning = false
+        s.levelAnimationJob?.cancel()
+        s.ttsObserverJob?.cancel()
+        runCatching { HumanVoiceEngine.getInstance(s.app).stop() }
+        runCatching { s.transcriber?.stopTranscriptionSession(null) }
         s.player.clear()
         s.player.enqueue(Chimes.end)
         runCatching { s.ws?.close(1000, "bye") }
@@ -304,7 +356,13 @@ object AgyVoiceCall {
         runCatching { old.close(1000, "voice change") }
     }
 
-    fun toggleMute() = _state.update { it.copy(muted = !it.muted) }
+    fun toggleMute() {
+        val newMuted = !_state.value.muted
+        _state.update { it.copy(muted = newMuted) }
+        if (newMuted) {
+            _micLevel.value = 0f
+        }
+    }
 
     private fun note(s: Session, text: String) {
         val sec = (SystemClock.elapsedRealtime() - s.startedAt) / 1000
@@ -436,6 +494,14 @@ object AgyVoiceCall {
             s.handshake = response?.let { r ->
                 "HTTP ${r.code} ${r.message}".trim() + (if (body.isNotBlank()) ", body: $body" else "") +
                     ", headers: " + r.headers.joinToString("; ") { (n, v) -> "$n=${v.take(80)}" }
+            }
+            if (s.framesIn == 0 && !s.endRequested && (code == 404 || code == 502 || code == 503 || t is java.io.IOException)) {
+                note(s, "Hub voice WebSocket refused (${code?.let { "HTTP $it" } ?: t.javaClass.simpleName}). Falling back to conversational voice mode.")
+                s.ws = null
+                s.stopPulses()
+                _state.update { it.copy(isLocal = true, statusText = "Connecting voice…") }
+                startConversationalSession(s)
+                return
             }
             // (a 404 here is not an old agy: /voice/health answered before the call; agy answers 404 for a chat it
             // has no voice for, e.g. a cloud chat)
@@ -659,6 +725,13 @@ object AgyVoiceCall {
     private fun teardown(s: Session) {
         s.endRequested = true
         s.job?.cancel()
+        s.conversationalJob?.cancel()
+        s.ttsObserverJob?.cancel()
+        s.levelAnimationJob?.cancel()
+        s.amplitudeJob?.cancel()
+        runCatching { s.transcriber?.stopTranscriptionSession(null) }
+        s.transcriber = null
+        runCatching { HumanVoiceEngine.getInstance(s.app).stop() }
         runCatching { s.ws?.cancel() }
         s.release()
         if (session === s) session = null
@@ -670,6 +743,167 @@ object AgyVoiceCall {
         if (cid.isNotBlank()) scope.launch {
             delay(1500)
             AgyVoiceChats.refresh(cid)
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------ conversational mode
+
+    private fun startConversationalSession(s: Session) {
+        if (session !== s || s.endRequested) return
+        s.isConversational = true
+        s.stopPulses()
+        s.route.begin(_state.value.speaker)
+        s.player.start()
+        s.player.enqueue(Chimes.connected)
+
+        _state.update {
+            it.copy(
+                phase = Phase.LIVE,
+                connectedAt = if (it.connectedAt == 0L) SystemClock.elapsedRealtime() else it.connectedAt,
+                statusText = "",
+                error = null,
+                attempt = 0,
+                maxAttempts = 0
+            )
+        }
+        note(s, "Conversational voice call live")
+
+        val transcriber = AndroidSpeechTranscriber(s.app) {
+            AgyVoicePreferences.language.value
+        }
+        s.transcriber = transcriber
+
+        s.amplitudeJob?.cancel()
+        s.amplitudeJob = scope.launch {
+            transcriber.latestAmplitude.collect { amp ->
+                if (!_state.value.muted && !_state.value.agentSpeaking) {
+                    _micLevel.value = amp
+                } else {
+                    _micLevel.value = 0f
+                }
+            }
+        }
+
+        transcriber.startTranscriptionSession(
+            scope = scope,
+            cascadeId = s.conversationId,
+            preCursorText = "",
+            postCursorText = "",
+            onPartialText = { text ->
+                if (session !== s || s.endRequested || _state.value.muted) return@startTranscriptionSession
+                val trimmed = text.trim()
+                if (trimmed.isNotBlank()) {
+                    if (_state.value.agentSpeaking) {
+                        HumanVoiceEngine.getInstance(s.app).stop()
+                        s.levelAnimationJob?.cancel()
+                        _state.update { it.copy(agentSpeaking = false) }
+                        _voiceLevel.value = 0f
+                    }
+                    _state.update { st ->
+                        val lastIdx = st.lines.indexOfLast { it.role == Role.USER && it.interim }
+                        val newLine = Line(lineKeys.incrementAndGet(), Role.USER, 0, trimmed, true)
+                        val lines = if (lastIdx >= 0) {
+                            st.lines.toMutableList().also { it[lastIdx] = newLine }
+                        } else {
+                            st.lines + newLine
+                        }
+                        st.copy(lines = lines.takeLast(80), userSpeaking = true)
+                    }
+                }
+            },
+            onFinalText = { text ->
+                if (session !== s || s.endRequested || _state.value.muted) return@startTranscriptionSession
+                val trimmed = text.trim()
+                if (trimmed.isNotBlank()) {
+                    _state.update { st ->
+                        val lastIdx = st.lines.indexOfLast { it.role == Role.USER && it.interim }
+                        val newLine = Line(lineKeys.incrementAndGet(), Role.USER, 0, trimmed, false)
+                        val lines = if (lastIdx >= 0) {
+                            st.lines.toMutableList().also { it[lastIdx] = newLine }
+                        } else {
+                            st.lines + newLine
+                        }
+                        st.copy(lines = lines.takeLast(80), userSpeaking = false)
+                    }
+                    note(s, "You: $trimmed")
+                    s.onSendPrompt?.invoke(trimmed)
+                } else {
+                    _state.update { it.copy(userSpeaking = false) }
+                }
+            },
+            onError = { err ->
+                Log.w(TAG, "Speech transcriber: $err")
+            }
+        )
+
+        val flow = s.messagesFlow
+        if (flow != null) {
+            s.conversationalJob?.cancel()
+            s.conversationalJob = scope.launch {
+                var lastSpokenAssistantId: String? = null
+                var lastSpokenContent: String = ""
+
+                flow.collect { msgs ->
+                    if (session !== s || s.endRequested) return@collect
+                    val convMsgs = msgs.filter { it.conversationId == s.conversationId || s.conversationId.isBlank() }
+                    val assistantMsg = convMsgs.lastOrNull { it.role == MessageRole.ASSISTANT } ?: return@collect
+                    val content = assistantMsg.content
+                    if (content.isBlank()) return@collect
+
+                    _state.update { st ->
+                        val lastIdx = st.lines.indexOfLast { it.role == Role.AGENT }
+                        val newLine = Line(lineKeys.incrementAndGet(), Role.AGENT, 0, content, assistantMsg.isStreaming)
+                        val lines = if (lastIdx >= 0 && (assistantMsg.id == lastSpokenAssistantId || st.lines[lastIdx].interim)) {
+                            st.lines.toMutableList().also { it[lastIdx] = newLine }
+                        } else {
+                            st.lines + newLine
+                        }
+                        st.copy(lines = lines.takeLast(80), userSpeaking = false)
+                    }
+
+                    if (!assistantMsg.isStreaming && assistantMsg.id != lastSpokenAssistantId && content != lastSpokenContent) {
+                        lastSpokenAssistantId = assistantMsg.id
+                        lastSpokenContent = content
+                        note(s, "Assistant reply: ${content.take(50)}…")
+                        speakConversationalResponse(s, content)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun speakConversationalResponse(s: Session, rawText: String) {
+        if (session !== s || s.endRequested) return
+        val engine = HumanVoiceEngine.getInstance(s.app)
+        val clean = engine.cleanTextForSpeech(rawText)
+        if (clean.isBlank()) return
+
+        _state.update { it.copy(agentSpeaking = true) }
+
+        s.levelAnimationJob?.cancel()
+        s.levelAnimationJob = scope.launch {
+            var step = 0f
+            while (isActive && !s.endRequested && _state.value.agentSpeaking) {
+                step += 0.35f
+                val base = (sin(step.toDouble()) * 0.28 + 0.42 + sin(step * 2.7) * 0.15).toFloat()
+                _voiceLevel.value = base.coerceIn(0.1f, 0.95f)
+                delay(40)
+            }
+            _voiceLevel.value = 0f
+        }
+
+        engine.speak(clean, flushQueue = true)
+
+        s.ttsObserverJob?.cancel()
+        s.ttsObserverJob = scope.launch {
+            delay(250)
+            engine.captionState.collect { cs ->
+                if (!cs.isSpeaking) {
+                    _state.update { it.copy(agentSpeaking = false) }
+                    _voiceLevel.value = 0f
+                    s.levelAnimationJob?.cancel()
+                }
+            }
         }
     }
 
@@ -702,6 +936,17 @@ object AgyVoiceCall {
         private var pulseJob: Job? = null
         private var micThread: Thread? = null
         private var released = false
+
+        // Conversational / Local Mode fields
+        @Volatile var isLocal = false
+        @Volatile var isConversational = false
+        var onSendPrompt: ((String) -> Unit)? = null
+        var messagesFlow: StateFlow<List<ChatMessage>>? = null
+        var transcriber: AndroidSpeechTranscriber? = null
+        var conversationalJob: Job? = null
+        var ttsObserverJob: Job? = null
+        var levelAnimationJob: Job? = null
+        var amplitudeJob: Job? = null
 
         val route = AudioRoute(app)
         val player = Player { level, speaking ->
@@ -814,6 +1059,13 @@ object AgyVoiceCall {
             micRunning = false
             stopPulses()
             micThread?.interrupt()
+            conversationalJob?.cancel()
+            ttsObserverJob?.cancel()
+            levelAnimationJob?.cancel()
+            amplitudeJob?.cancel()
+            runCatching { transcriber?.stopTranscriptionSession(null) }
+            transcriber = null
+            runCatching { HumanVoiceEngine.getInstance(app).stop() }
             player.release()
             route.end()
         }

@@ -107,7 +107,7 @@ class AgyVoiceCallService : Service() {
         }
         val b = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_jarvis_mic)
-            .setContentTitle(st.title.ifBlank { "Antigravity" } + " · voice call")
+            .setContentTitle(st.title.ifBlank { if (st.isLocal) "AntiBot Local Model" else "Antigravity" } + " · voice call")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

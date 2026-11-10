@@ -65,7 +65,8 @@ fun AgentPicker(
     agents: Collection<AgentKind> = AgentKind.entries,
     statusColors: Map<AgentKind, Color> = emptyMap()
 ) {
-    if (agents.size < 2) return
+    val displayAgents = AgentKind.entries.filter { it in agents && it != AgentKind.LOCAL }
+    if (displayAgents.size < 2) return
     val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = modifier
@@ -75,7 +76,7 @@ fun AgentPicker(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AgentKind.entries.filter { it in agents }.forEach { agent ->
+        displayAgents.forEach { agent ->
             val isSelected = agent == selected
             val accent = agent.accent()
             Row(
