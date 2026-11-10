@@ -338,6 +338,95 @@ pub async fn conversation_messages_handler(
     (StatusCode::OK, Json(json!({ "id": id, "messages": messages })))
 }
 
+#[derive(Debug, Serialize)]
+pub struct ConversationMetaResponse {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "totalSteps")]
+    pub total_steps: usize,
+    #[serde(rename = "isRunning")]
+    pub is_running: bool,
+    #[serde(rename = "firstPrompt")]
+    pub first_prompt: String,
+    #[serde(rename = "lastRole")]
+    pub last_role: String,
+}
+
+pub async fn conversation_meta_handler(
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let conv_dir = brain_dir().join(&id);
+    let transcript_path = conv_dir.join(".system_generated/logs/transcript.jsonl");
+
+    if !transcript_path.exists() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "Conversation not found" })));
+    }
+
+    let file = match fs::File::open(&transcript_path) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+    };
+
+    let mmap = match unsafe { memmap2::Mmap::map(&file) } {
+        Ok(m) => m,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+    };
+
+    let offsets = get_line_offsets(&mmap);
+    let total_steps = offsets.len();
+
+    let mut first_prompt = String::new();
+    let mut last_role = String::new();
+    let mut title = String::new();
+
+    let title_file = conv_dir.join("custom_title.txt");
+    if let Ok(t) = fs::read_to_string(&title_file) {
+        let trimmed = t.trim();
+        if !trimmed.is_empty() {
+            title = trimmed.to_string();
+        }
+    }
+
+    for (i, &offset) in offsets.iter().take(5).enumerate() {
+        let end = if i + 1 < offsets.len() { offsets[i + 1] } else { mmap.len() };
+        let slice = &mmap[offset..end];
+        if let Ok(val) = serde_json::from_slice::<Value>(slice) {
+            let step_type = val["type"].as_str().unwrap_or_default();
+            if step_type == "USER_INPUT" && first_prompt.is_empty() {
+                let content = val["content"].as_str().unwrap_or_default();
+                first_prompt = extract_prompt_text(content);
+                if title.is_empty() {
+                    title = first_prompt.chars().take(50).collect();
+                }
+            }
+        }
+    }
+
+    let mut is_running = false;
+    if let Some(&last_offset) = offsets.last() {
+        let slice = &mmap[last_offset..];
+        if let Ok(val) = serde_json::from_slice::<Value>(slice) {
+            let role = val["source"].as_str().or_else(|| val["type"].as_str()).unwrap_or_default();
+            last_role = role.to_string();
+            let status = val["status"].as_str().unwrap_or_default();
+            is_running = status == "RUNNING" || status == "IN_PROGRESS";
+        }
+    }
+
+    if title.is_empty() {
+        title = format!("Chat {}", &id.chars().take(8).collect::<String>());
+    }
+
+    (StatusCode::OK, Json(json!(ConversationMetaResponse {
+        id,
+        title,
+        total_steps,
+        is_running,
+        first_prompt,
+        last_role,
+    })))
+}
+
 pub async fn conversation_step_handler(
     AxumPath((id, step_index)): AxumPath<(String, usize)>,
 ) -> impl IntoResponse {

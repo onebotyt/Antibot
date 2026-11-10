@@ -711,4 +711,21 @@ object IdeApiClient {
             false
         }
     }
+
+    suspend fun getConversationMeta(conversationId: String): JSONObject? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/conversations/$conversationId/meta")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    return@withContext JSONObject(response.body?.string().orEmpty())
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getConversationMeta failed: ${e.message}")
+        }
+        null
+    }
 }

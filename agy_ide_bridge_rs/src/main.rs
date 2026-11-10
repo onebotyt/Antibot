@@ -410,6 +410,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .delete(handlers::conversations::delete_conversation_handler),
         )
         .route(
+            "/api/conversations/:id/meta",
+            get(handlers::conversations::conversation_meta_handler),
+        )
+        .route(
             "/api/conversations/:id/title",
             post(handlers::conversations::update_conversation_title_handler)
                 .patch(handlers::conversations::update_conversation_title_handler),
