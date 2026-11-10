@@ -435,6 +435,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             shellModel = authPrefs.getLlmManagerShellModelSync(),
             fallbackModel = authPrefs.getLlmManagerFallbackModelSync()
         )
+        // Synchronous fallback (used in non-suspend contexts)
         return com.example.gemini.domain.model.SmartModelRouter.route(
             prompt = draftText,
             hasAttachments = store.attachments.value.isNotEmpty(),
@@ -445,6 +446,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             config = config
         )
     }
+
+    /** Bridge-accelerated routing decision — prefers Rust bridge, falls back to in-process. */
+    suspend fun getDynamicRoutingDecisionAsync(draftText: String): com.example.gemini.domain.model.SmartRoutingDecision {
+        val config = com.example.gemini.domain.model.LlmManagerConfig(
+            architectureModel = authPrefs.getLlmManagerArchitectureModelSync(),
+            codingModel = authPrefs.getLlmManagerCodingModelSync(),
+            fastQaModel = authPrefs.getLlmManagerFastQaModelSync(),
+            shellModel = authPrefs.getLlmManagerShellModelSync(),
+            fallbackModel = authPrefs.getLlmManagerFallbackModelSync()
+        )
+        return com.example.gemini.domain.model.SmartModelRouter.routeViaBridge(
+            prompt = draftText,
+            hasAttachments = store.attachments.value.isNotEmpty(),
+            isOnline = isNetworkConnected() && agyBackend.systemConnectionState.value.canSend,
+            availableModels = enabledModels.value,
+            quotas = quotas.value,
+            currentSelectedModelId = if (_isAutoRouting.value) com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID else selectedModelId.value,
+            config = config
+        )
+    }
+
 
     /** `/plu:` plugin skills and custom slash commands are expanded here, for all agents. */
     fun sendMessage(content: String) = PromptExpansion.expand(content).let { expanded ->

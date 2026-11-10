@@ -380,6 +380,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Offline Model Runtime & GGUF Inspector
         .route("/api/models/gguf/inspect", post(handlers::models::models_gguf_inspect_handler))
         .route("/api/models/runtime/validate", post(handlers::models::models_runtime_validate_handler))
+        .route("/api/models/route", post(handlers::models::models_route_handler))
         // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))

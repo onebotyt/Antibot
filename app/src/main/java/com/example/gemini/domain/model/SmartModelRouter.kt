@@ -3,6 +3,16 @@ package com.example.gemini.domain.model
 import androidx.compose.ui.graphics.Color
 import com.example.gemini.theme.ClaudeTerracotta
 import com.example.gemini.theme.GeminiBlue
+import com.example.gemini.data.preferences.AuthPreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * Categorized routing reasons explaining why the Auto LLM Manager chose a specific model.
@@ -60,10 +70,96 @@ data class LlmManagerConfig(
  * Automatically dispatches queries across any configured cloud models (Claude, Gemini, GPT-OSS)
  * and Local Qwen based on prompt heuristics, user task mappings, rate limit protection,
  * and offline status.
+ *
+ * Routing logic is now authoritative in the Rust bridge (POST /api/models/route).
+ * [routeViaBridge] delegates there; [route] is kept as a synchronous in-process fallback.
  */
 object SmartModelRouter {
     const val AUTO_MODEL_ID = "auto"
     const val AUTO_DISPLAY_NAME = "Auto (Smart LLM Manager)"
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(3, TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * Preferred entry-point: delegates routing to the Rust bridge daemon.
+     * Falls back to the synchronous [route] if the bridge is unreachable.
+     */
+    suspend fun routeViaBridge(
+        prompt: String,
+        hasAttachments: Boolean = false,
+        isOnline: Boolean = true,
+        availableModels: List<AiModel> = emptyList(),
+        quotas: List<ModelQuota> = emptyList(),
+        currentSelectedModelId: String = AUTO_MODEL_ID,
+        config: LlmManagerConfig = LlmManagerConfig()
+    ): SmartRoutingDecision = withContext(Dispatchers.IO) {
+        try {
+            val bridgeBase = AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+            val modelsArray = JSONArray().apply {
+                availableModels.forEach { m ->
+                    put(JSONObject().apply {
+                        put("id", m.id)
+                        put("displayName", m.displayName)
+                        put("family", m.family.name)
+                    })
+                }
+            }
+            val quotasArray = JSONArray().apply {
+                quotas.forEach { q ->
+                    put(JSONObject().apply {
+                        put("modelId", q.modelId)
+                        put("percentage", q.percentage)
+                    })
+                }
+            }
+            val body = JSONObject().apply {
+                put("prompt", prompt)
+                put("hasAttachments", hasAttachments)
+                put("isOnline", isOnline)
+                put("availableModels", modelsArray)
+                put("quotas", quotasArray)
+                put("currentSelectedModelId", currentSelectedModelId)
+                put("config", JSONObject().apply {
+                    put("architectureModel", config.architectureModel)
+                    put("codingModel", config.codingModel)
+                    put("fastQaModel", config.fastQaModel)
+                    put("shellModel", config.shellModel)
+                    put("fallbackModel", config.fallbackModel)
+                })
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$bridgeBase/api/models/route")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            val resp = http.newCall(request).execute()
+            if (resp.isSuccessful) {
+                val json = JSONObject(resp.body!!.string())
+                val targetModelId = json.getString("targetModelId")
+                val agentStr = json.optString("targetAgent", "AGY")
+                val targetAgent = if (agentStr == "LOCAL") AgentKind.LOCAL else AgentKind.AGY
+                val displayName = json.optString("modelDisplayName", targetModelId)
+                val reasonStr = json.optString("reason", "FAST_QA")
+                val reason = runCatching { RoutingReason.valueOf(reasonStr) }.getOrDefault(RoutingReason.FAST_QA)
+                val explanation = json.optString("explanation", "")
+                return@withContext SmartRoutingDecision(
+                    targetModelId = targetModelId,
+                    targetAgent = targetAgent,
+                    modelDisplayName = displayName,
+                    reason = reason,
+                    explanation = explanation
+                )
+            }
+        } catch (_: Exception) {
+            // Bridge unavailable — fall through to in-process fallback
+        }
+        // Fallback: run synchronous in-process router
+        route(prompt, hasAttachments, isOnline, availableModels, quotas, currentSelectedModelId, config)
+    }
 
     fun isAuto(modelId: String?): Boolean {
         if (modelId.isNullOrBlank()) return true
