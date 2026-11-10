@@ -155,7 +155,7 @@ fun LiveAudioWaveform(
 fun ChatInputBar(
     selectedModel: AiModel,
     quota: ModelQuota?,
-    thinkingPreference: ThinkingPreference = ThinkingPreference.DYNAMIC,
+    thinkingPreference: ThinkingPreference = ThinkingPreference(),
     /** The typed text; the keyboard edits it directly, so typing never waits on the screen redrawing. */
     textFieldState: TextFieldState? = null,
     textFieldValue: androidx.compose.ui.text.input.TextFieldValue? = null,
