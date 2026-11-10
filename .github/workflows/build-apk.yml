@@ -64,8 +64,8 @@ jobs:
           if [ ! -f app/release.jks ]; then
             keytool -genkeypair -v -keystore app/release.jks -alias antibot -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=AntiBot, OU=Mobile, O=OneBot, L=Global, S=Global, C=US"
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "onebotyt"
+          git config user.email "gdhami115@gmail.com"
           git add -f app/release.jks || true
           git add version.json || true
           if ! git diff-index --quiet HEAD --; then

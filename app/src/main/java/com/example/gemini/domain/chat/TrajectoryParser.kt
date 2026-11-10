@@ -7,6 +7,8 @@ import com.example.gemini.domain.model.MessageRole
 import com.example.gemini.domain.model.ToolCall
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
 /**
@@ -62,15 +64,14 @@ object TrajectoryParser {
                 put("conversationId", conversationId)
             }.toString()
 
-            val mediaType = okhttp3.MediaType.parse("application/json")
             val request = okhttp3.Request.Builder()
                 .url("$bridgeBase/api/conversations/parse-trajectory")
-                .post(okhttp3.RequestBody.create(mediaType, body))
+                .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
 
             val resp = http.newCall(request).execute()
             if (resp.isSuccessful) {
-                val json = JSONObject(resp.body()?.string() ?: "{}")
+                val json = JSONObject(resp.body?.string() ?: "{}")
                 val msgsArr = json.optJSONArray("messages")
                 if (msgsArr != null && msgsArr.length() > 0) {
                     val list = mutableListOf<ChatMessage>()

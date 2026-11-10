@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 data class NativeNetworkMetrics(
@@ -128,10 +130,9 @@ object NetworkInspectorManager {
                     }
                 }.toString()
 
-                val mediaType = okhttp3.MediaType.parse("application/json")
                 val request = okhttp3.Request.Builder()
                     .url("$bridgeBase/api/network/record")
-                    .post(okhttp3.RequestBody.create(mediaType, payload))
+                    .post(payload.toRequestBody("application/json".toMediaType()))
                     .build()
                 http.newCall(request).execute().close()
             } catch (_: Exception) {}
@@ -147,7 +148,7 @@ object NetworkInspectorManager {
                 .build()
             val resp = http.newCall(request).execute()
             if (resp.isSuccessful) {
-                val json = org.json.JSONObject(resp.body()?.string() ?: "{}")
+                val json = org.json.JSONObject(resp.body?.string() ?: "{}")
                 return@withContext NativeNetworkMetrics(
                     totalBytesSent = json.optLong("total_bytes_sent"),
                     totalBytesReceived = json.optLong("total_bytes_received"),
