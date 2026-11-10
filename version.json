@@ -1,6 +1,6 @@
 {
-  "version_code": 214,
-  "version_name": "2.4.94",
+  "version_code": 215,
+  "version_name": "2.4.95",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83c\udf99\ufe0f Live Voice Interaction in Personal Assistant Mode: Start hands-free, continuous spoken calls with your personal assistant featuring on-device speech recognition, neural voice synthesis, audio visualizer, barge-in interruption, and live captions directly from the assistant orb and panel.",
