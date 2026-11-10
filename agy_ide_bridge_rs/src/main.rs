@@ -386,6 +386,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))
         .route("/api/conversations/compact", post(handlers::conversations::conversations_compact_handler))
         .route("/api/conversations/rollover-seed", post(handlers::conversations::conversations_rollover_seed_handler))
+        .route("/api/conversations/parse-trajectory", post(handlers::conversations::parse_trajectory_handler))
         .route(
             "/api/conversations/restore",
             post(handlers::archive::restore_conversation_archive_handler),

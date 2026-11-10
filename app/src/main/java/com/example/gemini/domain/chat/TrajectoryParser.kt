@@ -42,6 +42,80 @@ object TrajectoryParser {
         return lastIndex
     }
 
+    private val http = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * Parses steps via Rust bridge daemon (POST /api/conversations/parse-trajectory),
+     * falling back to in-process parseStepsToChatMessages if bridge is unreachable.
+     */
+    suspend fun parseStepsToChatMessagesViaBridge(
+        stepsJson: String,
+        conversationId: String
+    ): List<ChatMessage> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val bridgeBase = com.example.gemini.data.preferences.AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+            val body = JSONObject().apply {
+                put("stepsJson", stepsJson)
+                put("conversationId", conversationId)
+            }.toString()
+
+            val mediaType = okhttp3.MediaType.parse("application/json")
+            val request = okhttp3.Request.Builder()
+                .url("$bridgeBase/api/conversations/parse-trajectory")
+                .post(okhttp3.RequestBody.create(mediaType, body))
+                .build()
+
+            val resp = http.newCall(request).execute()
+            if (resp.isSuccessful) {
+                val json = JSONObject(resp.body()?.string() ?: "{}")
+                val msgsArr = json.optJSONArray("messages")
+                if (msgsArr != null && msgsArr.length() > 0) {
+                    val list = mutableListOf<ChatMessage>()
+                    for (i in 0 until msgsArr.length()) {
+                        val item = msgsArr.getJSONObject(i)
+                        val roleStr = item.optString("role", "user")
+                        val role = if (roleStr.equals("assistant", ignoreCase = true)) MessageRole.ASSISTANT else MessageRole.USER
+                        val content = item.optString("content", "")
+                        val thinking = item.optString("thinking").takeIf { it.isNotBlank() }
+                        val toolCallsList = mutableListOf<ToolCall>()
+                        val tcArr = item.optJSONArray("tool_calls")
+                        if (tcArr != null) {
+                            for (j in 0 until tcArr.length()) {
+                                val tc = tcArr.getJSONObject(j)
+                                toolCallsList.add(
+                                    ToolCall(
+                                        id = tc.optString("id", UUID.randomUUID().toString()),
+                                        name = tc.optString("name", "tool"),
+                                        command = tc.optString("command", ""),
+                                        status = tc.optString("status", "SUCCESS"),
+                                        output = tc.optString("output", "")
+                                    )
+                                )
+                            }
+                        }
+                        list.add(
+                            ChatMessage(
+                                id = UUID.randomUUID().toString(),
+                                conversationId = conversationId,
+                                role = role,
+                                content = content,
+                                thoughtText = thinking,
+                                toolCalls = toolCallsList,
+                                isStreaming = false
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) return@withContext list
+                }
+            }
+        } catch (_: Exception) {}
+        // Fallback
+        parseStepsToChatMessages(stepsJson, conversationId)
+    }
+
     /**
      * Parses steps JSON payload into chronological ChatMessages.
      */

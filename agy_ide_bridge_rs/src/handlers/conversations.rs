@@ -71,6 +71,22 @@ fn extract_prompt_text(content: &str) -> String {
     all_tags_re.replace_all(content, "").trim().to_string()
 }
 
+pub fn normalize_tool_name(name: &str) -> String {
+    let lower = name.trim().to_lowercase();
+    match lower.as_str() {
+        "web_search" | "search_web" | "search" => "web_search".to_string(),
+        "read_url" | "read_url_content" | "web_reader" => "read_url".to_string(),
+        "run_command" | "terminal" | "bash" => "bash".to_string(),
+        "view_file" | "viewfile" => "view_file".to_string(),
+        "edit_file" | "modifyfile" | "write_to_file" | "replace_file_content" | "codeaction" | "filechange" => "edit_file".to_string(),
+        "list_dir" | "listdirectory" => "list_dir".to_string(),
+        "find" | "find_by_name" => "find".to_string(),
+        "grep_search" | "code_search" => "grep_search".to_string(),
+        "generate_image" | "generateimage" => "generate_image".to_string(),
+        _ => lower,
+    }
+}
+
 pub async fn conversations_list_handler(Query(params): Query<ConvQuery>) -> impl IntoResponse {
     let page = params.page.unwrap_or(1).max(1);
     let limit = params.limit.unwrap_or(30);
@@ -288,7 +304,8 @@ pub async fn conversation_messages_handler(
                 if let Some(arr) = step["tool_calls"].as_array() {
                     for (idx, tc) in arr.iter().enumerate() {
                         let id = tc["id"].as_str().unwrap_or(&format!("tool_{idx}")).to_string();
-                        let name = tc["name"].as_str().unwrap_or("tool").to_string();
+                        let raw_name = tc["name"].as_str().unwrap_or("tool");
+                        let name = normalize_tool_name(raw_name);
                         let command = tc["command"]
                             .as_str()
                             .or_else(|| tc["args"]["CommandLine"].as_str())
@@ -840,6 +857,118 @@ pub async fn conversations_rollover_seed_handler(
     (StatusCode::OK, Json(RolloverSeedResponse { seed_prompt, anchor_rules }))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TrajectoryParser  — POST /api/conversations/parse-trajectory
+//
+// Ports TrajectoryParser.kt logic to Rust: parses Cortex/AGY step JSON payloads
+// into normalized ChatMessages with normalized tool calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ParseTrajectoryReq {
+    #[serde(default)]
+    pub steps_json: Option<String>,
+    #[serde(rename = "stepsJson", default)]
+    pub steps_json_alt: Option<String>,
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub conversation_id: Option<String>,
+    #[allow(dead_code)]
+    #[serde(rename = "conversationId", default)]
+    pub conversation_id_alt: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParseTrajectoryResponse {
+    pub messages: Vec<ChatMessage>,
+}
+
+pub fn parse_steps_to_chat_messages(steps_json: &str) -> Vec<ChatMessage> {
+    let root: Value = match serde_json::from_str(steps_json) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+
+    let steps_arr = root.get("steps")
+        .or_else(|| root.pointer("/update/mainTrajectoryUpdate/stepsUpdate/steps"))
+        .or_else(|| root.pointer("/mainTrajectoryUpdate/stepsUpdate/steps"))
+        .or_else(|| root.pointer("/stepsUpdate/steps"))
+        .and_then(|v| v.as_array());
+
+    let steps = match steps_arr {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
+
+    let mut messages = Vec::new();
+    for step in steps {
+        let step_type = step["type"].as_str().unwrap_or_default();
+        if step_type == "USER_INPUT" || step_type == "CORTEX_STEP_TYPE_USER_INPUT" || step.get("userInput").is_some() {
+            let content = step["content"].as_str()
+                .or_else(|| step.pointer("/userInput/userContent/parts/0/text").and_then(|v| v.as_str()))
+                .unwrap_or_default();
+            messages.push(ChatMessage {
+                role: "user".to_string(),
+                content: extract_prompt_text(content),
+                thinking: None,
+                tool_calls: Vec::new(),
+            });
+        } else if step_type == "PLANNER_RESPONSE" || step_type == "CORTEX_STEP_TYPE_PLANNER_RESPONSE" || step.get("modelResponse").is_some() {
+            let content = step["content"].as_str()
+                .or_else(|| step.pointer("/modelResponse/candidates/0/content/parts/0/text").and_then(|v| v.as_str()))
+                .unwrap_or_default()
+                .to_string();
+            let thinking = step["thinking"].as_str()
+                .or_else(|| step.pointer("/modelResponse/candidates/0/thinking").and_then(|v| v.as_str()))
+                .map(|s| s.to_string());
+            let mut tool_calls = Vec::new();
+
+            if let Some(arr) = step["tool_calls"].as_array() {
+                for (idx, tc) in arr.iter().enumerate() {
+                    let id = tc["id"].as_str().unwrap_or(&format!("tool_{idx}")).to_string();
+                    let raw_name = tc["name"].as_str().unwrap_or("tool");
+                    let name = normalize_tool_name(raw_name);
+                    let command = tc["command"]
+                        .as_str()
+                        .or_else(|| tc["args"]["CommandLine"].as_str())
+                        .or_else(|| tc["args"]["AbsolutePath"].as_str())
+                        .or_else(|| tc.pointer("/args/command").and_then(|v| v.as_str()))
+                        .unwrap_or("")
+                        .to_string();
+                    let output = tc["output"].as_str().unwrap_or("").to_string();
+                    let status = tc["status"].as_str().unwrap_or("SUCCESS").to_string();
+
+                    tool_calls.push(ToolCall {
+                        id,
+                        name,
+                        command,
+                        status,
+                        output,
+                    });
+                }
+            }
+
+            messages.push(ChatMessage {
+                role: "assistant".to_string(),
+                content,
+                thinking,
+                tool_calls,
+            });
+        }
+    }
+
+    messages
+}
+
+/// POST /api/conversations/parse-trajectory
+pub async fn parse_trajectory_handler(
+    Json(req): Json<ParseTrajectoryReq>,
+) -> (StatusCode, Json<ParseTrajectoryResponse>) {
+    let json_str = req.steps_json.or(req.steps_json_alt).unwrap_or_default();
+    let messages = parse_steps_to_chat_messages(&json_str);
+    (StatusCode::OK, Json(ParseTrajectoryResponse { messages }))
+}
+
 #[cfg(test)]
 
 mod tests {
@@ -908,6 +1037,49 @@ mod tests {
         assert!(res.seed_prompt.contains("Completed auth migration."));
         assert!(res.seed_prompt.contains("Implement refresh tokens"));
         assert!(res.seed_prompt.contains("AUTO-ROLLOVER"));
+    }
+
+    #[test]
+    fn test_normalize_tool_name() {
+        assert_eq!(normalize_tool_name("run_command"), "bash");
+        assert_eq!(normalize_tool_name("write_to_file"), "edit_file");
+        assert_eq!(normalize_tool_name("search_web"), "web_search");
+        assert_eq!(normalize_tool_name("custom_tool"), "custom_tool");
+    }
+
+    #[test]
+    fn test_parse_steps_to_chat_messages() {
+        let json_str = r#"{
+            "steps": [
+                {
+                    "type": "USER_INPUT",
+                    "content": "<USER_REQUEST>Build a Rust CLI</USER_REQUEST>"
+                },
+                {
+                    "type": "PLANNER_RESPONSE",
+                    "content": "Creating cargo project.",
+                    "thinking": "Need to run cargo new",
+                    "tool_calls": [
+                        {
+                            "id": "tc1",
+                            "name": "run_command",
+                            "command": "cargo new cli_tool",
+                            "status": "SUCCESS",
+                            "output": "Created binary (application) `cli_tool` package"
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let msgs = parse_steps_to_chat_messages(json_str);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].role, "user");
+        assert_eq!(msgs[0].content, "Build a Rust CLI");
+        assert_eq!(msgs[1].role, "assistant");
+        assert_eq!(msgs[1].tool_calls.len(), 1);
+        assert_eq!(msgs[1].tool_calls[0].name, "bash");
+        assert_eq!(msgs[1].tool_calls[0].command, "cargo new cli_tool");
     }
 }
 
