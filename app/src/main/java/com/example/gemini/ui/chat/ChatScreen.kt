@@ -162,12 +162,20 @@ fun ChatScreen(
     val conversations by viewModel.conversations.collectAsState()
     val currentConv by viewModel.currentConversation.collectAsState()
     val newChatAgent by viewModel.newChatAgent.collectAsState()
-    val isClaudeChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.CLAUDE
-    val isOpenCodeChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.OPENCODE
-    val isCodexChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.CODEX
+    val effectiveAgent = currentConv?.agent ?: newChatAgent
+    val isClaudeChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.CLAUDE
+    val isOpenCodeChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.OPENCODE
+    val isCodexChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.CODEX
     /** The chat on screen is Antigravity's (its hub, bridge banners and sign-in apply). */
-    val isAgyChat = !isClaudeChat && !isOpenCodeChat && !isCodexChat
+    val isAgyChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.AGY
     val isFreshNewChat = currentConv == null || currentConv?.title == "New Chat"
+    val pickAgent: (com.example.gemini.domain.model.AgentKind) -> Unit = { agent ->
+        viewModel.setNewChatAgent(agent)
+        viewModel.startNewChat(agent)
+        if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+            viewModel.selectModel("local-model-only")
+        }
+    }
     val messages by viewModel.messages.collectAsState()
     val artifacts by viewModel.artifacts.collectAsState()
     val selectedModelId by viewModel.selectedModelId.collectAsState()
@@ -1334,45 +1342,50 @@ fun ChatScreen(
                                 }
                             }
                             Spacer(modifier = Modifier.width(9.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = "AntiBot Studio",
-                                        fontSize = 16.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Surface(
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(5.dp)
+                                                    .size(4.5.dp)
                                                     .background(Color(0xFF10B981), CircleShape)
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Spacer(modifier = Modifier.width(3.5.dp))
                                             Text(
                                                 text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
-                                                fontSize = 9.5.sp,
+                                                fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
                                 }
                                 Text(
                                     text = "AI Coding Environment",
-                                    fontSize = 11.sp,
+                                    fontSize = 10.5.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -1403,20 +1416,30 @@ fun ChatScreen(
                             onOpenDaemonLogs = { showDaemonLogsDialog = true },
                             onRestartServer = { com.example.gemini.data.local.LocalServerManager.restartServer(context) }
                         )
-                        IconButton(onClick = { showChatTelemetryDialog = true }) {
+                        IconButton(
+                            onClick = { showChatTelemetryDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Outlined.Notifications,
                                 contentDescription = "Notifications & Diagnostics",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        IconButton(onClick = { viewModel.startNewChat() }) {
+                        Spacer(modifier = Modifier.width(2.dp))
+                        IconButton(
+                            onClick = { viewModel.startNewChat() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "New Chat",
-                                tint = MaterialTheme.colorScheme.onSurface
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
+                        Spacer(modifier = Modifier.width(4.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
@@ -1444,10 +1467,9 @@ fun ChatScreen(
                     val isServerStopped = sysStatus == com.example.gemini.data.remote.SystemStatus.OFFLINE && !isInitialGracePeriod
                     val isExistingConversation = currentConv != null && currentConv?.title != "New Chat" && conversations.any { it.id == currentConv?.id }
                     val isExistingChat = messages.isEmpty() && isExistingConversation && isLoadingConversation
-                    val effectiveAgent = currentConv?.agent ?: newChatAgent
                     val isLocalChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
 
-                    if (!isLocalChat && !isAutoModel && isServerStopped && messages.isEmpty()) {
+                    if (isAgyChat && isServerStopped && messages.isEmpty()) {
                         BoxWithConstraints(
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -1464,13 +1486,7 @@ fun ChatScreen(
                                 if (isFreshNewChat) {
                                     com.example.gemini.ui.components.AgentPicker(
                                         selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = { agent ->
-                                            viewModel.setNewChatAgent(agent)
-                                            viewModel.startNewChat(agent)
-                                            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                                                viewModel.selectModel("local-model-only")
-                                            }
-                                        },
+                                        onSelect = pickAgent,
                                         modifier = Modifier.padding(bottom = 20.dp),
                                         agents = enabledAgents,
                                         statusColors = agentEntries.associate { it.agent to it.color }
@@ -1479,9 +1495,7 @@ fun ChatScreen(
                                 com.example.gemini.ui.components.ServerStoppedPromptCard(
                                     onStartServer = { com.example.gemini.data.local.LocalServerManager.startServer(context, forceRestart = true) },
                                     onSwitchToLocal = {
-                                        viewModel.setNewChatAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
-                                        viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.LOCAL)
-                                        viewModel.selectModel("local-model-only")
+                                        pickAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
                                     },
                                     onOpenServerLogs = { showLocalServerOutputDialog = true },
                                     onOpenDaemonLogs = { showDaemonLogsDialog = true },
@@ -1490,8 +1504,34 @@ fun ChatScreen(
                                 )
                             }
                         }
-                    } else if (!isLocalChat && !isAutoModel && isServerInitializing && messages.isEmpty()) {
-                        com.example.gemini.ui.components.EngineWarmingUpView()
+                    } else if (isAgyChat && isServerInitializing && messages.isEmpty()) {
+                        if (isFreshNewChat && enabledAgents.size > 1) {
+                            BoxWithConstraints(
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                val minHeight = maxHeight
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(emptyScrollState)
+                                        .heightIn(min = minHeight)
+                                        .padding(horizontal = 24.dp, vertical = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    com.example.gemini.ui.components.AgentPicker(
+                                        selected = currentConv?.agent ?: newChatAgent,
+                                        onSelect = pickAgent,
+                                        modifier = Modifier.padding(bottom = 20.dp),
+                                        agents = enabledAgents,
+                                        statusColors = agentEntries.associate { it.agent to it.color }
+                                    )
+                                    com.example.gemini.ui.components.EngineWarmingUpView()
+                                }
+                            }
+                        } else {
+                            com.example.gemini.ui.components.EngineWarmingUpView()
+                        }
                     } else if (!conversationError.isNullOrBlank() && messages.isEmpty() && (isExistingConversation || currentConv != null)) {
                         Column(
                             modifier = Modifier
@@ -1560,6 +1600,21 @@ fun ChatScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
+                                if (isFreshNewChat) {
+                                    com.example.gemini.ui.components.AgentPicker(
+                                        selected = currentConv?.agent ?: newChatAgent,
+                                        onSelect = pickAgent,
+                                        modifier = Modifier.padding(bottom = 20.dp),
+                                        agents = enabledAgents,
+                                        statusColors = agentEntries.associate { it.agent to it.color }
+                                    )
+                                }
+
+                                if (!isNetworkConnected) {
+                                    com.example.gemini.ui.components.NewChatOfflinePromptCard(
+                                        modifier = Modifier.padding(bottom = 20.dp)
+                                    )
+                                }
 
                                 if (isClaudeChat && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.READY) {
                                     com.example.gemini.ui.claude.ClaudeStatusPrompt(
@@ -1607,31 +1662,33 @@ fun ChatScreen(
                                         secondaryLabel = if (codexState == com.example.gemini.data.agent.codex.CodexState.CHECKING) null else "Server logs",
                                         onSecondary = { showLocalServerOutputDialog = true }
                                     )
-                                } else {
-                                    AntiBotStudioHero(
-                                        selectedModel = currentModel,
-                                        selectedModelId = selectedModelId,
-                                        onOpenModelSelector = {
-                                            focusManager.clearFocus(force = true)
-                                            keyboardController?.hide()
-                                            showModelSelector = true
-                                        },
-                                        onSelectPrompt = { prompt, targetModelId ->
-                                            if (targetModelId != null) {
-                                                viewModel.selectModel(targetModelId)
-                                            }
-                                            textFieldValue = androidx.compose.ui.text.input.TextFieldValue(
-                                                text = prompt,
-                                                selection = androidx.compose.ui.text.TextRange(prompt.length)
+                                } else when (if (isClaudeChat || isOpenCodeChat || isCodexChat) null else systemConnectionState.status) {
+                                    com.example.gemini.data.remote.SystemStatus.CHECKING_AUTH -> {
+                                        com.example.gemini.ui.components.NewChatCheckingAuthPromptCard()
+                                    }
+                                    com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED -> {
+                                        if (isNetworkConnected) {
+                                            com.example.gemini.ui.components.NewChatSignInPromptCard(
+                                                onSignInClick = { viewModel.loginToAgyHub(force = true) }
                                             )
-                                            try {
-                                                chatInputFocusRequester.requestFocus()
-                                            } catch (_: Exception) {}
-                                        },
-                                        isLocalChat = isLocalChat,
-                                        isAuth = systemConnectionState.isAuth,
-                                        onSignIn = { viewModel.loginToAgyHub(force = true) }
-                                    )
+                                        }
+                                    }
+                                    else -> {
+                                        Text(
+                                            text = "How can I help you today?",
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Ask a question, brainstorm ideas, or start coding",
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
                         }

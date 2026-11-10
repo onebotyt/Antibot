@@ -1,13 +1,12 @@
 {
-  "version_code": 209,
-  "version_name": "2.4.89",
+  "version_code": 210,
+  "version_name": "2.4.90",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83e\udd16 Multi-CLI Coding Agent Suite: Full support for Antigravity (agy), Claude Code (claude), OpenCode (opencode), OpenAI Codex (codex), and Local SLM offline engine.",
-    "\ud83c\udfaf Multi-Agent Split Status Indicator: Dynamic top-bar status dot rendering per-agent health slices with quick-action menu (Server logs, daemon monitor, server restart).",
-    "\u2699\ufe0f OpenCode Model Visibility Controls: Provider-level and per-model visibility switches to hide or show specific models across endpoints.",
-    "\ud83d\udee1\ufe0f Robust Codex Protocol Reconnection: Proactive auto-reconnect and state synchronization on WebSocket disconnections.",
-    "\ud83d\udcac Dedicated Agent Sheets & Setup Prompts: Native model pickers and setup guidance for Claude Code, OpenCode, and Codex."
+    "✨ Modernized Home Experience: Replaced legacy home view with modern multi-agent picker (Antigravity, Claude Code, OpenCode, Codex, Local) and dynamic status-aware setup prompts.",
+    "🎨 Refined Top Bar Layout: Fixed version badge vertical text wrapping and optimized header action spacing for all screen densities.",
+    "🤖 Multi-CLI Coding Suite: Integrated seamless switching and backend detachment across Antigravity, Claude Code, OpenCode, and Codex.",
+    "🛡️ Robust Error & Offline Fallbacks: Enhanced connection handling and graceful offline prompt card transitions."
   ],
   "is_critical": false
 }
