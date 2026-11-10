@@ -1,8 +1,9 @@
 {
-  "version_code": 227,
-  "version_name": "2.4.107",
+  "version_code": 228,
+  "version_name": "2.4.108",
   "min_supported_version_code": 1,
   "changelog": [
+    "📁 Move Chat to Project & UI/UX Polish: Added one-tap 'Move Chat to Project' dialog and in-chat AI intent detection to export full conversation context into structured PROJECT_CONTEXT.md, docs/CONVERSATION_HISTORY.md, and AGENTS.md workspaces. Fixed top bar header text truncation and refined agent dropdown layout.",
     "\ud83d\udd27 Fix CI Build & Committer Attribution: Resolved Kotlin OkHttp compilation deprecation errors in NetworkInspectorManager and TrajectoryParser, fixed filterOptions type inference in ChatHistoryDrawer, and attributed CI auto-sync commits to onebotyt instead of github-actions[bot].",
     "\u26a1 Multi-CLI Agent Persistence & Top Corner Dropdown: Fixed AgentPreferences to properly persist and restore all chosen CLI agents across app restarts (Antigravity, Local, Claude Code, OpenCode, Codex). Replaced home screen agent pill with a sleek top-corner dropdown selector for instant switching between CLI agents.",
     "\ud83e\udd80 Rust Transcript Metadata API: Added GET /api/conversations/:id/meta to the Rust bridge daemon, providing instant memory-mapped extraction of chat titles, total steps count, execution status, first prompt, and last active role. Supported in IdeApiClient.getConversationMeta().",

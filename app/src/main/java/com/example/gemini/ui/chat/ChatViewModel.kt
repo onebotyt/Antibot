@@ -470,6 +470,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** `/plu:` plugin skills and custom slash commands are expanded here, for all agents. */
     fun sendMessage(content: String) = PromptExpansion.expand(content).let { expanded ->
+        val moveIntent = com.example.gemini.domain.project.ChatProjectMover.parseMoveChatIntent(expanded)
+        if (moveIntent != null && moveIntent.isMatch) {
+            handleMoveChatViaIntent(expanded, moveIntent)
+            return@let
+        }
         if (_isAutoRouting.value || com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId.value)) {
             val decision = getDynamicRoutingDecision(expanded)
             _activeRoutingDecision.value = decision
@@ -517,6 +522,129 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isOpenCodeActive -> openCodeBackend.sendMessage(expanded)
                 isCodexActive -> codexBackend.sendMessage(expanded)
                 else -> agyBackend.sendMessage(expanded)
+            }
+        }
+    }
+
+    private fun handleMoveChatViaIntent(prompt: String, intent: com.example.gemini.domain.project.MoveChatIntent) {
+        val conv = _currentConversation.value ?: return
+        val userMsg = ChatMessage(
+            conversationId = conv.id,
+            role = MessageRole.USER,
+            content = prompt,
+            createdAt = System.currentTimeMillis()
+        )
+        _messages.value = _messages.value + userMsg
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = if (intent.isNewProject || !intent.projectName.isNullOrBlank()) {
+                com.example.gemini.domain.project.ChatProjectMover.createProjectAndMoveChat(
+                    projectName = intent.projectName,
+                    conversation = conv,
+                    messages = _messages.value
+                )
+            } else {
+                com.example.gemini.domain.project.ChatProjectMover.createProjectAndMoveChat(
+                    projectName = conv.title,
+                    conversation = conv,
+                    messages = _messages.value
+                )
+            }
+
+            if (result.success) {
+                val updatedConv = conv.copy(
+                    workspaceUri = "file://${result.projectItem.path}",
+                    updatedAt = System.currentTimeMillis()
+                )
+                _currentConversation.value = updatedConv
+                onProjectChanged(result.projectItem.path)
+                com.example.gemini.data.daemon.TermuxDaemonManager.setActiveProject(result.projectItem)
+            }
+
+            val responseMarkdown = if (result.success) {
+                """
+                📁 **Project Workspace Ready & Chat Moved!**
+
+                - **Project**: `${result.projectItem.name}`
+                - **Workspace Path**: `${result.projectItem.path}`
+                - **Exported Documentation**:
+                ${result.filesWritten.joinToString("\n") { "  - `$it`" }}
+
+                *The active workspace has been updated to `${result.projectItem.path}`. All future commands, dev servers, and file edits will run inside this project workspace.*
+                """.trimIndent()
+            } else {
+                "⚠️ **Could not move chat to project**: ${result.message}"
+            }
+
+            val assistantMsg = ChatMessage(
+                conversationId = conv.id,
+                role = MessageRole.ASSISTANT,
+                content = responseMarkdown,
+                thoughtText = "Detected request to move conversation into project '${result.projectItem.name}'. Created project structure, exported PROJECT_CONTEXT.md and docs/CONVERSATION_HISTORY.md, and updated active workspace.",
+                createdAt = System.currentTimeMillis()
+            )
+
+            withContext(Dispatchers.Main) {
+                _messages.value = _messages.value + assistantMsg
+            }
+        }
+    }
+
+    fun moveChatToProject(
+        targetProject: com.example.gemini.data.daemon.ProjectItem,
+        onCompleted: ((com.example.gemini.domain.project.ProjectExportResult) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val conv = _currentConversation.value
+            val msgs = _messages.value
+            val result = com.example.gemini.domain.project.ChatProjectMover.exportChatToProject(
+                projectDir = java.io.File(targetProject.path),
+                conversation = conv,
+                messages = msgs,
+                customProjectName = targetProject.name
+            )
+            if (result.success) {
+                val updatedConv = conv?.copy(
+                    workspaceUri = if (targetProject.path.startsWith("file://")) targetProject.path else "file://${targetProject.path}",
+                    updatedAt = System.currentTimeMillis()
+                )
+                if (updatedConv != null) {
+                    _currentConversation.value = updatedConv
+                }
+                onProjectChanged(targetProject.path)
+                com.example.gemini.data.daemon.TermuxDaemonManager.setActiveProject(targetProject)
+            }
+            withContext(Dispatchers.Main) {
+                onCompleted?.invoke(result)
+            }
+        }
+    }
+
+    fun createProjectAndMoveChat(
+        projectName: String,
+        onCompleted: ((com.example.gemini.domain.project.ProjectExportResult) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val conv = _currentConversation.value
+            val msgs = _messages.value
+            val result = com.example.gemini.domain.project.ChatProjectMover.createProjectAndMoveChat(
+                projectName = projectName,
+                conversation = conv,
+                messages = msgs
+            )
+            if (result.success) {
+                val updatedConv = conv?.copy(
+                    workspaceUri = "file://${result.projectItem.path}",
+                    updatedAt = System.currentTimeMillis()
+                )
+                if (updatedConv != null) {
+                    _currentConversation.value = updatedConv
+                }
+                onProjectChanged(result.projectItem.path)
+                com.example.gemini.data.daemon.TermuxDaemonManager.setActiveProject(result.projectItem)
+            }
+            withContext(Dispatchers.Main) {
+                onCompleted?.invoke(result)
             }
         }
     }

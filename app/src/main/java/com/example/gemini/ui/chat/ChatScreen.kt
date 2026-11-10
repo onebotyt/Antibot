@@ -359,6 +359,7 @@ fun ChatScreen(
     }
     var showAttachmentSelector by remember { mutableStateOf(false) }
     var showProjectPickerDialog by remember { mutableStateOf(false) }
+    var showMoveChatDialog by remember { mutableStateOf(false) }
     var showGitCloneDialog by remember { mutableStateOf(false) }
     var showWorkspaceFolderBrowserDialog by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
@@ -1351,37 +1352,69 @@ fun ChatScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                                modifier = Modifier.size(34.dp)
+                                modifier = Modifier.size(32.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         painter = painterResource(R.drawable.ic_antibot_logo),
                                         contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
+                                        modifier = Modifier.size(20.dp),
                                         tint = Color.Unspecified
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.width(9.dp))
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            val currentConvPath = currentConv?.workspaceUri?.removePrefix("file://")?.trimEnd('/') ?: ""
+                            val activeProjectName = remember(currentConvPath) {
+                                if (currentConvPath.isNotBlank()) File(currentConvPath).name else null
+                            }
+
+                            if (activeProjectName != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(9.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                                    modifier = Modifier.clickable { showMoveChatDialog = true }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = activeProjectName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            } else {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "AntiBot Studio",
+                                        text = "AntiBot",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
+                                        maxLines = 1
                                     )
                                     Spacer(modifier = Modifier.width(5.dp))
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Box(
@@ -1389,25 +1422,17 @@ fun ChatScreen(
                                                     .size(4.5.dp)
                                                     .background(Color(0xFF10B981), CircleShape)
                                             )
-                                            Spacer(modifier = Modifier.width(3.5.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
                                             Text(
                                                 text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
-                                                fontSize = 9.sp,
+                                                fontSize = 8.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                softWrap = false
+                                                maxLines = 1
                                             )
                                         }
                                     }
                                 }
-                                Text(
-                                    text = "AI Coding Environment",
-                                    fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
                         }
                     },
@@ -1437,7 +1462,19 @@ fun ChatScreen(
                             agents = enabledAgents,
                             statusColors = agentEntries.associate { it.agent to it.color }
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        IconButton(
+                            onClick = { showMoveChatDialog = true },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DriveFileMove,
+                                contentDescription = "Move Chat to Project",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(1.dp))
                         com.example.gemini.ui.agents.AgentStatusIndicator(
                             entries = agentEntries,
                             onOpenServerLogs = { showLocalServerOutputDialog = true },
@@ -1446,28 +1483,27 @@ fun ChatScreen(
                         )
                         IconButton(
                             onClick = { showChatTelemetryDialog = true },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Notifications,
                                 contentDescription = "Notifications & Diagnostics",
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(19.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(2.dp))
                         IconButton(
                             onClick = { viewModel.startNewChat() },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "New Chat",
                                 tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(19.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
@@ -1667,9 +1703,10 @@ fun ChatScreen(
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
                                             text = "Ask a question, brainstorm ideas, or start coding",
-                                            fontSize = 14.sp,
+                                            fontSize = 13.5.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                                            textAlign = TextAlign.Center
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(horizontal = 20.dp)
                                         )
                                     }
                                 }
@@ -3061,6 +3098,31 @@ fun ChatScreen(
                 }
             },
             onDismiss = { showProjectPickerDialog = false }
+        )
+    }
+
+    if (showMoveChatDialog) {
+        val currentConvPath = currentConv?.workspaceUri?.removePrefix("file://")?.trimEnd('/')
+        com.example.gemini.ui.components.MoveChatToProjectDialog(
+            currentProjectPath = currentConvPath,
+            existingProjects = usedProjects,
+            onMoveToExisting = { proj ->
+                viewModel.moveChatToProject(proj) { res ->
+                    scope.launch {
+                        snackbarHostState.showSnackbar(res.message)
+                    }
+                }
+                showMoveChatDialog = false
+            },
+            onCreateAndMove = { projectName ->
+                viewModel.createProjectAndMoveChat(projectName) { res ->
+                    scope.launch {
+                        snackbarHostState.showSnackbar(res.message)
+                    }
+                }
+                showMoveChatDialog = false
+            },
+            onDismiss = { showMoveChatDialog = false }
         )
     }
 

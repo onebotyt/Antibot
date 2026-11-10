@@ -92,6 +92,31 @@ object LocalIntelligenceEngine {
         // Query Rust Bridge for Intent Classification
         val bridgeIntent = classifyIntentViaBridge(trimmed)
 
+        // 0.5. Move Chat to Project Workspace Intent
+        val moveIntent = com.example.gemini.domain.project.ChatProjectMover.parseMoveChatIntent(trimmed)
+        if (moveIntent != null && moveIntent.isMatch) {
+            val res = com.example.gemini.domain.project.ChatProjectMover.createProjectAndMoveChat(
+                projectName = moveIntent.projectName,
+                conversation = null,
+                messages = messages
+            )
+            val reply = buildString {
+                appendLine("📁 **Project Workspace Ready & Chat Context Moved!**\n")
+                appendLine("- **Project Name**: `${res.projectItem.name}`")
+                appendLine("- **Location**: `${res.projectItem.path}`")
+                appendLine("- **Exported Files**:")
+                res.filesWritten.forEach { file ->
+                    appendLine("  - `$file`")
+                }
+                appendLine("\n*The active workspace has been updated to `${res.projectItem.path}`. All future commands and file edits will run inside this project.*")
+            }
+            return@withContext LocalEngineResult(
+                thoughtText = "Detected request to move chat to project '${res.projectItem.name}'. Created workspace and exported PROJECT_CONTEXT.md and docs/CONVERSATION_HISTORY.md.",
+                content = reply,
+                durationMs = System.currentTimeMillis() - startTime
+            )
+        }
+
         // 1. Direct Shell Execution ($cmd, !cmd, run <cmd>, exec <cmd>)
         if (bridgeIntent?.intent == "DIRECT_COMMAND" || isDirectCommand(trimmed, lower)) {
             return@withContext handleDirectCommand(trimmed, lower, projectDir, context, startTime)
