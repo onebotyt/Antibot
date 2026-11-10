@@ -471,7 +471,7 @@ private fun ActionButtons(phase: Phase, holding: Boolean, auto: Boolean, quiet: 
             Phase.LISTENING -> {
                 PillButton("Cancel", Icons.Filled.Close, Danger, big) { JarvisController.cancelCapture() }
                 if (!holding && auto) PillButton("Wait", Icons.Filled.PauseCircle, Amber, big) { JarvisController.holdListening() }
-                PillButton("Live Call", androidx.compose.material.icons.Icons.Rounded.PhoneInTalk, Green, big) {
+                PillButton("Live Call", androidx.compose.material.icons.Icons.Rounded.HeadsetMic, Green, big) {
                     JarvisController.cancelCapture()
                     com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
                 }
@@ -480,7 +480,7 @@ private fun ActionButtons(phase: Phase, holding: Boolean, auto: Boolean, quiet: 
             Phase.SPEAKING -> {
                 if (quiet) PillButton("OK", Icons.Filled.Check, Green, big) { JarvisController.silence() }
                 else PillButton("Stop", Icons.Filled.Stop, Danger, big) { JarvisController.silence() }
-                PillButton("Live Call", androidx.compose.material.icons.Icons.Rounded.PhoneInTalk, Green, big) {
+                PillButton("Live Call", androidx.compose.material.icons.Icons.Rounded.HeadsetMic, Green, big) {
                     JarvisController.silence()
                     com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
                 }

@@ -110,7 +110,7 @@ fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
                     Text(sub, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 RoundIcon(
-                    icon = androidx.compose.material.icons.Icons.Rounded.PhoneInTalk,
+                    icon = androidx.compose.material.icons.Icons.Rounded.HeadsetMic,
                     label = if (voiceCallState.inCall) "In Call" else "Live Call",
                     tint = if (voiceCallState.inCall) Green else Cyan,
                     filled = voiceCallState.inCall
@@ -213,7 +213,7 @@ fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         RoundIcon(
-                            icon = androidx.compose.material.icons.Icons.Rounded.PhoneInTalk,
+                            icon = androidx.compose.material.icons.Icons.Rounded.HeadsetMic,
                             label = if (voiceCallState.inCall) "In Call" else "Live Call",
                             tint = if (voiceCallState.inCall) Green else Cyan,
                             filled = true
