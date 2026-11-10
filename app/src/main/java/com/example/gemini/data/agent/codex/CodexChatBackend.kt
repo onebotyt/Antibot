@@ -412,7 +412,7 @@ class CodexChatBackend(
      * Starts a ChatGPT sign-in. [deviceCode]: a code to type on any device (works with a remote server too);
      * otherwise a browser sign-in that comes back to Codex on this device (local server only).
      */
-    fun startLogin(deviceCode: Boolean) {
+    fun startLogin(deviceCode: Boolean = false) {
         backendScope.launch {
             val params = buildJsonObject { put("type", if (deviceCode) "chatgptDeviceCode" else "chatgpt") }
             client.rpc("account/login/start", params)

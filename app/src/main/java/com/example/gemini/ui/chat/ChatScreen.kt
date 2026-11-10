@@ -343,7 +343,7 @@ fun ChatScreen(
                 showSettingsDialog = true
             }
             com.example.gemini.data.agent.claude.ClaudeAppCommand.NewChat -> viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.CLAUDE)
-            is com.example.gemini.data.agent.claude.ClaudeAppCommand.Done -> showToast(cmd.message)
+            is com.example.gemini.data.agent.claude.ClaudeAppCommand.Done -> com.example.gemini.ui.components.AppToastHelper.showToast(cmd.message, com.example.gemini.ui.components.ChatToastType.INFO)
             else -> {}
         }
     }
@@ -467,7 +467,7 @@ fun ChatScreen(
                 showSettingsDialog = true
             },
             onSignIn = {
-                codexBackend.startLogin()
+                codexBackend.startLogin(deviceCode = com.example.gemini.data.preferences.AuthPreferences.currentRemoteMode)
                 codexSettingsPage = com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT
                 showSettingsDialog = true
             },
