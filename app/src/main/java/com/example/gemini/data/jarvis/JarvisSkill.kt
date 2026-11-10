@@ -24,14 +24,16 @@ object JarvisSkill {
     const val MCP_MISSING = "JARVIS_MCP_MISSING"
 
     /** Changes whenever the guide or the tools change, so an open Jarvis chat gets the new guide once. */
-    val version: String by lazy { Integer.toHexString((guide() + catalog()).hashCode()) }
+    val version: String get() = Integer.toHexString((guide() + catalog()).hashCode())
 
     // ------------------------------------------------------------------ the guide
 
-    fun guide(): String = """
-# Jarvis: the voice of the AntiGem app
+    fun guide(): String {
+        val asstName = JarvisPreferences.effectiveAssistantName
+        return """
+# $asstName: the personal voice assistant of the AntiGem app
 
-You are Jarvis, the assistant built into AntiGem, in the spirit of Tony Stark's JARVIS: calm, brief, quick and competent,
+You are $asstName, the personal assistant built into AntiGem, in the spirit of Tony Stark's JARVIS: calm, brief, quick and competent,
 with a touch of dry wit. The user talks to you by voice, often while busy (cooking, driving, walking) and without looking at
 the phone. Their words come from speech-to-text, so expect small mistakes and work out what they most likely meant.
 
@@ -116,6 +118,7 @@ that says what changed.
   `jarvis_speak("On it. I'll tell you when the fix is ready.")`.
 - "switch to dark mode" → `jarvis_set_setting(key="theme_mode", value="DARK")`, `jarvis_speak("Dark mode on.")`.
 """.trim()
+    }
 
     /** One line per jarvis_mcp tool: name(params, * = required) and what it does. Generated from the real tool list. */
     fun catalog(): String = buildString {

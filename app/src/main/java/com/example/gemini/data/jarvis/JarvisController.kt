@@ -698,6 +698,7 @@ object JarvisController {
 
     fun startListening(initial: String = "", origin: Origin = Origin.BUTTON): Boolean {
         if (!JarvisPreferences.enabled.value) return false
+        if (com.example.gemini.data.voice.AgyVoiceCall.state.value.inCall) return true
         if (listening.value) return true
         if (!hasMic()) { showNotice("Allow the microphone first.", "mic"); return false }
         JarvisVoice.stop()
@@ -1375,6 +1376,10 @@ object JarvisController {
         val t = text.trim()
         if (t.isEmpty()) return
         _said.value = t
+        if (com.example.gemini.data.voice.AgyVoiceCall.state.value.inCall) {
+            com.example.gemini.data.voice.AgyVoiceCall.postAgentSpeech(t)
+            return
+        }
         if (JarvisPreferences.quietMode.value) {
             val dur = (1800L + t.length * 55L).coerceAtMost(9000L)
             quietUntil = System.currentTimeMillis() + dur
@@ -1391,7 +1396,7 @@ object JarvisController {
      * = it did not say, then a question opens the microphone. The last call of a turn decides.
      */
     suspend fun say(text: String, listenAfter: Boolean? = null, wait: Boolean = false) {
-        addLog("Jarvis", text)
+        addLog(JarvisPreferences.effectiveAssistantName, text)
         turnSpoke = true
         val wants = listenAfter ?: text.trimEnd().endsWith("?")
         listenAfterRequested = wants
@@ -1407,7 +1412,7 @@ object JarvisController {
         // the answer comes back to the model here: no extra listening afterwards for an earlier jarvis_speak of this turn
         listenAfterRequested = false
         try {
-            addLog("Jarvis", question)
+            addLog(JarvisPreferences.effectiveAssistantName, question)
             turnSpoke = true
             speakOut(question, wait = true)
             if (!startListening(origin = Origin.ASK)) return null
@@ -1428,7 +1433,7 @@ object JarvisController {
         scope.launch {
             var w = 0
             while ((listening.value || pendingAsk != null) && w < 240) { delay(500); w++ }
-            addLog("Jarvis", t)
+            addLog(JarvisPreferences.effectiveAssistantName, t)
             speakOut(t)
         }
     }
@@ -1485,7 +1490,12 @@ object JarvisController {
         return out.distinct()
     }
 
-    private fun names(): List<String> = wakePhrases().map { it.substringAfterLast(' ') }.flatMap { variants(it) }.distinct()
+    private fun names(): List<String> {
+        val custom = JarvisPreferences.assistantName.value.trim().lowercase()
+        val base = wakePhrases().map { it.substringAfterLast(' ') }
+        val allNames = if (custom.isNotBlank()) (base + custom) else base
+        return allNames.flatMap { variants(it) }.distinct()
+    }
 
     private fun wakeRegex(): Regex {
         val key = JarvisPreferences.wakePhrase.value + "|" + JarvisPreferences.wakeMatch.value

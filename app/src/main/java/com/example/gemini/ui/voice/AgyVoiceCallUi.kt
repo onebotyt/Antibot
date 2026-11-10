@@ -132,7 +132,7 @@ private fun statusLine(st: AgyVoiceCall.State, agentWorking: Boolean): String = 
     Phase.IDLE -> ""
     Phase.LIVE -> when {
         st.muted -> "You're muted"
-        st.agentSpeaking -> "${if (st.isLocal) "AntiBot" else st.voice} is speaking · talk to interrupt"
+        st.agentSpeaking -> "${if (st.isLocal) st.title.ifBlank { "Assistant" } else st.voice} is speaking · talk to interrupt"
         st.userSpeaking -> "Listening…"
         agentWorking -> "The agent is working on it…"
         else -> "Listening"
@@ -200,7 +200,7 @@ private fun CallContent(st: AgyVoiceCall.State, agentWorking: Boolean, onOpenAgy
                 Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                     Text(st.title.ifBlank { if (st.isLocal) "Local Model" else "Antigravity" }, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        (if (st.isLocal) "AntiBot voice" else "Antigravity voice") + " · ${voice.name}" +
+                        (if (st.isLocal) "${st.title.ifBlank { "Personal Assistant" }} voice" else "Antigravity voice") + " · ${voice.name}" +
                             (if (st.language != AgyVoicePreferences.LANGUAGE_AUTO) " · ${AgyVoicePreferences.languageLabel(st.language)}" else ""),
                         color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1
                     )

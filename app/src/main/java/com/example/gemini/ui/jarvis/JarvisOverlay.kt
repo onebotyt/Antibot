@@ -96,7 +96,7 @@ internal fun accentOf(p: Phase) = when (p) {
 private fun defaultLabel(p: Phase, quiet: Boolean) = when (p) {
     Phase.LISTENING -> "Listening…"
     Phase.THINKING -> "Thinking…"
-    Phase.SPEAKING -> if (quiet) "Jarvis" else "Speaking…"
+    Phase.SPEAKING -> if (quiet) JarvisPreferences.effectiveAssistantName else "Speaking…"
     else -> "Ready"
 }
 
@@ -465,16 +465,25 @@ internal fun taskColor(s: JarvisTasks.State): Color = when (s) {
 /** What the user can do right now: cancel / wait / send while listening, stop / reply while Jarvis speaks. */
 @Composable
 private fun ActionButtons(phase: Phase, holding: Boolean, auto: Boolean, quiet: Boolean, onTap: () -> Unit, big: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         when (phase) {
             Phase.LISTENING -> {
                 PillButton("Cancel", Icons.Filled.Close, Danger, big) { JarvisController.cancelCapture() }
                 if (!holding && auto) PillButton("Wait", Icons.Filled.PauseCircle, Amber, big) { JarvisController.holdListening() }
+                PillButton("Live Call", androidx.compose.material.icons.Icons.Rounded.PhoneInTalk, Green, big) {
+                    JarvisController.cancelCapture()
+                    com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
+                }
                 PillButton("Send", Icons.Filled.Send, Cyan, big, filled = true) { JarvisController.finishListening() }
             }
             Phase.SPEAKING -> {
                 if (quiet) PillButton("OK", Icons.Filled.Check, Green, big) { JarvisController.silence() }
                 else PillButton("Stop", Icons.Filled.Stop, Danger, big) { JarvisController.silence() }
+                PillButton("Live Call", androidx.compose.material.icons.Icons.Rounded.PhoneInTalk, Green, big) {
+                    JarvisController.silence()
+                    com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
+                }
                 PillButton("Reply", Icons.Filled.Mic, Cyan, big, filled = true) { onTap() }
             }
             Phase.THINKING -> PillButton("Stop", Icons.Filled.Stop, Danger, big) { JarvisController.stopEverything() }

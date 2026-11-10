@@ -289,6 +289,62 @@ object AgyVoiceCall {
         )
     }
 
+    /**
+     * Starts a continuous live voice interaction call with the Personal Assistant (Jarvis mode).
+     * Uses conversational mode with neural TTS and speech recognition, live captions and interruption.
+     */
+    fun startJarvisCall(context: Context) {
+        val app = context.applicationContext
+        val asstName = com.example.gemini.data.jarvis.JarvisPreferences.assistantName.value.ifBlank { "Personal Assistant" }
+        val isLocal = com.example.gemini.data.jarvis.JarvisPreferences.agentKind == com.example.gemini.domain.model.AgentKind.LOCAL
+        val currentId = com.example.gemini.data.jarvis.JarvisPreferences.currentChatId.value
+
+        start(
+            context = app,
+            title = asstName,
+            isLocal = true,
+            conversationId = currentId.ifBlank { null },
+            onSendPrompt = { prompt ->
+                com.example.gemini.data.jarvis.JarvisController.submitText(prompt)
+            },
+            messagesFlow = null,
+            prepare = {
+                val existing = com.example.gemini.data.jarvis.JarvisPreferences.currentChatId.value
+                val cid = if (existing.isNotBlank()) existing else {
+                    val newId = if (isLocal && com.example.gemini.data.jarvis.JarvisController.isAttached) {
+                        runCatching {
+                            com.example.gemini.data.jarvis.JarvisController.vm.localBackend.startNewChat()
+                            com.example.gemini.data.jarvis.JarvisController.vm.localBackend.currentConversation.value?.id
+                        }.getOrNull() ?: "local_${System.currentTimeMillis()}"
+                    } else {
+                        java.util.UUID.randomUUID().toString()
+                    }
+                    com.example.gemini.data.jarvis.JarvisPreferences.currentChatId.set(newId)
+                    com.example.gemini.data.jarvis.JarvisPreferences.addChatId(newId)
+                    newId
+                }
+                cid to 0
+            }
+        )
+    }
+
+    /**
+     * Posts agent spoken text into the active live call (e.g. from Jarvis personal assistant turn).
+     */
+    fun postAgentSpeech(text: String) {
+        val s = session ?: return
+        if (s.endRequested || _state.value.phase != Phase.LIVE) return
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return
+
+        _state.update { st ->
+            val newLine = Line(lineKeys.incrementAndGet(), Role.AGENT, 0, trimmed, false)
+            st.copy(lines = (st.lines + newLine).takeLast(80), userSpeaking = false)
+        }
+        note(s, "${_state.value.title.ifBlank { "Assistant" }}: ${trimmed.take(60)}…")
+        speakConversationalResponse(s, trimmed)
+    }
+
     /** Hangs up (or closes the screen of a failed call). */
     fun end() {
         val s = session

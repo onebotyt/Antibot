@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
     val close = { JarvisController.panelOpen.value = false }
     BackHandler(onBack = close)
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val phase by JarvisController.phase.collectAsState()
     val log by JarvisController.log.collectAsState()
@@ -62,6 +63,9 @@ fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
     val screenOn by JarvisPreferences.keepScreenOn.state.collectAsState()
     val hotword by JarvisPreferences.hotword.state.collectAsState()
     val agent by JarvisPreferences.agent.state.collectAsState()
+    val asstName by JarvisPreferences.assistantName.state.collectAsState()
+    val displayName = asstName.ifBlank { "Personal Assistant" }
+    val voiceCallState by com.example.gemini.data.voice.AgyVoiceCall.state.collectAsState()
     var input by remember { mutableStateOf("") }
 
     Box(
@@ -96,21 +100,47 @@ fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Jarvis", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text(displayName, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                     val sub = when (phase) {
                         Phase.LISTENING -> "Listening"
                         Phase.THINKING -> steps.lastOrNull()?.text ?: "Working"
                         Phase.SPEAKING -> "Speaking"
-                        else -> "Ready · runs on ${if (agent == "AGY") "Antigravity" else "Claude Code"}"
+                        else -> "Ready · runs on ${if (agent == "LOCAL") "Local Model" else "Antigravity"}"
                     }
                     Text(sub, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                RoundIcon(
+                    icon = androidx.compose.material.icons.Icons.Rounded.PhoneInTalk,
+                    label = if (voiceCallState.inCall) "In Call" else "Live Call",
+                    tint = if (voiceCallState.inCall) Green else Cyan,
+                    filled = voiceCallState.inCall
+                ) {
+                    close()
+                    if (voiceCallState.inCall) {
+                        com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
+                    } else {
+                        com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
+                    }
+                }
+                Spacer(Modifier.width(6.dp))
                 RoundIcon(Icons.Filled.Close, "Close", Color.White.copy(alpha = 0.7f)) { close() }
             }
             Spacer(Modifier.height(12.dp))
 
             // ---- quick switches
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickChip(
+                    "Live Call",
+                    if (voiceCallState.inCall) "Active" else "Start call",
+                    voiceCallState.inCall
+                ) {
+                    close()
+                    if (voiceCallState.inCall) {
+                        com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
+                    } else {
+                        com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
+                    }
+                }
                 QuickChip("Hands-free", if (handsFree) "On" else "Off", handsFree) { JarvisController.setHandsFree(!handsFree) }
                 QuickChip("Voice", if (quiet) "Quiet" else "Speaking", !quiet) { JarvisPreferences.quietMode.set(!quiet) }
                 QuickChip("Send", if (autoSend) "Auto on pause" else "Manual / phrase", autoSend) {
@@ -165,7 +195,7 @@ fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = input, onValueChange = { input = it },
-                    placeholder = { Text("Type to Jarvis…", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp) },
+                    placeholder = { Text("Type to $displayName…", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp) },
                     modifier = Modifier.weight(1f),
                     maxLines = 4,
                     shape = RoundedCornerShape(22.dp),
@@ -181,14 +211,29 @@ fun JarvisPanel(onTalk: () -> Unit, onNoticeAction: (String) -> Unit) {
                 if (input.isNotBlank()) {
                     RoundIcon(Icons.Filled.Send, "Send", Cyan, filled = true) { JarvisController.submitText(input); input = "" }
                 } else {
-                    RoundIcon(Icons.Filled.Mic, "Talk", Cyan, filled = true) { close(); onTalk() }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        RoundIcon(
+                            icon = androidx.compose.material.icons.Icons.Rounded.PhoneInTalk,
+                            label = if (voiceCallState.inCall) "In Call" else "Live Call",
+                            tint = if (voiceCallState.inCall) Green else Cyan,
+                            filled = true
+                        ) {
+                            close()
+                            if (voiceCallState.inCall) {
+                                com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
+                            } else {
+                                com.example.gemini.data.voice.AgyVoiceCall.startJarvisCall(context)
+                            }
+                        }
+                        RoundIcon(Icons.Filled.Mic, "Talk", Cyan, filled = false) { close(); onTalk() }
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
 
             // ---- shortcuts
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                FooterButton("Jarvis settings") { JarvisController.requestSettings("JARVIS") }
+                FooterButton("$displayName settings") { JarvisController.requestSettings("JARVIS") }
                 FooterButton("New session") { JarvisController.newSession(carry = true) }
                 FooterButton("Stop all", Danger) { JarvisController.stopEverything() }
             }

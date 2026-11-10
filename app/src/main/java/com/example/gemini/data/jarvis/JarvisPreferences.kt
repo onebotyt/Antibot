@@ -50,10 +50,14 @@ object JarvisPreferences {
     private val all = mutableListOf<Pref<*>>()
     private fun <T : Any> pref(key: String, default: T): Pref<T> = Pref(key, default).also { all += it }
 
-    // ---- master switch and agent
-    /** Jarvis is available (the Jarvis chip, the MCP server and the voice controls are active). */
+    // ---- master switch, assistant identity and agent
+    /** Personal Assistant is available (the assistant chip, the MCP server and the voice controls are active). */
     val enabled = pref("enabled", false)
     val voiceAssistant = pref("voice_assistant", true)
+    /** The user-chosen name of their personal assistant (defaults to "Jarvis"). */
+    val assistantName = pref("assistant_name", "Jarvis")
+    val effectiveAssistantName: String
+        get() = assistantName.value.trim().ifEmpty { "Jarvis" }
     /** "CLAUDE", "AGY", "OPENCODE", "CODEX" or "LOCAL": which agent runs the hidden Jarvis chat. */
     val agent = pref("agent", AgentKind.CLAUDE.name)
     /** Model of the Jarvis chat; blank = the agent's default. */

@@ -3276,14 +3276,6 @@ fun ChatScreen(
             onDismiss = { showCloudRunCommand = false }
         )
     }
-
-    // the Antigravity voice call screen (Back minimizes it to the pill above the message box)
-    com.example.gemini.ui.voice.AgyVoiceCallScreen(
-        agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId,
-        onOpenAgySettings = {
-            showSettingsDialog = true
-        }
-    )
     } // End of Box
     } // End of CompositionLocalProvider
 } // End of fun ChatScreen

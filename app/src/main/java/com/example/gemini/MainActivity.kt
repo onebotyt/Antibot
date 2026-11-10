@@ -474,6 +474,17 @@ class MainActivity : ComponentActivity() {
 
                                 // Jarvis: voice orb overlay
                                 com.example.gemini.ui.jarvis.JarvisOverlay()
+
+                                // Live Voice Call Screen (accessible globally across all tabs and Jarvis Personal Assistant mode)
+                                val voiceCallState by com.example.gemini.data.voice.AgyVoiceCall.state.collectAsState()
+                                if (voiceCallState.active && !voiceCallState.minimized) {
+                                    com.example.gemini.ui.voice.AgyVoiceCallScreen(
+                                        agentWorking = voiceCallState.agentSpeaking,
+                                        onOpenAgySettings = {
+                                            com.example.gemini.data.jarvis.JarvisController.requestSettings("JARVIS")
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

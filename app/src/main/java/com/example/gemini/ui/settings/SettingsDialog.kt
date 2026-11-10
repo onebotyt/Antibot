@@ -111,17 +111,17 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     X11_DESKTOP("X11 Desktop", "Linux desktop apps with Termux:X11"),
     CHANGELOG("What's new", "Every AntiBot version and what changed"),
     ABOUT("About & Info", "App version, package details, and bridge export"),
-    JARVIS("Jarvis", "Hands-free voice assistant"),
-    JARVIS_AGENT("Jarvis · Agent", "Which agent and model runs Jarvis"),
-    JARVIS_PERSONALITY("Jarvis · Personality & Voice", "Name, voice engine, speed, quiet mode"),
-    JARVIS_SETUP("Jarvis · Setup", "Verify connection, mic permission, and tools"),
-    JARVIS_WAKE("Jarvis · Wake Word", "Wake phrase and hotword triggers"),
-    JARVIS_LISTEN("Jarvis · Listening & Silence", "Speech timeout, auto-send and silence threshold"),
-    JARVIS_VOICE("Jarvis · Voice & Audio", "TTS engines and speech parameters"),
-    JARVIS_TASKS("Jarvis · Tasks & Automation", "Autonomous tasks and background monitoring"),
-    JARVIS_APPROVALS("Jarvis · Approvals & Security", "Execution safety and tool confirmation"),
-    JARVIS_SCREEN("Jarvis · Screen & Context", "Screen awareness and visual context"),
-    JARVIS_CHAT("Jarvis · Chat & Logs", "Voice session history and transcript logs"),
+    JARVIS("Personal Assistant", "Autonomous voice interaction & hands-free assistant"),
+    JARVIS_AGENT("Personal Assistant · Agent", "Which agent and model runs your assistant"),
+    JARVIS_PERSONALITY("Personal Assistant · Personality & Name", "Custom name, voice engine, speed, quiet mode"),
+    JARVIS_SETUP("Personal Assistant · Setup", "Verify connection, mic permission, and tools"),
+    JARVIS_WAKE("Personal Assistant · Wake Word", "Wake phrase and hotword triggers"),
+    JARVIS_LISTEN("Personal Assistant · Listening & Silence", "Speech timeout, auto-send and silence threshold"),
+    JARVIS_VOICE("Personal Assistant · Voice & Audio", "TTS engines and speech parameters"),
+    JARVIS_TASKS("Personal Assistant · Tasks & Automation", "Autonomous tasks and background monitoring"),
+    JARVIS_APPROVALS("Personal Assistant · Approvals & Security", "Execution safety and tool confirmation"),
+    JARVIS_SCREEN("Personal Assistant · Screen & Context", "Screen awareness and visual context"),
+    JARVIS_CHAT("Personal Assistant · Chat & Logs", "Voice session history and transcript logs"),
     REA("Reverse engineering (REA)", "JADX, APKTool, Hermes, native binaries & MCP sandbox"),
     REA_GROUPS("REA tool groups", "Choose active tool groups for agents"),
     ANDROID_DEV("Android Development", "Gradle, Jetpack Compose, Flutter & React Native on phone"),
@@ -922,10 +922,11 @@ private fun MainSettingsMenu(
                 onClick = { onNavigate(SettingsSection.SLASH_COMMANDS) }
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            val asstName = com.example.gemini.data.jarvis.JarvisPreferences.assistantName.value.ifBlank { "Jarvis" }
             SettingsGroupItemRow(
                 icon = Icons.Outlined.RecordVoiceOver,
-                title = "Jarvis Voice Assistant",
-                subtitle = "Hands-free voice orb, screen context & autonomous tasks",
+                title = "Personal Assistant",
+                subtitle = "Live voice interaction, tasks & voice orb ($asstName)",
                 badgeText = if (com.example.gemini.data.jarvis.JarvisPreferences.enabled.value) "Active" else "Off",
                 badgeStyle = if (com.example.gemini.data.jarvis.JarvisPreferences.enabled.value) SettingsBadgeStyle.GREEN else SettingsBadgeStyle.GREY,
                 onClick = { onNavigate(SettingsSection.JARVIS) }

@@ -53,21 +53,24 @@ fun JarvisSettingsScreen(cardBg: Color, cardBorder: BorderStroke, onOpen: (Jarvi
     val quiet by P.quietMode.state.collectAsState()
     val policy by P.permissionPolicy.state.collectAsState()
 
+    val asstName by P.assistantName.state.collectAsState()
+    val currentName = asstName.ifBlank { "Jarvis" }
+
     Column(
         Modifier.fillMaxSize().bouncyVerticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        JCard(cardBg, cardBorder, "Jarvis") {
+        JCard(cardBg, cardBorder, "Personal Assistant") {
             JSwitch(
-                "Turn on Jarvis",
-                "A hands-free assistant for the whole app: talk to open projects and files, run and watch tasks, answer approvals, " +
+                "Turn on Personal Assistant",
+                "A hands-free assistant for the whole app: talk to open projects and files, live voice interaction, run and watch tasks, answer approvals, " +
                     "change settings, ask for help or your usage. Off by default; nothing listens until you turn it on.",
                 enabled
             ) { JarvisController.setEnabled(it) }
-            JHint("Tap the orb to talk, long-press it for the Jarvis panel (tasks, conversation, typing, quick switches).")
+            JHint("Tap the orb to talk, long-press it for the assistant panel (live voice call, tasks, conversation, typing, quick switches).")
         }
         if (!JarvisController.isAttached) {
-            Text("Jarvis is starting…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            Text("Personal Assistant is starting…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             return@Column
         }
         val c = com.example.gemini.theme.AppColors
@@ -77,12 +80,12 @@ fun JarvisSettingsScreen(cardBg: Color, cardBorder: BorderStroke, onOpen: (Jarvi
         listOf(
             listOfNotNull(
                 row(JarvisSettingsPage.AGENT, I.SmartToy, c.info, "Agent", if (agentName == AgentKind.LOCAL.name) "Local Model" else "Antigravity"),
-                row(JarvisSettingsPage.PERSONALITY, I.Face, c.accentPink, "Personality & you"),
-                // the setup checklist is only for a Jarvis that is turned on
+                row(JarvisSettingsPage.PERSONALITY, I.Face, c.accentPink, "Personality & Name", currentName),
+                // the setup checklist is only for an assistant that is turned on
                 if (enabled) row(JarvisSettingsPage.SETUP, I.Checklist, c.success, "Setup") else null
             ),
             listOf(
-                row(JarvisSettingsPage.WAKE, I.Hearing, c.accentTeal, "Waking Jarvis", if (hotword == "phrase") "Wake phrase" else "Button"),
+                row(JarvisSettingsPage.WAKE, I.Hearing, c.accentTeal, "Waking your assistant", if (hotword == "phrase") "Wake phrase" else "Button"),
                 row(JarvisSettingsPage.LISTEN, I.Mic, c.accentIndigo, "Listening & sending", if (autoSend) "Auto-send" else "Manual send"),
                 row(JarvisSettingsPage.VOICE, I.RecordVoiceOver, c.accentAlt, "Voice output", when {
                     quiet -> "Quiet"
@@ -100,7 +103,7 @@ fun JarvisSettingsScreen(cardBg: Color, cardBorder: BorderStroke, onOpen: (Jarvi
                     else -> "Ask each time"
                 }),
                 row(JarvisSettingsPage.SCREEN, I.Visibility, c.info, "Screen & look"),
-                row(JarvisSettingsPage.CHAT, I.ChatBubbleOutline, JarvisCyan, "Jarvis chat")
+                row(JarvisSettingsPage.CHAT, I.ChatBubbleOutline, JarvisCyan, "Assistant chat")
             )
         ).filter { it.isNotEmpty() }.forEach { com.example.gemini.ui.settings.SettingsRowGroup(it, cardBg) }
     }
@@ -153,10 +156,23 @@ fun JarvisSettingsSectionPage(page: JarvisSettingsPage, cardBg: Color, cardBorde
             }
             JarvisSettingsPage.PERSONALITY -> {
                 JCard(cardBg, cardBorder, "") {
+                    val asstName by P.assistantName.state.collectAsState()
+                    OutlinedTextField(
+                        value = asstName,
+                        onValueChange = { P.assistantName.set(it.take(50)) },
+                        label = { Text("Personal Assistant Name") },
+                        placeholder = { Text("e.g. Jarvis, Friday, Nova, AntiBot", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    JHint("Give your personal assistant a name. The assistant identifies itself by this name in conversations, live voice calls, and notifications.")
+
+                    Spacer(Modifier.height(10.dp))
                     val persona by P.persona.state.collectAsState()
-                    Text("Jarvis speaks as", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    val displayName = asstName.ifBlank { "Assistant" }
+                    Text("$displayName speaks as", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     JChips(listOf("" to "Not set", "female" to "Female", "male" to "Male", "neutral" to "Neutral"), persona) { P.persona.set(it) }
-                    JHint("The grammatical gender Jarvis uses for itself. It matters in languages like Hindi (“main kar rahi hoon” / “main kar raha hoon”). " +
+                    JHint("The grammatical gender $displayName uses for itself. It matters in languages like Hindi (“main kar rahi hoon” / “main kar raha hoon”). " +
                         "Pick a matching voice under Voice output.")
                     val about by P.aboutUser.state.collectAsState()
                     OutlinedTextField(
@@ -165,8 +181,8 @@ fun JarvisSettingsSectionPage(page: JarvisSettingsPage, cardBg: Color, cardBorde
                         placeholder = { Text("e.g. Call me Santosh. Reply in Hinglish. I mostly work on the antigem project.", fontSize = 12.sp) },
                         modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 8
                     )
-                    JHint("Sent with the first message of every new Jarvis chat. When you change it (or the persona), the open chat is told with your next message. " +
-                        "Jarvis' own memory note (Settings → Jarvis → Jarvis chat) is separate: Jarvis edits that one itself.")
+                    JHint("Sent with the first message of every new assistant chat. When you change it (or the persona), the open chat is told with your next message. " +
+                        "The assistant's own memory note (Settings → Personal Assistant → Assistant chat) is separate: the assistant edits that one itself.")
                 }
             }
             JarvisSettingsPage.SETUP -> {
