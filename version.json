@@ -1,6 +1,6 @@
 {
-  "version_code": 211,
-  "version_name": "2.4.91",
+  "version_code": 212,
+  "version_name": "2.4.92",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83c\udf99\ufe0f Voice Calls for Local Models: Extended full conversational voice call support to Local Models with on-device speech recognition, natural human cadence TTS, and pulsing visualizer orb.",
