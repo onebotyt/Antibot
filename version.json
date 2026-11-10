@@ -3,10 +3,10 @@
   "version_name": "2.4.90",
   "min_supported_version_code": 1,
   "changelog": [
-    "✨ Modernized Home Experience: Replaced legacy home view with modern multi-agent picker (Antigravity, Claude Code, OpenCode, Codex, Local) and dynamic status-aware setup prompts.",
-    "🎨 Refined Top Bar Layout: Fixed version badge vertical text wrapping and optimized header action spacing for all screen densities.",
-    "🤖 Multi-CLI Coding Suite: Integrated seamless switching and backend detachment across Antigravity, Claude Code, OpenCode, and Codex.",
-    "🛡️ Robust Error & Offline Fallbacks: Enhanced connection handling and graceful offline prompt card transitions."
+    "\u2728 Modernized Home Experience: Replaced legacy home view with modern multi-agent picker (Antigravity, Claude Code, OpenCode, Codex, Local) and dynamic status-aware setup prompts.",
+    "\ud83c\udfa8 Refined Top Bar Layout: Fixed version badge vertical text wrapping and optimized header action spacing for all screen densities.",
+    "\ud83e\udd16 Multi-CLI Coding Suite: Integrated seamless switching and backend detachment across Antigravity, Claude Code, OpenCode, and Codex.",
+    "\ud83d\udee1\ufe0f Robust Error & Offline Fallbacks: Enhanced connection handling and graceful offline prompt card transitions."
   ],
   "is_critical": false
 }
