@@ -652,7 +652,10 @@ fun SettingsDialog(
                         onOpenRea = { currentSection = SettingsSection.REA }
                     )
                     SettingsSection.CODEX_PAGE, SettingsSection.CODEX -> {
-                        val codexBackend = remember { com.example.gemini.data.agent.codex.CodexChatBackend(context.applicationContext as android.app.Application) }
+                        val app = context.applicationContext as android.app.Application
+                        val store = remember { com.example.gemini.data.agent.ChatSessionStore(app) }
+                        val codexPrefs = remember { com.example.gemini.data.agent.codex.CodexPreferences(app) }
+                        val codexBackend = remember { com.example.gemini.data.agent.codex.CodexChatBackend(app, coroutineScope, store, codexPrefs) }
                         var codexPage by remember { mutableStateOf(com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT) }
                         com.example.gemini.ui.codex.CodexSettingsScreen(
                             codexBackend, codexPage,
@@ -661,7 +664,10 @@ fun SettingsDialog(
                         )
                     }
                     SettingsSection.OPENCODE_PAGE, SettingsSection.OPENCODE -> {
-                        val openCodeBackend = remember { com.example.gemini.data.agent.opencode.OpenCodeChatBackend(context.applicationContext as android.app.Application) }
+                        val app = context.applicationContext as android.app.Application
+                        val store = remember { com.example.gemini.data.agent.ChatSessionStore(app) }
+                        val openCodePrefs = remember { com.example.gemini.data.agent.opencode.OpenCodePreferences(app) }
+                        val openCodeBackend = remember { com.example.gemini.data.agent.opencode.OpenCodeChatBackend(app, coroutineScope, store, openCodePrefs) }
                         var openCodePage by remember { mutableStateOf(com.example.gemini.ui.opencode.OpenCodeSettingsPage.SERVER) }
                         com.example.gemini.ui.opencode.OpenCodeSettingsScreen(
                             openCodeBackend, openCodePage,
@@ -800,7 +806,7 @@ private fun MainSettingsMenu(
                 title = "Cloud agents",
                 subtitle = "Google VM Remote Agents & Web Preview",
                 badgeText = if (cloudOn) "On" else "Off",
-                badgeStyle = if (cloudOn) SettingsBadgeStyle.GREEN else null,
+                badgeStyle = if (cloudOn) SettingsBadgeStyle.GREEN else SettingsBadgeStyle.GREY,
                 onClick = { onNavigate(SettingsSection.AGY_CLOUD) }
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))

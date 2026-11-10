@@ -162,6 +162,11 @@ fun ChatScreen(
     val conversations by viewModel.conversations.collectAsState()
     val currentConv by viewModel.currentConversation.collectAsState()
     val newChatAgent by viewModel.newChatAgent.collectAsState()
+    val isClaudeChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.CLAUDE
+    val isOpenCodeChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.OPENCODE
+    val isCodexChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.CODEX
+    /** The chat on screen is Antigravity's (its hub, bridge banners and sign-in apply). */
+    val isAgyChat = !isClaudeChat && !isOpenCodeChat && !isCodexChat
     val isFreshNewChat = currentConv == null || currentConv?.title == "New Chat"
     val messages by viewModel.messages.collectAsState()
     val artifacts by viewModel.artifacts.collectAsState()

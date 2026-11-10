@@ -86,7 +86,11 @@ data class ChatMessage(
     val attachments: List<ChatAttachment> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     /** The model that wrote this reply, as the agent reports it (null when unknown). */
-    val modelId: String? = null
+    val modelId: String? = null,
+    /** A request an Antigravity voice call sent: [content] is what was said (the full prompt is in [rawContent]). */
+    val viaVoice: Boolean = false,
+    /** What the voice said while handing that request to the agent. */
+    val voiceLine: String? = null
 )
 
 @Serializable
@@ -101,7 +105,13 @@ data class ChatAttachment(
     val url: String? = null,
     val durationSeconds: Int = 0,
     val mimeType: String? = null,
-    val base64: String? = null
+    val base64: String? = null,
+    /**
+     * A file the agent opens in place: [path] is its real path on the agent's machine and it goes to the agent only as a
+     * line in the message's hidden `<attached-files>` list (see AttachedFiles). An image may also carry [base64], a
+     * shrunk copy the model sees directly. Never uploaded or inlined by the backends.
+     */
+    val reference: Boolean = false
 )
 
 @Serializable
@@ -292,7 +302,12 @@ data class ModelQuota(
     val resetCountdown: String? = null,
     val weeklyRemainingFraction: Float? = null,
     val weeklyUsedPercentage: String? = null,
-    val weeklyResetCountdown: String? = null
+    val weeklyResetCountdown: String? = null,
+    /** Share left of the window the chat pill shows (5h or 7d, the user's choice; 7d when there is no 5h limit). */
+    val pillFraction: Float? = null,
+    val pillIsWeekly: Boolean = false,
+    /** The window comes with decimals (Antigravity), shown as "48.8%". */
+    val pillOneDecimal: Boolean = false
 ) {
     val percentage: Int
         get() {
@@ -305,6 +320,14 @@ data class ModelQuota(
             }
             return 0
         }
+
+    /** Share left the chat pill shows, or null when this model has no limit to show. */
+    val pillRemaining: Float?
+        get() = pillFraction ?: remainingFraction
+
+    /** The chat pill's text, formatted exactly like the model picker's meters ("48.8%" for Antigravity, "75%" for Claude). */
+    val pillText: String?
+        get() = pillRemaining?.let { quotaPercentText(it, pillOneDecimal) }
 }
 
 @Serializable

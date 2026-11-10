@@ -72,6 +72,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val localBackend = com.example.gemini.data.agent.local.LocalAgentBackend(application, viewModelScope, store)
     val isLocalActive get() = store.currentConversation.value?.agent == AgentKind.LOCAL
 
+    val claudePrefs = com.example.gemini.data.agent.claude.ClaudePreferences(application)
+    private val claudeClient = com.example.gemini.data.agent.claude.ClaudeBridgeClient()
+    val claudeBackend = com.example.gemini.data.agent.claude.ClaudeChatBackend(application, viewModelScope, store, claudePrefs, claudeClient)
+    val claudeAccount = com.example.gemini.data.agent.claude.ClaudeAccountManager(viewModelScope, claudeClient)
+    val claudeConfig = com.example.gemini.data.agent.claude.ClaudeConfigManager(viewModelScope, claudeClient)
+    val claudeVoice = com.example.gemini.data.agent.claude.ClaudeVoiceTranscriber(claudeClient) { claudePrefs.voiceLanguage.value }
+
+    val openCodePrefs = com.example.gemini.data.agent.opencode.OpenCodePreferences(application)
+    val openCodeBackend = com.example.gemini.data.agent.opencode.OpenCodeChatBackend(application, viewModelScope, store, openCodePrefs)
+
+    val codexPrefs = com.example.gemini.data.agent.codex.CodexPreferences(application)
+    val codexBackend = com.example.gemini.data.agent.codex.CodexChatBackend(application, viewModelScope, store, codexPrefs)
+
+    val isClaudeActive get() = store.currentConversation.value?.agent == AgentKind.CLAUDE
+    val isOpenCodeActive get() = store.currentConversation.value?.agent == AgentKind.OPENCODE
+    val isCodexActive get() = store.currentConversation.value?.agent == AgentKind.CODEX
+
     private val agentPrefs = com.example.gemini.data.agent.AgentPreferences(application)
     /** Agent used for new chats, picked on the empty chat screen (remembered). */
     val newChatAgent: StateFlow<AgentKind> = agentPrefs.newChatAgent
@@ -308,24 +325,48 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun startNewChat(agent: AgentKind) {
         when (agent) {
             AgentKind.LOCAL -> {
-                agyBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 localBackend.startNewChat()
             }
             AgentKind.AGY -> {
-                localBackend.detach()
+                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 agyBackend.startNewChat()
+            }
+            AgentKind.CLAUDE -> {
+                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.startNewChat()
+            }
+            AgentKind.OPENCODE -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                openCodeBackend.startNewChat()
+            }
+            AgentKind.CODEX -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                codexBackend.startNewChat()
             }
         }
     }
     fun selectConversation(id: String) {
         when (agentOf(id)) {
             AgentKind.LOCAL -> {
-                agyBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 localBackend.selectConversation(id)
             }
             AgentKind.AGY -> {
-                localBackend.detach()
+                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 agyBackend.selectConversation(id)
+            }
+            AgentKind.CLAUDE -> {
+                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.selectConversation(id)
+            }
+            AgentKind.OPENCODE -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                openCodeBackend.selectConversation(id)
+            }
+            AgentKind.CODEX -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                codexBackend.selectConversation(id)
             }
         }
     }
@@ -333,16 +374,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteConversation(id: String) = when (agentOf(id)) {
         AgentKind.LOCAL -> localBackend.deleteConversation(id)
         AgentKind.AGY -> agyBackend.deleteConversation(id)
+        AgentKind.CLAUDE -> claudeBackend.deleteConversation(id)
+        AgentKind.OPENCODE -> openCodeBackend.deleteConversation(id)
+        AgentKind.CODEX -> codexBackend.deleteConversation(id)
     }
     fun forkConversation(id: String) {
         when (agentOf(id)) {
             AgentKind.LOCAL -> {
-                agyBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 localBackend.forkConversation(id)
             }
             AgentKind.AGY -> {
-                localBackend.detach()
+                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 agyBackend.forkConversation(id)
+            }
+            AgentKind.CLAUDE -> {
+                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.forkConversation(id)
+            }
+            AgentKind.OPENCODE -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                openCodeBackend.forkConversation(id)
+            }
+            AgentKind.CODEX -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                codexBackend.forkConversation(id)
             }
         }
     }
@@ -404,16 +460,40 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     localBackend.sendMessage(expanded)
                 }
                 AgentKind.AGY -> {
-                    if (isLocalActive) {
+                    if (isLocalActive || isClaudeActive || isOpenCodeActive || isCodexActive) {
                         startNewChat(AgentKind.AGY)
                     }
                     agyBackend.selectModel(decision.targetModelId)
                     agyBackend.sendMessage(expanded)
                 }
+                AgentKind.CLAUDE -> {
+                    if (!isClaudeActive) {
+                        startNewChat(AgentKind.CLAUDE)
+                    }
+                    claudeBackend.selectModel(decision.targetModelId)
+                    claudeBackend.sendMessage(expanded)
+                }
+                AgentKind.OPENCODE -> {
+                    if (!isOpenCodeActive) {
+                        startNewChat(AgentKind.OPENCODE)
+                    }
+                    openCodeBackend.selectModel(decision.targetModelId)
+                    openCodeBackend.sendMessage(expanded)
+                }
+                AgentKind.CODEX -> {
+                    if (!isCodexActive) {
+                        startNewChat(AgentKind.CODEX)
+                    }
+                    codexBackend.selectModel(decision.targetModelId)
+                    codexBackend.sendMessage(expanded)
+                }
             }
         } else {
             when {
                 isLocalActive -> localBackend.sendMessage(expanded)
+                isClaudeActive -> claudeBackend.sendMessage(expanded)
+                isOpenCodeActive -> openCodeBackend.sendMessage(expanded)
+                isCodexActive -> codexBackend.sendMessage(expanded)
                 else -> agyBackend.sendMessage(expanded)
             }
         }
@@ -435,10 +515,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun renameConversation(id: String, title: String) {
         when (agentOf(id)) {
             AgentKind.LOCAL -> localBackend.renameConversation(id, title)
+            AgentKind.CLAUDE -> claudeBackend.renameConversation(id, title)
+            AgentKind.OPENCODE -> openCodeBackend.renameConversation(id, title)
+            AgentKind.CODEX -> codexBackend.renameConversation(id, title)
             AgentKind.AGY -> Unit
         }
     }
     fun stopStreaming() = when {
+        isClaudeActive -> claudeBackend.stopStreaming()
+        isOpenCodeActive -> openCodeBackend.stopStreaming()
+        isCodexActive -> codexBackend.stopStreaming()
         isLocalActive -> localBackend.stopStreaming()
         else -> agyBackend.stopStreaming()
     }
@@ -518,10 +604,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private val _conversations = store.conversations
-    /** Sidebar list: Antigravity and Local conversations, newest first. */
-    val conversations: StateFlow<List<Conversation>> = combine(_conversations, localBackend.conversations, enabledAgents) { agy, local, enabled ->
-        ((if (AgentKind.AGY in enabled) agy else emptyList()) + (if (AgentKind.LOCAL in enabled) local else emptyList()))
-            .sortedByDescending { it.updatedAt }
+    /** Sidebar list: All enabled agents' conversations, newest first. */
+    val conversations: StateFlow<List<Conversation>> = combine(
+        _conversations,
+        localBackend.conversations,
+        claudeBackend.conversations,
+        openCodeBackend.conversations,
+        codexBackend.conversations,
+        enabledAgents
+    ) { agy, local, claude, opencode, codex, enabled ->
+        val list = mutableListOf<Conversation>()
+        if (AgentKind.AGY in enabled) list.addAll(agy)
+        if (AgentKind.LOCAL in enabled) list.addAll(local)
+        if (AgentKind.CLAUDE in enabled) list.addAll(claude)
+        if (AgentKind.OPENCODE in enabled) list.addAll(opencode)
+        if (AgentKind.CODEX in enabled) list.addAll(codex)
+        list.sortedByDescending { it.updatedAt }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val allConversations: StateFlow<List<Conversation>> get() = conversations
 

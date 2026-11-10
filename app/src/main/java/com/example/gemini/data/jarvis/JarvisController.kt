@@ -1253,6 +1253,7 @@ object JarvisController {
             when (agent) {
                 AgentKind.LOCAL -> sendLocal(prompt)
                 AgentKind.AGY -> sendAgy(prompt)
+                else -> sendAgy(prompt)
             }
         } catch (e: Exception) {
             // the saved Jarvis chat was deleted: start a new one and send this message there (once)
@@ -1336,6 +1337,7 @@ object JarvisController {
         when (kind) {
             AgentKind.AGY -> JarvisTasks.rememberChatModel(id, modelId)
             AgentKind.LOCAL -> vm.localBackend.selectModel(modelId)
+            else -> JarvisTasks.rememberChatModel(id, modelId)
         }
     }
 
@@ -1348,6 +1350,7 @@ object JarvisController {
                 "Stopped."
             }
             AgentKind.AGY -> hub.cancelCascadeInvocation(id).fold({ "Stopped." }, { "Could not stop: ${it.message}" })
+            else -> "Stopped."
         }
     }
 
@@ -1358,6 +1361,7 @@ object JarvisController {
             val steps = hub.getCascadeTrajectorySteps(id).getOrNull().orEmpty()
             com.example.gemini.domain.chat.TrajectoryEngine().ingestStepsDirect(steps, id)
         }
+        else -> emptyList()
     }
 
     // ------------------------------------------------------------------ speaking and asking

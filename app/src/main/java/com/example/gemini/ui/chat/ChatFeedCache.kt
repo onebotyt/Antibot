@@ -57,8 +57,7 @@ object ChatFeedCache {
             }
             MessageRole.USER -> {
                 // Show the slash command the user typed, not the instructions it expanded to
-                val expanded = com.example.gemini.data.remote.PromptExpansion.collapse(msg.content)
-                val shown = com.example.gemini.domain.chat.VoiceTurn.displayText(expanded, msg.tags)
+                val shown = com.example.gemini.data.remote.PromptExpansion.collapse(msg.content)
                 msgItems.add(ChatFeedItem.User(if (shown === msg.content) msg else msg.copy(content = shown)))
             }
             MessageRole.ASSISTANT -> {

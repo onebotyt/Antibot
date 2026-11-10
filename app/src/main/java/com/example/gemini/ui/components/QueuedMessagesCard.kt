@@ -48,7 +48,7 @@ import com.example.gemini.theme.AppColors
 fun QueuedMessagesCard(
     messages: List<QueuedMessage>,
     onSendNow: (String) -> Unit,
-    onEdit: (String) -> Unit,
+    onEdit: (String) -> Unit = {},
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {

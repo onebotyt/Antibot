@@ -361,6 +361,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/rea/status", get(handlers::rea::rea_status_handler))
         .route("/api/rea/tools", get(handlers::rea::rea_tools_handler))
         .route("/api/rea/run", post(handlers::rea::rea_run_handler))
+        .route("/api/rea/ghidra/decompile", post(handlers::rea::rea_ghidra_decompile_handler))
         // SQLite FTS5 / BM25 & Hybrid Vector Search Database
         .route("/api/db/index", post(handlers::db::db_index_handler))
         .route("/api/db/search", post(handlers::db::db_search_handler))

@@ -42,6 +42,7 @@ class AndroidLocalBridgeServer private constructor() {
         const val ANDROID_AUTOMATION_MCP_NAME = "android_automation_mcp"
         const val NOTES_MCP_NAME = "notes_mcp"
         const val JARVIS_MCP_NAME = "jarvis_mcp"
+        const val THEME_MCP_NAME = "theme_mcp"
         fun isDeveloperMcpName(name: String) = name == DEVELOPER_MCP_NAME || name == LEGACY_DEVELOPER_MCP_NAME
         private const val TAG = "AndroidBridgeServer"
         private const val MAX_HEADER_BYTES = 64 * 1024

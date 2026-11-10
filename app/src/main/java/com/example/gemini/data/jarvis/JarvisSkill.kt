@@ -268,7 +268,10 @@ description: Use when a message comes from the AntiGem Jarvis voice mode (hands-
 
     /** Where each agent keeps skills (the daemon expands `~`). */
     private fun skillDir(agent: AgentKind) = when (agent) {
+        AgentKind.CLAUDE -> "~/.claude/skills/$SKILL_NAME"
         AgentKind.AGY, AgentKind.LOCAL -> "~/.gemini/antigravity/skills/$SKILL_NAME"
+        AgentKind.OPENCODE -> "~/.config/opencode/skills/$SKILL_NAME"
+        AgentKind.CODEX -> "~/.codex/skills/$SKILL_NAME"
     }
 
     /** Writes the skill file for [agent]. Returns the path on success. */

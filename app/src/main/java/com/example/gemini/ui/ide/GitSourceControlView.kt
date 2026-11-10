@@ -715,12 +715,10 @@ fun GitSourceControlView(
                 }
 
                 if (historyExpanded) {
-                    val maxLanes = remember(commitLogs) {
-                        commitLogs.maxOfOrNull { c ->
-                            val segMax = c.segments.maxOfOrNull { maxOf(it.fromCol, it.toCol) } ?: 0
-                            maxOf(c.graphColumn, segMax)
-                        }?.plus(1) ?: 1
-                    }
+                    val maxLanes = commitLogs.maxOfOrNull { c ->
+                        val segMax = c.segments.maxOfOrNull { maxOf(it.fromCol, it.toCol) } ?: 0
+                        maxOf(c.graphColumn, segMax)
+                    }?.plus(1) ?: 1
 
                     items(commitLogs) { commit ->
                         val isExpanded = expandedCommitHash == commit.hash

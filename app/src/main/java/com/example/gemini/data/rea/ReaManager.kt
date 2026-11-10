@@ -86,7 +86,8 @@ object ReaManager {
         ADB("adb", "adb", "adb in the terminal for REA's phone tools (installed apps, logcat, screenshots). Connect it in ADB Connect.", "≈10 MB", false),
         HERMES("hermes", "React Native (hermes-dec)", "Decompiles Hermes bytecode, the index.android.bundle of most React Native apps.", "≈40 MB", false),
         DEBUG("debug", "Debugger (gdb)", "GDB for debugging native programs in the container.", "≈70 MB", false),
-        FIRMWARE("firmware", "Firmware (binwalk)", "binwalk to find and extract firmware images.", "≈30 MB", false);
+        FIRMWARE("firmware", "Firmware (binwalk)", "binwalk to find and extract firmware images.", "≈30 MB", false),
+        GHIDRA("ghidra", "NSA Ghidra Decompiler", "NSA Ghidra headless decompiler, script analyzer & AST generator for .so, ELF, Mach-O and native binaries.", "≈350 MB", false);
 
         val needs: List<Component>
             get() = when (this) {
@@ -94,7 +95,7 @@ object ReaManager {
                 BASE, JAVA, LAUNCHER, NATIVE, DEBUG, FIRMWARE -> listOf(CONTAINER)
                 NODE -> listOf(CONTAINER, BASE)
                 REA -> listOf(CONTAINER, BASE, NODE)
-                JADX, APKTOOL -> listOf(CONTAINER, BASE, JAVA)
+                JADX, APKTOOL, GHIDRA -> listOf(CONTAINER, BASE, JAVA)
                 HERMES -> listOf(CONTAINER, BASE)
             }
     }
@@ -260,6 +261,7 @@ object ReaManager {
             if (File(root, "root/tools/hermes/bin/hbc-decompiler").exists()) add(Component.HERMES)
             if (File(root, "usr/bin/gdb").exists()) add(Component.DEBUG)
             if (File(root, "usr/bin/binwalk").exists()) add(Component.FIRMWARE)
+            if (File(root, "root/tools/ghidra/support/analyzeHeadless").exists() || File(root, "usr/local/bin/ghidra-decompiler").exists()) add(Component.GHIDRA)
         }
         val reaVersion = runCatching {
             JSONObject(File(root, "root/tools/node/lib/node_modules/rea-agents/package.json").readText()).optString("version").ifBlank { null }

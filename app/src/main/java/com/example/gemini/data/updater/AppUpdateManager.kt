@@ -220,11 +220,20 @@ class AppUpdateManager(private val context: Context) {
     /**
      * Resolves the direct GitHub API release asset URL for a given filename pattern.
      * The GitHub API asset endpoint redirects directly to Azure Blob storage, bypassing regional 504 proxy timeouts.
+     * If [tag] is provided, looks up the release for that specific tag.
+     * If [tag] is null, falls back to the latest release ONLY IF it is strictly newer than the current version.
      */
-    private fun resolveAssetDirectUrl(pattern: String): String? {
+    private fun resolveAssetDirectUrl(pattern: String, tag: String? = null): String? {
         return try {
+            val url = if (!tag.isNullOrBlank()) {
+                val cleanTag = if (tag.startsWith("v")) tag else "v$tag"
+                "https://api.github.com/repos/onebotyt/Antibot/releases/tags/$cleanTag"
+            } else {
+                GITHUB_RELEASES_URL
+            }
+
             val request = Request.Builder()
-                .url(GITHUB_RELEASES_URL)
+                .url(url)
                 .header("User-Agent", "AntiBot-Updater/${BuildConfig.VERSION_NAME}")
                 .header("Accept", "application/vnd.github.v3+json")
                 .header("Cache-Control", "no-cache")
@@ -234,6 +243,14 @@ class AppUpdateManager(private val context: Context) {
             if (!response.isSuccessful) return null
             val body = response.body?.string() ?: return null
             val json = JSONObject(body)
+
+            // Safety check: ensure remote release is actually newer than running version
+            val releaseTagName = json.optString("tag_name", "").removePrefix("v").trim()
+            if (releaseTagName.isNotBlank() && !isRemoteVersionNewer(releaseTagName, BuildConfig.VERSION_NAME)) {
+                Log.w(TAG, "resolveAssetDirectUrl: target release ($releaseTagName) is not newer than current app (${BuildConfig.VERSION_NAME}), skipping asset resolution")
+                return null
+            }
+
             val assets = json.optJSONArray("assets") ?: return null
 
             for (i in 0 until assets.length()) {
@@ -245,7 +262,8 @@ class AppUpdateManager(private val context: Context) {
                 }
             }
             null
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "resolveAssetDirectUrl failed: ${e.message}")
             null
         }
     }
@@ -256,10 +274,11 @@ class AppUpdateManager(private val context: Context) {
      */
     suspend fun updateBridgeBinary(
         bridgeUrl: String,
+        tag: String? = null,
         onProgress: (Float, Long, Long) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
         val urlsToTry = mutableListOf<String>()
-        val directApiUrl = resolveAssetDirectUrl("agy_ide_bridge")
+        val directApiUrl = resolveAssetDirectUrl("agy_ide_bridge", tag)
         if (!directApiUrl.isNullOrBlank()) {
             urlsToTry.add(directApiUrl)
         }
@@ -363,10 +382,11 @@ class AppUpdateManager(private val context: Context) {
      */
     suspend fun downloadApk(
         downloadUrl: String,
+        tag: String? = null,
         onProgress: (Float, Long, Long) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
         val urlsToTry = mutableListOf<String>()
-        val directApiUrl = resolveAssetDirectUrl(".apk")
+        val directApiUrl = resolveAssetDirectUrl(".apk", tag)
         if (!directApiUrl.isNullOrBlank()) {
             urlsToTry.add(directApiUrl)
         }
@@ -441,9 +461,40 @@ class AppUpdateManager(private val context: Context) {
 
     /**
      * Launches the system Package Installer using FileProvider.
+     * Inspects package archive info first to ensure the APK is valid, belongs to this app,
+     * and has a versionCode strictly greater than the installed version.
      */
     fun installApk(apkFile: File): Boolean {
         return try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            }
+
+            if (packageInfo == null) {
+                Log.e(TAG, "Cannot install APK: package info could not be parsed (file corrupted or incomplete)")
+                return false
+            }
+
+            val archiveVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+
+            if (archiveVersionCode <= BuildConfig.VERSION_CODE.toLong()) {
+                Log.w(TAG, "Aborting installation: downloaded APK version code ($archiveVersionCode) is not newer than installed version code (${BuildConfig.VERSION_CODE})")
+                return false
+            }
+
+            if (packageInfo.packageName != context.packageName) {
+                Log.w(TAG, "Aborting installation: downloaded APK package name (${packageInfo.packageName}) does not match current app (${context.packageName})")
+                return false
+            }
+
             val authority = "${context.packageName}.fileprovider"
             val apkUri = FileProvider.getUriForFile(context, authority, apkFile)
 

@@ -141,6 +141,18 @@ object JarvisTasks {
                 scope.launch { delay(2500); runCatching { vm.agyBackend.syncAgyConversations(force = true) } }
                 id
             }
+            else -> {
+                val id = UUID.randomUUID().toString()
+                val chosen = modelId?.takeIf { it.isNotBlank() } ?: vm.agyBackend.selectedModelId.value
+                val enum = AgyHubClient.resolveModelEnum(chosen)
+                val ws = projectPath ?: (com.example.gemini.data.daemon.TermuxDaemonManager.activeProject.value?.path
+                    ?: com.example.gemini.data.local.LocalEnvironmentManager.getHomeDir(app).absolutePath)
+                hub.startCascade(id, enum, if (ws.startsWith("file://")) ws else "file://$ws").getOrThrow()
+                rememberChatModel(id, chosen)
+                hub.sendUserPrompt(id, PromptExpansion.expand(text), enum).getOrThrow()
+                scope.launch { delay(2500); runCatching { vm.agyBackend.syncAgyConversations(force = true) } }
+                id
+            }
         }
         val task = Task(
             id = id, agent = agent,
@@ -187,6 +199,10 @@ object JarvisTasks {
                 val enum = AgyHubClient.resolveModelEnum(modelOfChat(t.id))
                 hub.sendUserPrompt(t.id, PromptExpansion.expand(text), enum).getOrElse { return "Could not send: ${it.message}" }
             }
+            else -> {
+                val enum = AgyHubClient.resolveModelEnum(modelOfChat(t.id))
+                hub.sendUserPrompt(t.id, PromptExpansion.expand(text), enum).getOrElse { return "Could not send: ${it.message}" }
+            }
         }
         val now = System.currentTimeMillis()
         put(t.copy(state = State.STARTING, turnAt = now, updatedAt = now, progressAt = now, seenRunning = false,
@@ -202,6 +218,7 @@ object JarvisTasks {
                 vm.localBackend.stopStreaming()
             }
             AgentKind.AGY -> hub.cancelCascadeInvocation(t.id).onFailure { return "Could not stop: ${it.message}" }
+            else -> {}
         }
         if (!quiet) put(t.copy(state = State.STOPPED, updatedAt = System.currentTimeMillis(), note = "Stopped", reported = true))
         return "Stopped."
@@ -231,6 +248,7 @@ object JarvisTasks {
         val msgs = when (t.agent) {
             AgentKind.LOCAL -> vm.localBackend.messages.value.filter { it.conversationId == t.id }
             AgentKind.AGY -> runCatching { JarvisController.readChat(t.id) }.getOrDefault(emptyList())
+            else -> emptyList()
         }
         val text = msgs.lastOrNull { it.role == MessageRole.ASSISTANT && it.content.isNotBlank() }?.content.orEmpty()
         return PromptExpansion.collapse(text).trim().let { if (it.length > max) "…" + it.takeLast(max) else it }
@@ -283,6 +301,7 @@ object JarvisTasks {
     private fun isRunningNow(t: Task): Boolean = when (t.agent) {
         AgentKind.LOCAL -> vm.localBackend.conversations.value.find { it.id == t.id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == t.id)
         AgentKind.AGY -> agyBusy(t.id)
+        else -> false
     }
 
     private fun agyBusy(id: String): Boolean {
@@ -309,11 +328,11 @@ object JarvisTasks {
     private suspend fun check(t0: Task, tick: Int) {
         var t = t0
         val now = System.currentTimeMillis()
-        val running: Boolean
+        var running: Boolean = false
         var needsApproval = false
         var asking = false
         var error: String? = null
-        val sig: String
+        var sig: String = ""
         when (t.agent) {
             AgentKind.LOCAL -> {
                 running = vm.localBackend.conversations.value.find { it.id == t.id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == t.id)
@@ -330,6 +349,10 @@ object JarvisTasks {
                 else if (!running) clearAgyPending(t.id)
                 needsApproval = running && agyPendingOf(t.id).isNotEmpty() ||
                     (vm.currentConversation.value?.id == t.id && vm.pendingApprovals.value.isNotEmpty())
+            }
+            else -> {
+                running = false
+                sig = ""
             }
         }
         if (progressSig.put(t.id, sig) != sig) t = t.copy(progressAt = now)

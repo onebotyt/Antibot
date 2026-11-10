@@ -129,15 +129,16 @@ def test_live_bridge_daemon():
             assert data["success"] is True
             assert "container" in data["components"]
             assert "launcher" in data["components"]
-            print("    ✓ /api/rea/status returned component breakdown")
+            assert "ghidra" in data["components"]
+            print("    ✓ /api/rea/status returned component breakdown (including NSA Ghidra)")
 
         print("  [REA] Testing /api/rea/tools...")
         with urllib.request.urlopen(f"{base}/api/rea/tools", timeout=2) as resp:
             data = json.loads(resp.read().decode())
             assert data["success"] is True
             assert data["mode"] == "on_demand"
-            assert len(data["groups"]) >= 4
-            print(f"    ✓ /api/rea/tools returned {len(data['groups'])} tool groups")
+            assert any(g.get("id") == "ghidra" for g in data["groups"])
+            print(f"    ✓ /api/rea/tools returned {len(data['groups'])} tool groups (including NSA Ghidra)")
 
         print("  [REA] Testing /api/rea/run...")
         req = urllib.request.Request(
@@ -155,6 +156,21 @@ def test_live_bridge_daemon():
             assert data["exit_code"] == 0
             assert "antibot_phase24_verified" in data["stdout"]
             print("    ✓ /api/rea/run successfully executed native command")
+
+        print("  [REA] Testing /api/rea/ghidra/decompile...")
+        req = urllib.request.Request(
+            f"{base}/api/rea/ghidra/decompile",
+            data=json.dumps({
+                "binary_path": "/system/bin/sh",
+                "function_name": "main"
+            }).encode(),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read().decode())
+            assert data["decompiler"] == "NSA Ghidra Headless"
+            assert data["binary_path"] == "/system/bin/sh"
+            print("    ✓ /api/rea/ghidra/decompile handled NSA Ghidra query cleanly")
 
         print("\n🎉 ALL PHASE 24 VERIFICATION TESTS PASSED!")
 

@@ -371,14 +371,15 @@ fun AppUpdateDialog(
                                         downloadState = DownloadState.Downloading(0f, 0L, 0L)
                                         // Auto-sync daemon binary in-place in parallel if available
                                         val bridgeUrl = updateInfo.bridgeBinaryUrl
+                                        val tag = "v${updateInfo.versionName}"
                                         if (!bridgeUrl.isNullOrBlank()) {
                                             launch {
                                                 try {
-                                                    updateManager.updateBridgeBinary(bridgeUrl) { _, _, _ -> }
+                                                    updateManager.updateBridgeBinary(bridgeUrl, tag) { _, _, _ -> }
                                                 } catch (_: Exception) {}
                                             }
                                         }
-                                        val result = updateManager.downloadApk(updateInfo.downloadUrl) { progress, down, total ->
+                                        val result = updateManager.downloadApk(updateInfo.downloadUrl, tag) { progress, down, total ->
                                             downloadState = DownloadState.Downloading(progress, down, total)
                                         }
                                         result.onSuccess { apkFile ->

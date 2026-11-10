@@ -212,6 +212,23 @@ pub async fn codex_rpc_handler(
         });
     }
 
+    if payload.method == "initialize" {
+        return Json(CodexRpcResponse {
+            success: true,
+            result: Some(serde_json::json!({
+                "version": "1.0.0",
+                "capabilities": {
+                    "threads": true,
+                    "approvals": true,
+                    "streaming": true
+                }
+            })),
+            error: None,
+            code: None,
+            codex_unavailable: None,
+        });
+    }
+
     let mgr = get_codex_mgr();
     let (bin, _) = locate_codex_bin();
     if bin.is_none() && !mgr.running.load(Ordering::SeqCst) {
@@ -225,20 +242,6 @@ pub async fn codex_rpc_handler(
     }
 
     match payload.method.as_str() {
-        "initialize" => Json(CodexRpcResponse {
-            success: true,
-            result: Some(serde_json::json!({
-                "version": "1.0.0",
-                "capabilities": {
-                    "threads": true,
-                    "approvals": true,
-                    "streaming": true
-                }
-            })),
-            error: None,
-            code: None,
-            codex_unavailable: None,
-        }),
         "thread/list" => Json(CodexRpcResponse {
             success: true,
             result: Some(serde_json::json!([])),
