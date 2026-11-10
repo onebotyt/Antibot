@@ -302,7 +302,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ai/tokens", post(handlers::ai::tokens_handler))
         // Real-Time Audio DSP, Ring-Buffer & Spectral Telemetry
         .route("/api/audio/telemetry", post(handlers::audio::audio_telemetry_handler))
+        .route("/api/audio/voice/analyze", post(handlers::audio::voice_analyze_handler))
         .route("/ws/audio/telemetry", get(handlers::audio::ws_audio_telemetry_handler))
+        // Antigravity Hub Diagnostics & Call Telemetry
+        .route("/api/agy/hub/diag", get(handlers::diag::agy_hub_diag_handler))
         // SQLite FTS5 / BM25 & Hybrid Vector Search Database
         .route("/api/db/index", post(handlers::db::db_index_handler))
         .route("/api/db/search", post(handlers::db::db_search_handler))

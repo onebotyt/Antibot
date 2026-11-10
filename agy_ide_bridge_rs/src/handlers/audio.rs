@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use antibot_native::audio_dsp::{self, AudioTelemetry};
 
@@ -112,6 +112,46 @@ pub async fn audio_telemetry_handler(
     );
 
     (StatusCode::OK, Json(telemetry))
+}
+
+#[derive(Debug, Serialize)]
+pub struct VoiceAnalysisResponse {
+    pub is_speech: bool,
+    pub rms_dbfs: f32,
+    pub snr_db: f32,
+    pub peak_amplitude: f32,
+    pub dominant_freq_hz: f32,
+    pub noise_floor: f32,
+    pub bands: Vec<f32>,
+}
+
+/// POST /api/audio/voice/analyze
+///
+/// Analyzes voice frames using native DSP (VAD, SNR, frequency spectrum).
+pub async fn voice_analyze_handler(
+    Json(payload): Json<AudioTelemetryRequest>,
+) -> (StatusCode, Json<VoiceAnalysisResponse>) {
+    let pcm = decode_pcm_bytes(&payload);
+    let mut noise = NOISE_FLOOR.lock().unwrap();
+
+    let telemetry = audio_dsp::analyze_pcm_telemetry(
+        &pcm,
+        payload.sample_rate,
+        payload.num_bands,
+        &mut noise,
+    );
+
+    let resp = VoiceAnalysisResponse {
+        is_speech: telemetry.is_speech,
+        rms_dbfs: telemetry.rms_db,
+        snr_db: telemetry.snr_db,
+        peak_amplitude: telemetry.peak_amplitude,
+        dominant_freq_hz: telemetry.dominant_frequency_hz,
+        noise_floor: *noise,
+        bands: telemetry.spectrum_bands,
+    };
+
+    (StatusCode::OK, Json(resp))
 }
 
 /// GET /ws/audio/telemetry

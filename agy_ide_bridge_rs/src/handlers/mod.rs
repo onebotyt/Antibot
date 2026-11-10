@@ -4,6 +4,7 @@ pub mod archive;
 pub mod audio;
 pub mod conversations;
 pub mod db;
+pub mod diag;
 pub mod fs;
 pub mod git;
 pub mod hardware;

@@ -450,12 +450,94 @@ fun ChatScreen(
         }
     }
 
+    // Antigravity voice call (a live spoken call with the agent about the chat on screen)
+    val voiceCall by com.example.gemini.data.voice.AgyVoiceCall.state.collectAsState()
+    val agyPickedModel by viewModel.agyBackend.selectedModelId.collectAsState()
+    val beginVoiceCall: () -> Unit = {
+        val title = currentConv?.title?.takeIf { it.isNotBlank() && it != "New Chat" } ?: "Voice chat"
+        com.example.gemini.data.voice.AgyVoiceCall.start(context, title) { viewModel.agyBackend.prepareVoiceCall() }
+    }
+    val voiceCallPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) beginVoiceCall()
+        else com.example.gemini.ui.components.AppToastHelper.showToast(
+            "Voice calls need microphone access.", com.example.gemini.ui.components.ChatToastType.ERROR
+        )
+    }
+    val callWithMicPermission: () -> Unit = {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) beginVoiceCall()
+        else voiceCallPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+    }
+    // before the first call: pick a voice (swipe through them and hear each one)
+    var showVoicePicker by remember { mutableStateOf(false) }
+    val onStartVoiceCall: () -> Unit = {
+        com.example.gemini.data.voice.AgyVoicePreferences.init(context)
+        when {
+            voiceCall.active -> com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
+            !systemConnectionState.canSend -> com.example.gemini.ui.components.AppToastHelper.showToast(
+                "Start the server to call Antigravity.", com.example.gemini.ui.components.ChatToastType.ERROR
+            )
+            // agy refuses voice calls for cloud chats (its /voice/ws answers 404 for them)
+            currentConv?.cloudProjectId != null -> com.example.gemini.ui.components.AppToastHelper.showToast(
+                com.example.gemini.data.voice.AgyVoiceCall.CLOUD_CHAT_NO_VOICE, com.example.gemini.ui.components.ChatToastType.INFO
+            )
+            !com.example.gemini.data.voice.AgyVoicePreferences.picked.value -> showVoicePicker = true
+            else -> callWithMicPermission()
+        }
+    }
+    if (showVoicePicker) {
+        com.example.gemini.ui.voice.AgyVoicePickerDialog(
+            initialVoice = com.example.gemini.data.voice.AgyVoicePreferences.voice.value,
+            actionLabel = { "Call with $it" },
+            onChoose = { name ->
+                com.example.gemini.data.voice.AgyVoicePreferences.setVoice(name)
+                com.example.gemini.data.voice.AgyVoicePreferences.setPicked()
+                showVoicePicker = false
+                callWithMicPermission()
+            },
+            onDismiss = { showVoicePicker = false }
+        )
+    }
+    // the voice agent moved the call to another chat (it started a new one): show that chat
+    LaunchedEffect(Unit) {
+        com.example.gemini.data.voice.AgyVoiceCall.conversationMoved.collect { id -> viewModel.selectConversation(id) }
+    }
+    // the model picked for the chat changed during the call: the agent plans with it from now on
+    LaunchedEffect(agyPickedModel, voiceCall.inCall) {
+        if (voiceCall.inCall) com.example.gemini.data.voice.AgyVoiceCall.setPlanModel(viewModel.agyBackend.planModelNumber())
+    }
+
+    val agyVoiceChats by com.example.gemini.data.voice.AgyVoiceChats.chats.collectAsState()
+    LaunchedEffect(currentConv?.id, isAgyChat) {
+        if (isAgyChat) currentConv?.id?.let { com.example.gemini.data.voice.AgyVoiceChats.refresh(it) }
+    }
+    val voiceCallItems = remember(agyVoiceChats, currentConv?.id, isAgyChat, voiceCall.active, voiceCall.conversationId, voiceCall.startedAtWall) {
+        val id = currentConv?.id
+        if (!isAgyChat || id == null) emptyList() else {
+            val live = voiceCall.active && voiceCall.conversationId == id && voiceCall.startedAtWall > 0
+            buildList {
+                agyVoiceChats[id].orEmpty().forEach { r ->
+                    val start = r.startedAtMs ?: return@forEach
+                    // the call going on now is shown live, not from an unfinished saved copy
+                    if (live && r.stoppedAtMs == null) return@forEach
+                    add(ChatFeedItem.VoiceCall("${id}_$start", start, r.durationMs, live = false, record = r))
+                }
+                if (live) add(ChatFeedItem.VoiceCall("${id}_live", voiceCall.startedAtWall, null, live = true, record = null))
+            }.sortedBy { it.startedAt }
+        }
+    }
+    var openVoiceTranscript by remember { mutableStateOf<com.example.gemini.data.voice.VoiceChatRecord?>(null) }
+    openVoiceTranscript?.let { rec ->
+        com.example.gemini.ui.voice.AgyVoiceTranscriptSheet(rec) { openVoiceTranscript = null }
+    }
+
     // Granular block-level feed item expansion from pre-warmed background cache (0ms UI thread work)
     val modelNameOf: (String) -> String = remember(availableModels) {
         { id -> availableModels.firstOrNull { it.id == id || it.key == id }?.displayName ?: id }
     }
-    val feedItems = remember(messages, selectedModelId, chatDividersEnabled, modelNameOf) {
-        ChatFeedCache.buildFeedItems(messages, selectedModelId, dividers = chatDividersEnabled, modelName = modelNameOf)
+    val feedItems = remember(messages, selectedModelId, chatDividersEnabled, modelNameOf, voiceCallItems) {
+        ChatFeedCache.buildFeedItems(messages, selectedModelId, dividers = chatDividersEnabled, modelName = modelNameOf, voiceCalls = voiceCallItems)
     }
 
     // Fresh LazyListState per conversation — restores saved position if returning, or initializes directly at bottom
@@ -1402,6 +1484,10 @@ fun ChatScreen(
                                             }
                                         }
                                         is ChatFeedItem.Divider -> com.example.gemini.ui.components.WaveDivider(label = feedItem.label)
+                                        is ChatFeedItem.VoiceCall -> com.example.gemini.ui.voice.VoiceCallMarker(feedItem) {
+                                            if (feedItem.live) com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
+                                            else feedItem.record?.let { openVoiceTranscript = it }
+                                        }
                                         is ChatFeedItem.User -> {
                                             val msgIndex = messages.indexOfFirst { it.id == feedItem.message.id }
                                             val willDeleteOutput = msgIndex < messages.lastIndex
@@ -1917,6 +2003,11 @@ fun ChatScreen(
                     }
                 )
 
+                // a minimized Antigravity voice call
+                com.example.gemini.ui.voice.AgyVoiceCallPill(
+                    agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId
+                )
+
                 // Chat Input Bar with Bottom Model & Thinking Selector Pills
                 ChatInputBar(
                     isOnline = if (isLocalChat) true else systemConnectionState.canSend,
@@ -1976,7 +2067,9 @@ fun ChatScreen(
                     speechManager = viewModel.speechManager,
                     voiceNotesAsText = false,
                     cascadeId = activeConversationKey,
-                    focusRequester = chatInputFocusRequester
+                    focusRequester = chatInputFocusRequester,
+                    onStartVoiceCall = if (isAgyChat) onStartVoiceCall else null,
+                    voiceCallActive = voiceCall.active
                 )
 
                 // Studio Bottom Navigation Dock (Chat, IDE, Terminal, Browser, Notes)
@@ -2742,6 +2835,14 @@ fun ChatScreen(
             onDismiss = { showNetworkInspectorDialog = false }
         )
     }
+
+    // the Antigravity voice call screen (Back minimizes it to the pill above the message box)
+    com.example.gemini.ui.voice.AgyVoiceCallScreen(
+        agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId,
+        onOpenAgySettings = {
+            showSettingsDialog = true
+        }
+    )
     } // End of Box
     } // End of CompositionLocalProvider
 } // End of fun ChatScreen
