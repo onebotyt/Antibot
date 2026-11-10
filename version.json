@@ -1,13 +1,13 @@
 {
-  "version_code": 202,
-  "version_name": "2.2.0",
+  "version_code": 201,
+  "version_name": "2.2.81",
   "min_supported_version_code": 1,
   "changelog": [
-    "🎙️ Phase 22: Antigravity Live Duplex Voice Call & Native Rust Audio Pipeline.",
-    "🗣️ Live Duplex Voice Calls: Real-time speech interaction with Antigravity agents backed by Voice.proto and background microphone service.",
-    "🎭 Agent Voice Picker: Interactive voice preview dialog with live orb animation and voice sample playback.",
-    "📜 Live Transcripts & Diagnostics: Real-time call transcription sheet and hub diagnostic log capture (/api/agy/hub/diag) for failed calls.",
-    "🦀 Pure Rust Audio DSP: Native VAD, Cooley-Tukey FFT, SNR analysis, and spectral equalizer in agy_ide_bridge_rs and antibot_native."
+    "\ud83c\udf99\ufe0f Phase 22: Antigravity Live Duplex Voice Call & Native Rust Audio Pipeline.",
+    "\ud83d\udde3\ufe0f Live Duplex Voice Calls: Real-time speech interaction with Antigravity agents backed by Voice.proto and background microphone service.",
+    "\ud83c\udfad Agent Voice Picker: Interactive voice preview dialog with live orb animation and voice sample playback.",
+    "\ud83d\udcdc Live Transcripts & Diagnostics: Real-time call transcription sheet and hub diagnostic log capture (/api/agy/hub/diag) for failed calls.",
+    "\ud83e\udd80 Pure Rust Audio DSP: Native VAD, Cooley-Tukey FFT, SNR analysis, and spectral equalizer in agy_ide_bridge_rs and antibot_native."
   ],
   "is_critical": false
 }
