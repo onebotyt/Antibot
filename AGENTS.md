@@ -1,5 +1,7 @@
 
--- This whole below prompt only applies to gemini flash models(for any non gemini model you do not have to follow this rule and follow what user said)
+## 0. Project Context & Continuity
+- **Always Read Context First**: At the start of a conversation, read [PROJECT_CONTEXT.md](file:///data/user/0/com.termux/files/home/.gemini/antigravity-cli/scratch/Antibot/PROJECT_CONTEXT.md) and [docs/CONVERSATION_HISTORY.md](file:///data/user/0/com.termux/files/home/.gemini/antigravity-cli/scratch/Antibot/docs/CONVERSATION_HISTORY.md) to load the current architecture, completed Rust migrations, multi-CLI agent setup, and session history before taking any actions.
+
 ## 3. Communication & User Interaction Rules
 
 - **Answer Questions First**: When the user asks a question, points out an issue, or argues a design point, ALWAYS answer and explain directly to the user in text first.
