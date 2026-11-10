@@ -351,3 +351,11 @@ fun AgentSetupPrompt(
         }
     }
 }
+
+fun claudePlanLabel(raw: String): String = when (raw.lowercase()) {
+    "pro" -> "Pro"
+    "team" -> "Team"
+    "enterprise" -> "Enterprise"
+    "free" -> "Free"
+    else -> raw.replaceFirstChar { it.uppercase() }
+}

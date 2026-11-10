@@ -653,7 +653,7 @@ fun SettingsDialog(
                     )
                     SettingsSection.CODEX_PAGE, SettingsSection.CODEX -> {
                         val app = context.applicationContext as android.app.Application
-                        val store = remember { com.example.gemini.data.agent.ChatSessionStore(app) }
+                        val store = remember { com.example.gemini.data.agent.ChatSessionStore() }
                         val codexPrefs = remember { com.example.gemini.data.agent.codex.CodexPreferences(app) }
                         val codexBackend = remember { com.example.gemini.data.agent.codex.CodexChatBackend(app, coroutineScope, store, codexPrefs) }
                         var codexPage by remember { mutableStateOf(com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT) }
@@ -665,7 +665,7 @@ fun SettingsDialog(
                     }
                     SettingsSection.OPENCODE_PAGE, SettingsSection.OPENCODE -> {
                         val app = context.applicationContext as android.app.Application
-                        val store = remember { com.example.gemini.data.agent.ChatSessionStore(app) }
+                        val store = remember { com.example.gemini.data.agent.ChatSessionStore() }
                         val openCodePrefs = remember { com.example.gemini.data.agent.opencode.OpenCodePreferences(app) }
                         val openCodeBackend = remember { com.example.gemini.data.agent.opencode.OpenCodeChatBackend(app, coroutineScope, store, openCodePrefs) }
                         var openCodePage by remember { mutableStateOf(com.example.gemini.ui.opencode.OpenCodeSettingsPage.SERVER) }

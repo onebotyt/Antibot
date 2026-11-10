@@ -272,3 +272,34 @@ fun ActiveModelBadge(accent: Color) {
         Text("Active", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = accent)
     }
 }
+
+fun formatCleanCountdown(isoString: String?, rawCountdown: String? = null): String {
+    if (!isoString.isNullOrBlank()) {
+        try {
+            val clean = isoString.substringBefore('.').substringBefore('Z')
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val target = sdf.parse(clean)?.time
+            if (target != null) {
+                val diffMs = target - System.currentTimeMillis()
+                if (diffMs <= 0) return "Ready"
+                val totalMins = diffMs / (1000 * 60)
+                val days = totalMins / (60 * 24)
+                val hours = (totalMins % (60 * 24)) / 60
+                val mins = totalMins % 60
+                return when {
+                    days > 0 && hours > 0 -> "${days}d ${hours}h"
+                    days > 0 -> "${days}d"
+                    hours > 0 && mins > 0 -> "${hours}h ${mins}m"
+                    hours > 0 -> "${hours}h"
+                    else -> "${mins}m"
+                }
+            }
+        } catch (_: Exception) {}
+    }
+    if (!rawCountdown.isNullOrBlank()) {
+        return rawCountdown.removePrefix("Resets in ").removePrefix("Reset in ").removePrefix("• ").trim()
+    }
+    return ""
+}

@@ -606,19 +606,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _conversations = store.conversations
     /** Sidebar list: All enabled agents' conversations, newest first. */
     val conversations: StateFlow<List<Conversation>> = combine(
-        _conversations,
-        localBackend.conversations,
-        claudeBackend.conversations,
-        openCodeBackend.conversations,
-        codexBackend.conversations,
+        combine(
+            _conversations,
+            localBackend.conversations,
+            claudeBackend.conversations,
+            openCodeBackend.conversations,
+            codexBackend.conversations
+        ) { agy, local, claude, opencode, codex ->
+            listOf(
+                AgentKind.AGY to agy,
+                AgentKind.LOCAL to local,
+                AgentKind.CLAUDE to claude,
+                AgentKind.OPENCODE to opencode,
+                AgentKind.CODEX to codex
+            )
+        },
         enabledAgents
-    ) { agy, local, claude, opencode, codex, enabled ->
+    ) { pairs, enabled ->
         val list = mutableListOf<Conversation>()
-        if (AgentKind.AGY in enabled) list.addAll(agy)
-        if (AgentKind.LOCAL in enabled) list.addAll(local)
-        if (AgentKind.CLAUDE in enabled) list.addAll(claude)
-        if (AgentKind.OPENCODE in enabled) list.addAll(opencode)
-        if (AgentKind.CODEX in enabled) list.addAll(codex)
+        for ((agent, convs) in pairs) {
+            if (agent in enabled) list.addAll(convs)
+        }
         list.sortedByDescending { it.updatedAt }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val allConversations: StateFlow<List<Conversation>> get() = conversations

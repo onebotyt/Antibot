@@ -1746,7 +1746,8 @@ fun MarkdownVideoView(
         mutableStateOf(VideoThumbnailCache.peek(video.url))
     }
     LaunchedEffect(video.url) {
-        thumbnail = VideoThumbnailCache.load(context.applicationContext, video.url, videoUri)
+        val stream = HubMediaResolver.mediaStreamFor(video.url)
+        thumbnail = VideoThumbnailCache.load(context.applicationContext, video.url, stream)
     }
     var isPrepared by remember(video.url) { mutableStateOf(false) }
     var isPlaying by remember(video.url) { mutableStateOf(false) }
@@ -1851,7 +1852,7 @@ fun MarkdownVideoView(
                 }
             } else {
                 if (player == null) {
-                    thumbnail?.let { bitmap ->
+                    thumbnail?.bitmap?.let { bitmap ->
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = video.alt.ifBlank { "Video preview" },

@@ -46,6 +46,7 @@ object JarvisDriver {
                 val c = vm.agyBackend.conversations.value.find { it.id == id }
                 c != null && vm.systemConnectionState.value.isHubOnline && (c.isRunning || c.notFullyIdle)
             }
+            else -> false
         }
     }
 
@@ -57,6 +58,7 @@ object JarvisDriver {
             AgentKind.OPENCODE -> openCode.getOrPut(id) { newOpenCode().also { it.selectConversation(id) } }
             AgentKind.CODEX -> codex.getOrPut(id) { newCodex().also { it.selectConversation(id) } }
             AgentKind.AGY -> Unit
+            else -> Unit
         }
     }
 
@@ -121,6 +123,7 @@ object JarvisDriver {
                 if (fresh) delay(900) else if (b.currentConversation.value?.id != id) { b.selectConversation(id); delay(900) }
                 b.sendMessage(text)
             }
+            else -> Unit
         }
     }
 
@@ -139,6 +142,7 @@ object JarvisDriver {
             AgentKind.OPENCODE -> (openCode[id] ?: vm.openCodeBackend).interrupt(id)
             AgentKind.CODEX -> (codex[id] ?: vm.codexBackend).interrupt(id)
             AgentKind.AGY -> hub.cancelCascadeInvocation(id)
+            else -> Unit
         }
     }
 
@@ -148,6 +152,7 @@ object JarvisDriver {
         AgentKind.OPENCODE -> if (onScreen(id) && vm.currentConversation.value?.agent == AgentKind.OPENCODE) vm.openCodeBackend.messages.value else openCode[id]?.messages?.value
         AgentKind.CODEX -> if (onScreen(id) && vm.currentConversation.value?.agent == AgentKind.CODEX) vm.codexBackend.messages.value else codex[id]?.messages?.value
         AgentKind.AGY -> if (onScreen(id) && vm.currentConversation.value?.agent == AgentKind.AGY) vm.messages.value else null
+        else -> null
     }
 
     /** The tool the chat's current reply is running, if any. */

@@ -28,13 +28,16 @@ import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.example.gemini.data.preferences.AuthPreferences
@@ -42,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
@@ -49,8 +53,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.painterResource
-import com.example.gemini.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,7 +60,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.TextRange
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -72,12 +73,9 @@ import com.example.gemini.domain.model.AiModel
 import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.MessageRole
 import com.example.gemini.domain.model.ToolType
-import com.example.gemini.domain.model.LocalCodingDomain
 import com.example.gemini.theme.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.example.gemini.ui.components.TaskRecoveryBanner
-import com.example.gemini.ui.components.LocalTurnRecapCard
 import com.example.gemini.ui.components.ActiveContextSummaryCard
 import com.example.gemini.ui.components.AttachmentSelectorBottomSheet
 import com.example.gemini.ui.components.ChatInputBar
@@ -92,6 +90,7 @@ import com.example.gemini.ui.settings.LocalToolsInstallDialog
 import com.example.gemini.data.local.LocalEnvironmentManager
 import com.example.gemini.ui.drawer.ChatHistoryDrawer
 import com.example.gemini.ui.models.ModelSelectorBottomSheet
+import com.example.gemini.ui.models.ThinkingSelectorBottomSheet
 import com.example.gemini.ui.settings.SettingsDialog
 import com.example.gemini.ui.components.MarkdownBlock
 import com.example.gemini.ui.components.MarkdownBlockView
@@ -99,7 +98,6 @@ import com.example.gemini.ui.components.parseMarkdownBlocks
 import com.example.gemini.ui.components.UserMessageBubble
 import com.example.gemini.ui.components.AssistantMessageFooter
 import com.example.gemini.ui.components.ThinkingAccordion
-import com.example.gemini.ui.components.ModelTypingIndicator
 import com.example.gemini.ui.components.ConnectionStatusBadge
 import com.example.gemini.ui.components.FileLinkHandler
 import com.example.gemini.ui.components.LocalFileLinkHandler
@@ -108,7 +106,6 @@ import com.example.gemini.ui.components.MarkdownDocViewerModal
 import com.example.gemini.ui.components.SharedChatViewerModal
 import com.example.gemini.ui.components.SharedChatLoadingDialog
 import com.example.gemini.ui.components.ProjectPickerDialog
-import com.example.gemini.ui.components.FileManagerDialog
 import com.example.gemini.ui.components.ToolCallExpansionCache
 import com.example.gemini.ui.components.CodeBlockExpansionCache
 import com.example.gemini.ui.bubble.FloatingChatActivity
@@ -122,6 +119,7 @@ import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import com.example.gemini.ui.cloud.cloudProjectsSection
 
 enum class ScrollDirection { UP, DOWN }
 
@@ -137,7 +135,9 @@ fun ChatScreen(
     onNavigateToIde: () -> Unit = {},
     onNavigateToTerminal: () -> Unit = {},
     onNavigateToBrowser: () -> Unit = {},
-    onNavigateToNotes: () -> Unit = {}
+    // null where that screen doesn't exist (the floating chat window): its header icon is then hidden
+    onNavigateToNotes: (() -> Unit)? = null,
+    onNavigateToFiles: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -160,6 +160,8 @@ fun ChatScreen(
     }
 
     val conversations by viewModel.conversations.collectAsState()
+    val jarvisConversations by viewModel.jarvisConversations.collectAsState()
+    val jarvisEnabled by com.example.gemini.data.jarvis.JarvisPreferences.enabled.state.collectAsState()
     val currentConv by viewModel.currentConversation.collectAsState()
     val newChatAgent by viewModel.newChatAgent.collectAsState()
     val isClaudeChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.CLAUDE
@@ -167,7 +169,60 @@ fun ChatScreen(
     val isCodexChat = currentConv?.agent == com.example.gemini.domain.model.AgentKind.CODEX
     /** The chat on screen is Antigravity's (its hub, bridge banners and sign-in apply). */
     val isAgyChat = !isClaudeChat && !isOpenCodeChat && !isCodexChat
+    val openCodeBackend = viewModel.openCodeBackend
+    val openCodePending by openCodeBackend.pendingPermissions.collectAsState()
+    val openCodeState by openCodeBackend.state.collectAsState()
+    val openCodeStatus by openCodeBackend.status.collectAsState()
+    val openCodeModelsError by openCodeBackend.modelsError.collectAsState()
+    val openCodeConnected by openCodeBackend.connectedProviders.collectAsState()
+    val openCodeModelCount = openCodeBackend.availableModels.collectAsState().value.size
+    var openOpenCodeSettings by remember { mutableStateOf(false) }
+    // the OpenCode page Settings opens on (Server & install for the Install button, Providers from the model picker)
+    var openCodeSettingsPage by remember { mutableStateOf<com.example.gemini.ui.opencode.OpenCodeSettingsPage?>(null) }
+    LaunchedEffect(Unit) {
+        openCodeBackend.toasts.collect {
+            com.example.gemini.ui.components.AppToastHelper.showToast(it, com.example.gemini.ui.components.ChatToastType.INFO)
+        }
+    }
+    val codexBackend = viewModel.codexBackend
+    val codexPending by codexBackend.pendingApprovals.collectAsState()
+    val codexState by codexBackend.state.collectAsState()
+    val codexStatus by codexBackend.status.collectAsState()
+    val codexAccount by codexBackend.account.collectAsState()
+    val codexModelsError by codexBackend.modelsError.collectAsState()
+    val codexLimits by codexBackend.rateLimits.collectAsState()
+    var openCodexSettings by remember { mutableStateOf(false) }
+    // the Codex page Settings opens on (Server & install for the Install button, Account for Sign in, MCP for /mcp)
+    var codexSettingsPage by remember { mutableStateOf<com.example.gemini.ui.codex.CodexSettingsPage?>(null) }
+    LaunchedEffect(Unit) {
+        codexBackend.toasts.collect {
+            com.example.gemini.ui.components.AppToastHelper.showToast(it, com.example.gemini.ui.components.ChatToastType.INFO)
+        }
+    }
+    // a fresh Jarvis text chat has the agent picker too; switching starts it again with that agent, still a Jarvis chat
+    val jarvisManagers by com.example.gemini.data.jarvis.JarvisManagers.managers.collectAsState()
+    val isJarvisTextChat = currentConv?.id?.let { it in jarvisManagers.keys } == true
     val isFreshNewChat = currentConv == null || currentConv?.title == "New Chat"
+    val pickAgent: (com.example.gemini.domain.model.AgentKind) -> Unit = { agent ->
+        val id = currentConv?.id
+        if (isJarvisTextChat && id != null) com.example.gemini.data.jarvis.JarvisController.switchTextChatAgent(id, agent)
+        else viewModel.setNewChatAgent(agent)
+    }
+    val claudeBackend = viewModel.claudeBackend
+    val claudePending by claudeBackend.pendingPermissions.collectAsState()
+    val claudeStatus by viewModel.claudeAccount.status.collectAsState()
+    val claudeSlashCommands by claudeBackend.slashCommands.collectAsState()
+    var showClaudeLogin by remember { mutableStateOf(false) }
+    var claudeSettingsPage by remember { mutableStateOf<com.example.gemini.ui.claude.ClaudeSettingsPage?>(null) }
+    var restoreCodeOnEdit by remember { mutableStateOf(false) }
+    val claudeSettingsDeps = remember(viewModel) {
+        com.example.gemini.ui.claude.ClaudeSettingsDeps(viewModel.claudeAccount, viewModel.claudeConfig, viewModel.claudeBackend, viewModel.claudePrefs)
+    }
+    LaunchedEffect(Unit) {
+        viewModel.claudeAccount.messages.collect {
+            com.example.gemini.ui.components.AppToastHelper.showToast(it, com.example.gemini.ui.components.ChatToastType.INFO)
+        }
+    }
     val messages by viewModel.messages.collectAsState()
     val artifacts by viewModel.artifacts.collectAsState()
     val selectedModelId by viewModel.selectedModelId.collectAsState()
@@ -189,8 +244,7 @@ fun ChatScreen(
     val incomingMarkdownPreview by viewModel.incomingMarkdownPreview.collectAsState()
     val isDevModeEnabled by viewModel.isDevModeEnabled.collectAsState()
     val chatFontScale by viewModel.chatFontScale.collectAsState(initial = 1.0f)
-    val workingAnimationEnabled by viewModel.authPreferences.workingAnimationEnabled.collectAsState(initial = true)
-    val chatDividersEnabled by viewModel.authPreferences.chatDividersEnabled.collectAsState(initial = true)
+    val claudeCompacting by claudeBackend.isCompacting.collectAsState()
     val bridgeStatusMessage by viewModel.bridgeStatusMessage.collectAsState()
     val isServerOnline by viewModel.isServerOnline.collectAsState()
     val isReconnecting by viewModel.isReconnecting.collectAsState()
@@ -199,8 +253,8 @@ fun ChatScreen(
     val conversationError by viewModel.conversationError.collectAsState()
     val activeInstances by viewModel.activeInstances.collectAsState()
     val isActivelyRunning by viewModel.isCurrentChatActivelyRunning.collectAsState()
-    val queuedMessages by viewModel.queuedMessages.collectAsState()
     val isBackgroundActive by viewModel.isCurrentChatBackgroundActive.collectAsState()
+    val queuedMessages by viewModel.queuedMessages.collectAsState()
     val quotaSummary by viewModel.quotaSummary.collectAsState()
     val preferredModelName by viewModel.preferredModelName.collectAsState()
     val isLocalToolsEnabled by viewModel.isLocalToolsEnabled.collectAsState(initial = false)
@@ -211,6 +265,8 @@ fun ChatScreen(
     val sshUser by viewModel.termuxSshUser.collectAsState(initial = "root")
     val sshPass by viewModel.termuxSshPass.collectAsState(initial = "root")
     val themeMode by viewModel.themeMode.collectAsState(initial = viewModel.authPreferences.getThemeModeSync())
+    // the floating theme picker opened from the sidebar's palette button
+    var showThemePanel by remember { mutableStateOf(false) }
     val agyHubUrl by viewModel.agyHubUrl.collectAsState(initial = AuthPreferences.currentHubUrl)
     val agyBridgeHttpUrl by viewModel.agyBridgeHttpUrl.collectAsState(initial = AuthPreferences.currentBridgeHttpUrl)
     val terminalFontSize by viewModel.terminalFontSize.collectAsState(initial = 14)
@@ -227,17 +283,16 @@ fun ChatScreen(
     val projectsList by viewModel.projectsList.collectAsState()
     val isProjectsLoading by viewModel.isProjectsLoading.collectAsState()
     val groupChatsByWorkspace by viewModel.groupChatsByWorkspace.collectAsState()
-    val isFloatingSwitcherEnabled by viewModel.isFloatingSwitcherEnabled.collectAsState()
+    val showArchivedChats by viewModel.showArchivedChats.collectAsState()
     val floatingSwitcherOrientation by viewModel.floatingSwitcherOrientation.collectAsState()
     val floatingSwitcherItems by viewModel.floatingSwitcherItems.collectAsState()
+    val chatHeaderItems by viewModel.chatHeaderItems.collectAsState()
     val floatingSwitcherAutoCollapseSec by viewModel.floatingSwitcherAutoCollapseSec.collectAsState()
     val isFloatingDiagnosticsEnabled by viewModel.isFloatingDiagnosticsEnabled.collectAsState()
     val isNetworkInspectorEnabled by viewModel.isNetworkInspectorEnabled.collectAsState()
     val isFloatingNetworkInspectorEnabled by viewModel.isFloatingNetworkInspectorEnabled.collectAsState()
     var showNetworkInspectorDialog by remember { mutableStateOf(false) }
     val hasSeenTerminalLauncherOnboarding by viewModel.authPreferences.hasSeenTerminalLauncherOnboarding.collectAsState(initial = true)
-    val isTerminalLauncherEnabledPref by viewModel.authPreferences.isTerminalLauncherEnabled.collectAsState(initial = true)
-    val terminalLauncherStylePref by viewModel.authPreferences.terminalLauncherStyle.collectAsState(initial = com.example.gemini.data.preferences.TerminalLauncherManager.STYLE_ANTITERM)
     val isTranscribingAudio by viewModel.isTranscribingAudio.collectAsState()
     val pendingLoginUrl by viewModel.pendingLoginUrl.collectAsState()
     val agyLoginIssue by viewModel.agyLoginIssue.collectAsState()
@@ -245,6 +300,8 @@ fun ChatScreen(
     val systemConnectionState by viewModel.systemConnectionState.collectAsState()
     val isNetworkConnected by viewModel.isNetworkConnectedState.collectAsState()
     val isAnyGenerationOrTaskActive by viewModel.isAnyGenerationOrTaskActive.collectAsState()
+    val screenAwakeReasons by viewModel.screenAwakeReasons.collectAsState()
+    var screenAwakeInfoOpen by remember { mutableStateOf(false) }
 
     DisposableEffect(isAnyGenerationOrTaskActive) {
         val window = (context as? Activity)?.window
@@ -265,11 +322,11 @@ fun ChatScreen(
     }
 
     var showModelSelector by remember { mutableStateOf(false) }
+    var showThinkingSelector by remember { mutableStateOf(false) }
     var showTerminalInspector by remember { mutableStateOf(false) }
     var showLocalTerminalDialog by rememberSaveable { mutableStateOf(false) }
     var showLocalToolsInstallDialog by remember { mutableStateOf(false) }
     var showLocalServerOutputDialog by remember { mutableStateOf(false) }
-    var showDaemonLogsDialog by remember { mutableStateOf(false) }
     val serverStatus by com.example.gemini.data.local.LocalServerManager.status.collectAsState()
     val isLocalRunning = serverStatus is com.example.gemini.data.local.LocalServerStatus.Running
     val isLocalStarting = serverStatus is com.example.gemini.data.local.LocalServerStatus.Starting
@@ -278,7 +335,15 @@ fun ChatScreen(
     var showRawPayloadDialog by remember { mutableStateOf<String?>(null) }
     var showChatTelemetryDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    // an error card's "Reconnect in Settings" (an OpenCode account the provider rejected)
+    LaunchedEffect(Unit) {
+        com.example.gemini.ui.opencode.OpenCodeUiEvents.openProviders.collect {
+            openCodeSettingsPage = com.example.gemini.ui.opencode.OpenCodeSettingsPage.PROVIDERS
+            showSettingsDialog = true
+        }
+    }
     var showAttachmentSelector by remember { mutableStateOf(false) }
+    var showAttachFromFiles by remember { mutableStateOf(false) }
     var showProjectPickerDialog by remember { mutableStateOf(false) }
     var showGitCloneDialog by remember { mutableStateOf(false) }
     var showWorkspaceFolderBrowserDialog by remember { mutableStateOf(false) }
@@ -296,164 +361,30 @@ fun ChatScreen(
         }
     }
 
-    val pendingApprovals by viewModel.pendingApprovals.collectAsState()
-
-    var currentToast by remember { mutableStateOf<ChatToast?>(null) }
-
-    fun showToast(message: String, type: ChatToastType? = null) {
-        val trimmed = message.trim()
-        if (trimmed.isBlank()) return
-        val resolvedType = type ?: run {
-            val lower = trimmed.lowercase()
-            when {
-                lower.contains("success") || lower.contains("signed in") || lower.contains("logged in") ||
-                lower.contains("saved") || lower.contains("switched") || lower.contains("copied") ||
-                lower.contains("connected") || lower.contains("ready") -> ChatToastType.SUCCESS
-
-                lower.contains("error") || lower.contains("fail") || lower.contains("cannot") ||
-                lower.contains("can't") || lower.contains("invalid") || lower.contains("refused") ||
-                lower.contains("timeout") || lower.contains("exception") || lower.contains("denied") -> ChatToastType.ERROR
-
-                else -> ChatToastType.INFO
-            }
-        }
-        currentToast = ChatToast(message = trimmed, type = resolvedType)
+    // Jarvis (voice or its panel) asked to show a settings page
+    var requestedSettingsSection by remember { mutableStateOf<com.example.gemini.ui.settings.SettingsSection?>(null) }
+    val jarvisSettingsRequest by com.example.gemini.data.jarvis.JarvisController.settingsRequest.collectAsState()
+    LaunchedEffect(jarvisSettingsRequest) {
+        val name = jarvisSettingsRequest ?: return@LaunchedEffect
+        requestedSettingsSection = runCatching { com.example.gemini.ui.settings.SettingsSection.valueOf(name) }.getOrNull()
+        showSettingsDialog = true
+        com.example.gemini.data.jarvis.JarvisController.consumeSettingsRequest()
     }
 
-    LaunchedEffect(currentToast) {
-        if (currentToast != null) {
-            delay(3500)
-            currentToast = null
-        }
+    // Antigravity cloud agents (Remote Agents): cloud projects, through the hub
+    LaunchedEffect(Unit) { com.example.gemini.data.agent.agy.AgyCloud.init(context) }
+    val cloudProjects by com.example.gemini.data.agent.agy.AgyCloud.projects.collectAsState()
+    // off by default (Settings → Antigravity → Cloud agents): then nothing cloud is asked for or shown
+    val cloudEnabled by com.example.gemini.data.agent.agy.AgyCloud.enabled.collectAsState()
+    LaunchedEffect(systemConnectionState.canSend, cloudEnabled) {
+        if (systemConnectionState.canSend && cloudEnabled) com.example.gemini.data.agent.agy.AgyCloud.refreshProjects()
     }
-
-    val agyAuthInfo by viewModel.agyAuthInfo.collectAsState()
-    val isAuthBusy by viewModel.isAuthBusy.collectAsState()
-
-    // Per-agent health for the status dot, accounts, new-chat picker and empty chat (only enabled agents)
-    val enabledAgents by viewModel.enabledAgents.collectAsState()
-    val hasChosenAgents by viewModel.hasChosenAgents.collectAsState()
-    val isApplyingAgents by viewModel.isApplyingAgents.collectAsState()
-    val serverRestarting = serverStatus is com.example.gemini.data.local.LocalServerStatus.Starting ||
-        serverStatus is com.example.gemini.data.local.LocalServerStatus.Stopping
-    val restartLocalServer = {
-        com.example.gemini.ui.components.AppToastHelper.showToast("Restarting the local server…", com.example.gemini.ui.components.ChatToastType.INFO)
-        com.example.gemini.data.local.LocalServerManager.restartServer(context)
-    }
-    val agyEntry = if (com.example.gemini.domain.model.AgentKind.AGY in enabledAgents) {
-        com.example.gemini.ui.agents.agyStatusEntry(
-            state = systemConnectionState,
-            authInfo = agyAuthInfo,
-            isAuthBusy = isAuthBusy,
-            inStartupGrace = isInitialGracePeriod,
-            serverRestarting = serverRestarting,
-            onSignIn = { viewModel.loginToAgyHub(force = true) },
-            onCheckAuth = { viewModel.checkAgyAuthStatus(userInitiated = true) },
-            onRetry = {
-                com.example.gemini.ui.components.AppToastHelper.showToast("Reconnecting to Antigravity…", com.example.gemini.ui.components.ChatToastType.INFO)
-                viewModel.retryConnections()
-            },
-            onRestartServer = restartLocalServer
-        )
-    } else null
-    val agentEntries = listOfNotNull(agyEntry)
-    var showAccountsDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        viewModel.authFeedbackMessage.collect { msg ->
-            showToast(msg)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        com.example.gemini.ui.components.AppToastHelper.toastFlow.collect { toast ->
-            currentToast = toast
-        }
-    }
-
-    val attachments by viewModel.attachments.collectAsState()
-    val isUploadingAttachment by viewModel.isUploadingAttachment.collectAsState()
-
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            viewModel.addAttachmentsFromUris(uris, context)
-        }
-    }
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            viewModel.addAttachmentsFromUris(uris, context)
-        }
-    }
-    var activeConversationKey by remember { mutableStateOf(currentConv?.id ?: "new") }
-    var textFieldValue by remember {
-        mutableStateOf(viewModel.getDraft(currentConv?.id ?: "new"))
-    }
-
-    LaunchedEffect(currentConv?.id) {
-        val newKey = currentConv?.id ?: "new"
-        if (newKey != activeConversationKey) {
-            viewModel.setDraft(activeConversationKey, textFieldValue)
-            activeConversationKey = newKey
-            textFieldValue = viewModel.getDraft(newKey)
-            ToolCallExpansionCache.setChat(newKey)
-            CodeBlockExpansionCache.setChat(newKey)
-        }
-    }
-    val inputText = textFieldValue.text
-    var pendingMessageAction by remember { mutableStateOf<PendingMessageAction?>(null) }
-    val terminatedToolDialogState by viewModel.terminatedToolDialog.collectAsState()
-    val isOAuthServerListening by viewModel.isOAuthServerListening.collectAsState()
-    val isOAuthServerLoading by viewModel.isOAuthServerLoading.collectAsState()
-    val isConversationsLoading by viewModel.isConversationsLoading.collectAsState()
-    val hasReceivedInitialSync by viewModel.hasReceivedInitialSync.collectAsState()
-    val isLoadingConversation by viewModel.isLoadingConversation.collectAsState()
-    val mcpServers by viewModel.mcpServers.collectAsState()
-    val isMcpLoading by viewModel.isMcpLoading.collectAsState()
-    val isMcpRefreshing by viewModel.isMcpRefreshing.collectAsState()
-    val refreshingMcpServer by viewModel.refreshingMcpServer.collectAsState()
-    val mcpErrorMessage by viewModel.mcpErrorMessage.collectAsState()
-    val mcpStatusMessage by viewModel.mcpStatusMessage.collectAsState()
-
-    val availableCascadePlugins by viewModel.availableCascadePlugins.collectAsState()
-    val isCascadePluginsLoading by viewModel.isCascadePluginsLoading.collectAsState()
-    val installingCascadePluginId by viewModel.installingCascadePluginId.collectAsState()
-
-    val allSkills by viewModel.allSkills.collectAsState()
-    val isSkillsLoading by viewModel.isSkillsLoading.collectAsState()
-    val skillsFilterScope by viewModel.skillsFilterScope.collectAsState()
-
-    val installedPlugins by viewModel.installedPlugins.collectAsState()
-    val isInstalledPluginsLoading by viewModel.isInstalledPluginsLoading.collectAsState()
-
-    val googlePluginsCatalog by viewModel.googlePluginsCatalog.collectAsState()
-    val isGooglePluginsLoading by viewModel.isGooglePluginsLoading.collectAsState()
-    val installingGooglePluginId by viewModel.installingGooglePluginId.collectAsState()
-    val deletingPluginId by viewModel.deletingPluginId.collectAsState()
-
-    val pluginActionStatusMessage by viewModel.pluginActionStatusMessage.collectAsState()
-    val pluginActionErrorMessage by viewModel.pluginActionErrorMessage.collectAsState()
-
-    var allSlashCommands by remember { mutableStateOf(com.example.gemini.data.remote.SlashCommandsCache.getCachedSync()) }
-    val effectiveSlashCommands = allSlashCommands
-
-    LaunchedEffect(agyHubUrl, systemConnectionState) {
-        if (systemConnectionState.isHubOnline) {
-            val fetched = com.example.gemini.data.remote.SlashCommandsCache.getCommands(agyHubUrl)
-            if (fetched.isNotEmpty()) {
-                allSlashCommands = fetched
-            }
-            val curId = currentConv?.id
-            val isExisting = currentConv != null && currentConv?.title != "New Chat" && conversations.any { it.id == currentConv?.id }
-            if (!curId.isNullOrBlank() && curId != "new" && isExisting && messages.isEmpty()) {
-                viewModel.startPersistentStream(curId)
-            }
-        }
-    }
+    var showCloudProjects by remember { mutableStateOf(false) }
+    var showCloudCreate by remember { mutableStateOf(false) }
+    var showCloudPreview by remember { mutableStateOf(false) }
+    /** The in-app preview on screen: (cloud chat, port). */
+    var cloudPreviewInApp by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var showCloudRunCommand by remember { mutableStateOf(false) }
 
     // Antigravity voice call (a live spoken call with the agent about the chat on screen)
     val voiceCall by com.example.gemini.data.voice.AgyVoiceCall.state.collectAsState()
@@ -504,19 +435,6 @@ fun ChatScreen(
             onDismiss = { showVoicePicker = false }
         )
     }
-
-    // Antigravity cloud agents (off by default in Settings → Cloud agents)
-    val cloudEnabled by com.example.gemini.data.agent.agy.AgyCloud.enabled.collectAsState()
-    LaunchedEffect(systemConnectionState.canSend, cloudEnabled) {
-        if (systemConnectionState.canSend && cloudEnabled) com.example.gemini.data.agent.agy.AgyCloud.refreshProjects()
-    }
-    var showCloudProjects by remember { mutableStateOf(false) }
-    var showCloudCreate by remember { mutableStateOf(false) }
-    var showCloudPreview by remember { mutableStateOf(false) }
-    /** The in-app preview on screen: (cloud chat, port). */
-    var cloudPreviewInApp by remember { mutableStateOf<Pair<String, Int>?>(null) }
-    var showCloudRunCommand by remember { mutableStateOf(false) }
-
     // the voice agent moved the call to another chat (it started a new one): show that chat
     LaunchedEffect(Unit) {
         com.example.gemini.data.voice.AgyVoiceCall.conversationMoved.collect { id -> viewModel.selectConversation(id) }
@@ -526,6 +444,319 @@ fun ChatScreen(
         if (voiceCall.inCall) com.example.gemini.data.voice.AgyVoiceCall.setPlanModel(viewModel.agyBackend.planModelNumber())
     }
 
+    val pendingApprovals by viewModel.pendingApprovals.collectAsState()
+
+    var currentToast by remember { mutableStateOf<ChatToast?>(null) }
+
+    fun showToast(message: String, type: ChatToastType? = null) {
+        val trimmed = message.trim()
+        if (trimmed.isBlank()) return
+        val resolvedType = type ?: run {
+            val lower = trimmed.lowercase()
+            when {
+                lower.contains("success") || lower.contains("signed in") || lower.contains("logged in") ||
+                lower.contains("saved") || lower.contains("switched") || lower.contains("copied") ||
+                lower.contains("connected") || lower.contains("ready") -> ChatToastType.SUCCESS
+
+                lower.contains("error") || lower.contains("fail") || lower.contains("cannot") ||
+                lower.contains("can't") || lower.contains("invalid") || lower.contains("refused") ||
+                lower.contains("timeout") || lower.contains("exception") || lower.contains("denied") -> ChatToastType.ERROR
+
+                else -> ChatToastType.INFO
+            }
+        }
+        currentToast = ChatToast(message = trimmed, type = resolvedType)
+    }
+
+    LaunchedEffect(currentToast) {
+        if (currentToast != null) {
+            delay(3500)
+            currentToast = null
+        }
+    }
+
+    val agyAuthInfo by viewModel.agyAuthInfo.collectAsState()
+    val isAuthBusy by viewModel.isAuthBusy.collectAsState()
+
+    // Per-agent health for the status dot, accounts, new-chat picker and empty chat (only enabled agents)
+    val enabledAgents by viewModel.enabledAgents.collectAsState()
+    val hasChosenAgents by viewModel.hasChosenAgents.collectAsState()
+    val isApplyingAgents by viewModel.isApplyingAgents.collectAsState()
+    val claudeStartup by claudeBackend.startupStatus.collectAsState()
+    val claudeModelList by claudeBackend.availableModels.collectAsState()
+    val claudeModelsError by claudeBackend.modelsError.collectAsState()
+    val claudeModelsRefreshing by claudeBackend.isRefreshingModels.collectAsState()
+    var showClaudeUsage by remember { mutableStateOf(false) }
+    var showClaudeContext by remember { mutableStateOf(false) }
+    val claudeState by viewModel.claudeAccount.state.collectAsState()
+    // a chat on a custom provider's model needs no Claude login: it can send (and shows no sign-in prompt) signed out
+    val claudeChatState = if (
+        com.example.gemini.data.agent.claude.ClaudeChatBackend.providerOf(selectedModelId).isNotEmpty() &&
+        (claudeState == com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT || claudeState == com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN)
+    ) com.example.gemini.data.agent.claude.ClaudeStatus.READY else claudeState
+    val claudeStatusError by viewModel.claudeAccount.statusError.collectAsState()
+    val openClaudeSetup = {
+        claudeSettingsPage = com.example.gemini.ui.claude.ClaudeSettingsPage.ACCOUNT
+        showSettingsDialog = true
+    }
+    val serverRestarting = serverStatus is com.example.gemini.data.local.LocalServerStatus.Starting ||
+        serverStatus is com.example.gemini.data.local.LocalServerStatus.Stopping
+    val restartLocalServer = {
+        com.example.gemini.ui.components.AppToastHelper.showToast(if (AuthPreferences.currentRemoteMode) "Restarting the server over SSH…" else "Restarting the local server…", com.example.gemini.ui.components.ChatToastType.INFO)
+        com.example.gemini.data.local.LocalServerManager.restartServer(context)
+    }
+    val recheckClaude = {
+        com.example.gemini.ui.components.AppToastHelper.showToast("Checking Claude Code…", com.example.gemini.ui.components.ChatToastType.INFO)
+        viewModel.claudeAccount.refreshStatus()
+    }
+    val agyEntry = if (com.example.gemini.domain.model.AgentKind.AGY in enabledAgents) {
+        com.example.gemini.ui.agents.agyStatusEntry(
+            state = systemConnectionState,
+            authInfo = agyAuthInfo,
+            isAuthBusy = isAuthBusy,
+            inStartupGrace = isInitialGracePeriod,
+            serverRestarting = serverRestarting,
+            onSignIn = { viewModel.loginToAgyHub(force = true) },
+            onCheckAuth = { viewModel.checkAgyAuthStatus(userInitiated = true) },
+            onRetry = {
+                com.example.gemini.ui.components.AppToastHelper.showToast("Reconnecting to Antigravity…", com.example.gemini.ui.components.ChatToastType.INFO)
+                viewModel.retryConnections()
+            },
+            onRestartServer = restartLocalServer
+        )
+    } else null
+    val claudeEntry = if (com.example.gemini.domain.model.AgentKind.CLAUDE in enabledAgents) {
+        com.example.gemini.ui.agents.claudeStatusEntry(
+            state = claudeState,
+            status = claudeStatus,
+            error = claudeStatusError,
+            serverRestarting = serverRestarting,
+            onSignIn = { showClaudeLogin = true },
+            onSetup = openClaudeSetup,
+            onRestartServer = restartLocalServer,
+            onRetry = recheckClaude
+        )
+    } else null
+    val openCodeEntry = if (com.example.gemini.domain.model.AgentKind.OPENCODE in enabledAgents) {
+        com.example.gemini.ui.agents.openCodeStatusEntry(
+            state = openCodeState,
+            status = openCodeStatus,
+            serverRestarting = serverRestarting,
+            // installs right away; Settings → OpenCode shows the progress
+            onSetup = {
+                viewModel.openCodeBackend.startCliJob("install")
+                openCodeSettingsPage = com.example.gemini.ui.opencode.OpenCodeSettingsPage.SERVER
+                showSettingsDialog = true
+            },
+            onRestartServer = restartLocalServer,
+            onRetry = { viewModel.openCodeBackend.retryConnections() }
+        )
+    } else null
+    val codexEntry = if (com.example.gemini.domain.model.AgentKind.CODEX in enabledAgents) {
+        com.example.gemini.ui.agents.codexStatusEntry(
+            state = codexState,
+            status = codexStatus,
+            account = codexAccount,
+            serverRestarting = serverRestarting,
+            // installs right away; Settings → Codex shows the progress
+            onSetup = {
+                codexBackend.startCliJob("install")
+                codexSettingsPage = com.example.gemini.ui.codex.CodexSettingsPage.SERVER
+                showSettingsDialog = true
+            },
+            // starts the sign-in; Settings → Codex shows the code or the browser link
+            onSignIn = {
+                codexBackend.startLogin(deviceCode = com.example.gemini.data.preferences.AuthPreferences.currentRemoteMode)
+                codexSettingsPage = com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT
+                showSettingsDialog = true
+            },
+            onRestartServer = restartLocalServer,
+            onRetry = { codexBackend.retryConnections() }
+        )
+    } else null
+    val agentEntries = listOfNotNull(agyEntry, claudeEntry, openCodeEntry, codexEntry)
+
+    // Codex's "/" commands that open a screen of the app instead of going to Codex
+    val handleCodexCommand: (com.example.gemini.data.agent.codex.CodexChatBackend.AppCommand) -> Unit = { cmd ->
+        when (cmd) {
+            com.example.gemini.data.agent.codex.CodexChatBackend.AppCommand.MODEL_PICKER -> showModelSelector = true
+            com.example.gemini.data.agent.codex.CodexChatBackend.AppCommand.SETTINGS -> { openCodexSettings = true; showSettingsDialog = true }
+            com.example.gemini.data.agent.codex.CodexChatBackend.AppCommand.MCP -> {
+                codexSettingsPage = com.example.gemini.ui.codex.CodexSettingsPage.MCP
+                showSettingsDialog = true
+            }
+            com.example.gemini.data.agent.codex.CodexChatBackend.AppCommand.NEW_CHAT -> viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.CODEX)
+        }
+    }
+
+    // Slash commands Claude's CLI only shows in a terminal: the app opens its own screen instead
+    val handleClaudeCommand: (com.example.gemini.data.agent.claude.ClaudeAppCommand) -> Unit = { cmd ->
+        when (cmd) {
+            com.example.gemini.data.agent.claude.ClaudeAppCommand.Usage -> showClaudeUsage = true
+            com.example.gemini.data.agent.claude.ClaudeAppCommand.Context -> showClaudeContext = true
+            com.example.gemini.data.agent.claude.ClaudeAppCommand.ModelPicker -> showModelSelector = true
+            com.example.gemini.data.agent.claude.ClaudeAppCommand.Mcp -> {
+                claudeSettingsPage = com.example.gemini.ui.claude.ClaudeSettingsPage.MCP
+                showSettingsDialog = true
+            }
+            com.example.gemini.data.agent.claude.ClaudeAppCommand.Settings -> {
+                claudeSettingsPage = com.example.gemini.ui.claude.ClaudeSettingsPage.DEFAULTS
+                showSettingsDialog = true
+            }
+            com.example.gemini.data.agent.claude.ClaudeAppCommand.NewChat -> viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.CLAUDE)
+            is com.example.gemini.data.agent.claude.ClaudeAppCommand.Done ->
+                com.example.gemini.ui.components.AppToastHelper.showToast(cmd.message, com.example.gemini.ui.components.ChatToastType.SUCCESS)
+        }
+    }
+    var showAccountsDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.authFeedbackMessage.collect { msg ->
+            showToast(msg)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        com.example.gemini.ui.components.AppToastHelper.toastFlow.collect { toast ->
+            currentToast = toast
+        }
+    }
+
+    val attachments by viewModel.attachments.collectAsState()
+    val isUploadingAttachment by viewModel.isUploadingAttachment.collectAsState()
+    val attachmentProgress by viewModel.attachmentProgress.collectAsState()
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.addAttachmentsFromUris(uris, context)
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.addAttachmentsFromUris(uris, context)
+        }
+    }
+    var activeConversationKey by remember { mutableStateOf(currentConv?.id ?: "new") }
+    // The keyboard edits this buffer directly (like a native EditText). Holding the text as a TextFieldValue here made
+    // every key press round-trip through this screen; with long text that lagged and some keyboards (e.g. Samsung)
+    // lost track of the word being typed, merging words ("I a" -> "Ia").
+    val inputState = remember {
+        viewModel.getDraft(currentConv?.id ?: "new").let { TextFieldState(it.text, it.selection) }
+    }
+
+    LaunchedEffect(currentConv?.id) {
+        val newKey = currentConv?.id ?: "new"
+        if (newKey != activeConversationKey) {
+            viewModel.setDraft(activeConversationKey, TextFieldValue(inputState.text.toString(), inputState.selection))
+            activeConversationKey = newKey
+            val draft = viewModel.getDraft(newKey)
+            inputState.edit {
+                replace(0, length, draft.text)
+                selection = draft.selection
+            }
+            ToolCallExpansionCache.setChat(newKey)
+            CodeBlockExpansionCache.setChat(newKey)
+        }
+    }
+    // Keep the open chat's draft in step with the input, after each frame rather than inside the key press
+    LaunchedEffect(inputState) {
+        snapshotFlow { activeConversationKey to TextFieldValue(inputState.text.toString(), inputState.selection) }
+            .collect { (key, value) ->
+                viewModel.setDraft(key, value)
+                if (value.text.isNotEmpty()) viewModel.onUserStartedTyping()
+            }
+    }
+    // The `/` and `@` popups depend only on the command / mention being typed, so ordinary typing doesn't redraw this screen
+    val slashTrigger by remember {
+        derivedStateOf {
+            val text = inputState.text
+            val index = text.lastIndexOf('/')
+            val isCommand = index == 0 || (index > 0 && text[index - 1].isWhitespace())
+            if (isCommand && !text.subSequence(index, text.length).contains(' ')) {
+                SlashTrigger(index, text.subSequence(index + 1, text.length).toString(), text.subSequence(0, index).isBlank())
+            } else null
+        }
+    }
+    val mentionTrigger by remember {
+        derivedStateOf {
+            val text = inputState.text
+            val index = text.lastIndexOf('@')
+            if (index >= 0 && !text.subSequence(index + 1, text.length).contains(' ')) {
+                MentionTrigger(index, text.subSequence(index + 1, text.length).toString())
+            } else null
+        }
+    }
+    var pendingMessageAction by remember { mutableStateOf<PendingMessageAction?>(null) }
+    val thinkingPref by viewModel.thinkingPreference.collectAsState()
+    val terminatedToolDialogState by viewModel.terminatedToolDialog.collectAsState()
+    val isOAuthServerListening by viewModel.isOAuthServerListening.collectAsState()
+    val isOAuthServerLoading by viewModel.isOAuthServerLoading.collectAsState()
+    val isConversationsLoading by viewModel.isConversationsLoading.collectAsState()
+    val hasReceivedInitialSync by viewModel.hasReceivedInitialSync.collectAsState()
+    val isLoadingConversation by viewModel.isLoadingConversation.collectAsState()
+    val mcpServers by viewModel.mcpServers.collectAsState()
+    val isMcpLoading by viewModel.isMcpLoading.collectAsState()
+    val isMcpRefreshing by viewModel.isMcpRefreshing.collectAsState()
+    val refreshingMcpServer by viewModel.refreshingMcpServer.collectAsState()
+    val mcpErrorMessage by viewModel.mcpErrorMessage.collectAsState()
+    val mcpStatusMessage by viewModel.mcpStatusMessage.collectAsState()
+
+    val availableCascadePlugins by viewModel.availableCascadePlugins.collectAsState()
+    val isCascadePluginsLoading by viewModel.isCascadePluginsLoading.collectAsState()
+    val installingCascadePluginId by viewModel.installingCascadePluginId.collectAsState()
+
+    val allSkills by viewModel.allSkills.collectAsState()
+    val isSkillsLoading by viewModel.isSkillsLoading.collectAsState()
+    val skillsFilterScope by viewModel.skillsFilterScope.collectAsState()
+
+    val installedPlugins by viewModel.installedPlugins.collectAsState()
+    val isInstalledPluginsLoading by viewModel.isInstalledPluginsLoading.collectAsState()
+
+    val googlePluginsCatalog by viewModel.googlePluginsCatalog.collectAsState()
+    val isGooglePluginsLoading by viewModel.isGooglePluginsLoading.collectAsState()
+    val installingGooglePluginId by viewModel.installingGooglePluginId.collectAsState()
+    val deletingPluginId by viewModel.deletingPluginId.collectAsState()
+
+    val pluginActionStatusMessage by viewModel.pluginActionStatusMessage.collectAsState()
+    val pluginActionErrorMessage by viewModel.pluginActionErrorMessage.collectAsState()
+
+    var allSlashCommands by remember { mutableStateOf(com.example.gemini.data.remote.SlashCommandsCache.getCachedSync()) }
+    val codexSlashCommands by codexBackend.slashCommands.collectAsState()
+    val effectiveSlashCommands = if (isClaudeChat) claudeSlashCommands else if (isCodexChat) codexSlashCommands else if (isOpenCodeChat) emptyList() else allSlashCommands
+
+    LaunchedEffect(agyHubUrl, systemConnectionState) {
+        if (systemConnectionState.isHubOnline) {
+            val fetched = com.example.gemini.data.remote.SlashCommandsCache.getCommands(agyHubUrl)
+            if (fetched.isNotEmpty()) {
+                allSlashCommands = fetched
+            }
+            val curId = currentConv?.id
+            val isExisting = currentConv != null && currentConv?.title != "New Chat" && conversations.any { it.id == currentConv?.id }
+            if (!curId.isNullOrBlank() && curId != "new" && isExisting && messages.isEmpty()) {
+                viewModel.startPersistentStream(curId)
+            }
+        }
+    }
+
+    // Granular block-level feed item expansion from pre-warmed background cache (0ms UI thread work)
+    // model ids → display names for the "Switched to …" dividers (Claude: resolved ids; Antigravity: enum names)
+    val claudeModelInfos by claudeBackend.modelInfos.collectAsState()
+    val modelNameOf: (String) -> String = remember(isClaudeChat, claudeModelInfos, availableModels) {
+        { id ->
+            if (isClaudeChat) {
+                (claudeModelInfos.firstOrNull { it.resolvedModel == id && it.value != "default" } ?: claudeModelInfos.firstOrNull { it.value == id })
+                    ?.displayName?.takeIf { it.isNotBlank() } ?: id.removePrefix("claude-")
+            } else {
+                availableModels.firstOrNull { it.id == id || it.key == id }?.displayName ?: id
+            }
+        }
+    }
+    // Antigravity voice calls of this chat (saved by the hub) and the one going on now, as markers in the chat
     val agyVoiceChats by com.example.gemini.data.voice.AgyVoiceChats.chats.collectAsState()
     LaunchedEffect(currentConv?.id, isAgyChat) {
         if (isAgyChat) currentConv?.id?.let { com.example.gemini.data.voice.AgyVoiceChats.refresh(it) }
@@ -549,13 +780,9 @@ fun ChatScreen(
     openVoiceTranscript?.let { rec ->
         com.example.gemini.ui.voice.AgyVoiceTranscriptSheet(rec) { openVoiceTranscript = null }
     }
-
-    // Granular block-level feed item expansion from pre-warmed background cache (0ms UI thread work)
-    val modelNameOf: (String) -> String = remember(availableModels) {
-        { id -> availableModels.firstOrNull { it.id == id || it.key == id }?.displayName ?: id }
-    }
-    val feedItems = remember(messages, selectedModelId, chatDividersEnabled, modelNameOf, voiceCallItems) {
-        ChatFeedCache.buildFeedItems(messages, selectedModelId, dividers = chatDividersEnabled, modelName = modelNameOf, voiceCalls = voiceCallItems)
+    val feedItems = remember(messages, selectedModelId, modelNameOf, voiceCallItems) {
+        // the date and model dividers are always on
+        ChatFeedCache.buildFeedItems(messages, selectedModelId, dividers = true, modelName = modelNameOf, voiceCalls = voiceCallItems)
     }
 
     // Fresh LazyListState per conversation — restores saved position if returning, or initializes directly at bottom
@@ -783,41 +1010,45 @@ fun ChatScreen(
         SideEffect { listState.requestScrollToItem(feedItems.size) }
     }
 
-    // Working row: under the reply for as long as the agent works, but not while it waits for
+    // The Claude Code-style working row: under the reply for as long as the agent works, but not while it waits for
     // the user (an approval or a question)
-    val waitingForUser = lastToolCalls.any { it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE" }
-    val showWorkingRow = workingAnimationEnabled && (isRunningOrStreaming || holdingTail) && !waitingForUser && !footerShown
+    val waitingForUser = (isClaudeChat && claudePending.isNotEmpty()) || (isOpenCodeChat && openCodePending.isNotEmpty()) || (isCodexChat && codexPending.isNotEmpty()) ||
+        lastToolCalls.any { it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE" }
+    val showWorkingRow = (isRunningOrStreaming || holdingTail) && !waitingForUser && !footerShown
 
-    val isAutoModel = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
-    val isLocalChat = !isAutoModel && (currentConv?.agent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId))
-    val currentModel = when {
-        isAutoModel -> AiModel(
-            id = com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
-            displayName = com.example.gemini.domain.model.SmartModelRouter.AUTO_DISPLAY_NAME,
-            description = "Dynamic routing · Qwen for shell/offline, Flash for Q&A, Claude for complex logic",
+    val currentModel = if (isClaudeChat) {
+        claudeModelList.find { it.id == selectedModelId } ?: AiModel(
+            id = selectedModelId.ifBlank { "default" },
+            displayName = when {
+                claudeModelsRefreshing -> "Loading models…"
+                claudeModelsError != null -> "Models unavailable"
+                else -> "Choose model"
+            },
+            family = com.example.gemini.domain.model.ModelFamily.CLAUDE
+        )
+    } else if (isOpenCodeChat) {
+        enabledModels.find { it.id == selectedModelId } ?: AiModel(
+            id = selectedModelId.ifBlank { "default" },
+            displayName = when {
+                isRefreshingModels -> "Loading models…"
+                openCodeModelsError != null -> "No models"
+                selectedModelId.isNotBlank() -> selectedModelId.substringAfter('/')
+                else -> "Choose model"
+            }
+        )
+    } else if (isCodexChat) {
+        enabledModels.find { it.id == selectedModelId } ?: AiModel(
+            id = selectedModelId.ifBlank { "default" },
+            displayName = when {
+                isRefreshingModels -> "Loading models…"
+                codexModelsError != null -> "No models"
+                selectedModelId.isNotBlank() -> selectedModelId
+                else -> "Choose model"
+            },
             family = com.example.gemini.domain.model.ModelFamily.OTHER
         )
-        isLocalChat -> {
-            val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModelId)
-            AiModel(
-                id = domain.modelId,
-                displayName = domain.displayName,
-                description = domain.description,
-                family = com.example.gemini.domain.model.ModelFamily.LOCAL
-            )
-        }
-        else -> AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
-    }
-    val currentQuota = remember(quotas, selectedModelId, currentModel) {
-        quotas.find { it.modelId.equals(selectedModelId, ignoreCase = true) }
-            ?: quotas.find { it.modelId.startsWith(selectedModelId, ignoreCase = true) || selectedModelId.startsWith(it.modelId, ignoreCase = true) }
-            ?: quotas.find {
-                val isClaude = currentModel.family == com.example.gemini.domain.model.ModelFamily.CLAUDE
-                if (isClaude) it.modelId.contains("claude", ignoreCase = true)
-                else (it.modelId.contains("gemini", ignoreCase = true) || it.modelId.contains("flash", ignoreCase = true) || it.modelId.contains("pro", ignoreCase = true))
-            }
-            ?: quotas.firstOrNull { it.remainingFraction != null || !it.usedPercentage.isNullOrBlank() }
-    }
+    } else AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
+    val currentQuota = quotas.find { it.modelId == selectedModelId }
 
     val activeChatProject by TermuxDaemonManager.activeProject.collectAsState()
     val usedProjects by TermuxDaemonManager.projects.collectAsState()
@@ -855,10 +1086,23 @@ fun ChatScreen(
         mutableStateListOf<String>()
     }
 
+    /** Opens a chat Jarvis points at (a task of its team) and keeps the way back to the Jarvis chat. */
+    val openJarvisLinkedChat: (String) -> Unit = { targetId ->
+        val currentId = currentConv?.id
+        if (!currentId.isNullOrBlank() && !currentId.equals(targetId, ignoreCase = true)) {
+            if (feedItems.isNotEmpty()) {
+                ConversationScrollCache.save(currentId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, isAtBottom)
+            }
+            conversationBackStack.add(currentId)
+        }
+        viewModel.selectConversation(targetId)
+    }
     val navigateBackConversation: () -> Unit = {
         while (conversationBackStack.isNotEmpty()) {
             val prevId = conversationBackStack.removeAt(conversationBackStack.lastIndex)
-            if (conversations.isEmpty() || conversations.any { it.id.equals(prevId, ignoreCase = true) }) {
+            // Jarvis chats are not in `conversations` (listed apart, under Jarvis) but are valid places to go back to
+            if (conversations.isEmpty() || conversations.any { it.id.equals(prevId, ignoreCase = true) } ||
+                jarvisConversations.any { it.id.equals(prevId, ignoreCase = true) } || prevId in jarvisManagers.keys) {
                 val currentId = currentConv?.id
                 if (!currentId.isNullOrBlank() && feedItems.isNotEmpty()) {
                     ConversationScrollCache.save(currentId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, isAtBottom)
@@ -879,28 +1123,36 @@ fun ChatScreen(
 
     val currentUriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
+    // tapped paths that are not Markdown: text opens in the IDE, anything else (video, PDF, archive…) asks which app
+    val fileLinkOpener = com.example.gemini.ui.files.rememberFileLinkOpener(
+        onOpenedInIde = onNavigateToIde,
+        onPreviewMarkdown = { mdPath ->
+            scope.launch {
+                val content = try {
+                    val f = File(mdPath)
+                    if (f.exists()) f.readText() else (IdeApiClient.readFile(mdPath) ?: "")
+                } catch (e: Exception) {
+                    IdeApiClient.readFile(mdPath) ?: ""
+                }
+                activeMarkdownDoc = mdPath to content
+            }
+        },
+        onShowFolder = onNavigateToFiles?.let { showFiles ->
+            { folder: String ->
+                com.example.gemini.data.files.ExplorerNav.open("screen", folder)
+                showFiles()
+            }
+        }
+    )
+
     val fileLinkHandler = remember(scope, conversations, currentConv?.id, listState, feedItems.size, isAtBottom) {
         FileLinkHandler(
             onOpenFile = { rawUrl ->
                 try {
                     val decoded = try { java.net.URLDecoder.decode(rawUrl, "UTF-8") } catch (_: Exception) { rawUrl }
                     val cleanPath = decoded.removePrefix("file://").substringBefore("#")
-                    val isHtml = cleanPath.endsWith(".html", ignoreCase = true) || cleanPath.endsWith(".htm", ignoreCase = true)
                     val isMd = cleanPath.endsWith(".md", ignoreCase = true) || cleanPath.endsWith(".markdown", ignoreCase = true)
-                    if (isHtml) {
-                        scope.launch {
-                            runCatching {
-                                com.example.gemini.ui.browser.BrowserSessionManager.instance.openUrl("file://$cleanPath", newTab = true)
-                            }
-                            val content = try {
-                                val f = File(cleanPath)
-                                if (f.exists()) f.readText() else (IdeApiClient.readFile(cleanPath) ?: "")
-                            } catch (_: Exception) { "" }
-                            val fileName = File(cleanPath).name.ifBlank { "index.html" }
-                            TermuxDaemonManager.openOrSelectTab(cleanPath, fileName, content)
-                            onNavigateToBrowser()
-                        }
-                    } else if (isMd) {
+                    if (isMd) {
                         scope.launch {
                             val content = try {
                                 val f = File(cleanPath)
@@ -911,17 +1163,7 @@ fun ChatScreen(
                             activeMarkdownDoc = cleanPath to content
                         }
                     } else {
-                        scope.launch {
-                            val content = try {
-                                val f = File(cleanPath)
-                                if (f.exists()) f.readText() else (IdeApiClient.readFile(cleanPath) ?: "")
-                            } catch (e: Exception) {
-                                IdeApiClient.readFile(cleanPath) ?: ""
-                            }
-                            val fileName = File(cleanPath).name.ifBlank { "file" }
-                            TermuxDaemonManager.openOrSelectTab(cleanPath, fileName, content)
-                            onNavigateToIde()
-                        }
+                        fileLinkOpener.open(cleanPath)
                     }
                 } catch (e: Exception) {
                     Log.e("ChatScreen", "Error opening file link $rawUrl", e)
@@ -990,6 +1232,19 @@ fun ChatScreen(
         drawerContent = {
             ChatHistoryDrawer(
                 conversations = conversations,
+                jarvisEnabled = jarvisEnabled,
+                jarvisConversations = jarvisConversations,
+                onNewJarvisChat = { agent ->
+                    val currentId = currentConv?.id
+                    if (!currentId.isNullOrBlank() && feedItems.isNotEmpty()) {
+                        ConversationScrollCache.save(currentId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, isAtBottom)
+                    }
+                    conversationBackStack.clear()
+                    val problem = com.example.gemini.data.jarvis.JarvisController.startTextChat(agent)
+                    if (problem != null) android.widget.Toast.makeText(context, problem, android.widget.Toast.LENGTH_LONG).show()
+                    else scope.launch { drawerState.close() }
+                },
+                enabledAgents = enabledAgents,
                 currentConversationId = currentConv?.id,
                 activeInstances = activeInstances,
                 isLoading = isConversationsLoading,
@@ -998,6 +1253,8 @@ fun ChatScreen(
                 errorMessage = conversationError,
                 isStreaming = isActivelyRunning,
                 groupByWorkspace = groupChatsByWorkspace,
+                showArchived = showArchivedChats,
+                onToggleShowArchived = { viewModel.setShowArchivedChats(it) },
                 onToggleGroupByWorkspace = { viewModel.setGroupChatsByWorkspace(it) },
                 onRetry = { viewModel.retryConnections() },
                 isOpen = drawerState.isOpen || drawerState.targetValue == DrawerValue.Open,
@@ -1018,19 +1275,6 @@ fun ChatScreen(
                     }
                     conversationBackStack.clear()
                     viewModel.startNewChat()
-                    scope.launch { drawerState.close() }
-                },
-                onNewChatWithAgent = { agent ->
-                    val currentId = currentConv?.id
-                    if (!currentId.isNullOrBlank() && feedItems.isNotEmpty()) {
-                        ConversationScrollCache.save(currentId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, isAtBottom)
-                    }
-                    conversationBackStack.clear()
-                    viewModel.setNewChatAgent(agent)
-                    viewModel.startNewChat(agent)
-                    if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                        viewModel.selectModel("local-model-only")
-                    }
                     scope.launch { drawerState.close() }
                 },
                 onDeleteConversation = { id ->
@@ -1063,36 +1307,47 @@ fun ChatScreen(
                 onCancelLogin = {
                     viewModel.cancelAgyLogin()
                 },
-                onOpenServerLogs = {
-                    showLocalServerOutputDialog = true
-                    scope.launch { drawerState.close() }
-                },
-                onOpenDaemonLogs = {
-                    showDaemonLogsDialog = true
-                    scope.launch { drawerState.close() }
-                },
-                onOpenInstaller = {
-                    showLocalToolsInstallDialog = true
-                    scope.launch { drawerState.close() }
-                },
-                isEnvironmentInstalled = isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context),
                 onOpenSettings = {
                     showSettingsDialog = true
                     scope.launch { drawerState.close() }
                 },
-                agyEnabled = com.example.gemini.domain.model.AgentKind.AGY in enabledAgents,
+                // the sidebar stays open: the picker floats over it so the new look shows on the sidebar and the chat
+                onOpenThemes = { showThemePanel = !showThemePanel },
+                agyEnabled =com.example.gemini.domain.model.AgentKind.AGY in enabledAgents,
                 accountsButton = {
                     com.example.gemini.ui.agents.AccountsButton(
                         agy = agyEntry,
+                        claude = claudeEntry,
                         agyAuth = agyAuthInfo,
-                        onClick = { showAccountsDialog = true }
+                        claudeStatus = claudeStatus,
+                        onClick = { showAccountsDialog = true },
+                        openCode = openCodeEntry,
+                        codex = codexEntry,
+                        codexEmail = codexAccount?.email
+                    )
+                },
+                claudeActions = remember(viewModel) {
+                    com.example.gemini.ui.drawer.ClaudeDrawerActions(
+                        loadMessages = { id ->
+                            if (viewModel.openCodeBackend.conversations.value.any { it.id == id }) viewModel.loadOpenCodeMessages(id)
+                            else if (viewModel.codexBackend.conversations.value.any { it.id == id }) viewModel.loadCodexMessages(id)
+                            else viewModel.loadClaudeMessages(id)
+                        },
+                        rename = { id, title -> viewModel.renameConversation(id, title) },
+                        archive = { id, archived -> viewModel.setConversationArchived(id, archived) },
+                        restart = { id, onDone -> viewModel.claudeBackend.restartChat(id, onDone) }
                     )
                 }
             )
         }
     ) {
+        com.example.gemini.ui.agents.BridgeVersionDialog()
         if (pendingLoginUrl != null) {
             val targetUrl = pendingLoginUrl!!
+            val remoteSignIn = AuthPreferences.currentRemoteMode
+            var pastedCallback by remember(targetUrl) { mutableStateOf("") }
+            var callbackStatus by remember(targetUrl) { mutableStateOf<String?>(null) }
+            var callbackBusy by remember(targetUrl) { mutableStateOf(false) }
             AlertDialog(
                 onDismissRequest = { viewModel.clearPendingLoginUrl() },
                 title = {
@@ -1110,30 +1365,83 @@ fun ChatScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "Do you want to open your browser to log in now?",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        if (!remoteSignIn) {
+                            Text(
+                                text = "Do you want to open your browser to log in now?",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        } else {
+                            Text(
+                                text = "1. Open the browser and sign in.\n" +
+                                    "2. Your browser then shows an error page for localhost. That is expected: the sign-in " +
+                                    "finishes on the server, not on this phone.\n" +
+                                    "3. Copy that page's address from the address bar and paste it below.",
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedTextField(
+                                value = pastedCallback,
+                                onValueChange = { pastedCallback = it; callbackStatus = null },
+                                label = { Text("Address starting with http://localhost") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            callbackStatus?.let {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = it,
+                                    fontSize = 12.sp,
+                                    color = if (it.startsWith("✓")) com.example.gemini.theme.AppColors.success else Color.Red
+                                )
+                            }
+                        }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                android.util.Log.e("ChatScreen", "Failed to open browser: ${e.message}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (remoteSignIn) {
+                            Button(
+                                onClick = {
+                                    callbackBusy = true
+                                    callbackStatus = "Sending to the server…"
+                                    viewModel.forwardLoginCallback(pastedCallback) { result ->
+                                        callbackBusy = false
+                                        result.fold(
+                                            {
+                                                callbackStatus = "✓ Sent. Finishing sign-in…"
+                                                viewModel.clearPendingLoginUrl()
+                                            },
+                                            { callbackStatus = "✗ ${it.message}" }
+                                        )
+                                    }
+                                },
+                                enabled = pastedCallback.isNotBlank() && !callbackBusy,
+                                colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                            ) {
+                                Text("Finish", fontWeight = FontWeight.SemiBold)
                             }
-                            viewModel.clearPendingLoginUrl()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
-                    ) {
-                        Text("Open Browser", fontWeight = FontWeight.SemiBold)
+                        }
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("ChatScreen", "Failed to open browser: ${e.message}")
+                                }
+                                // a remote sign-in stays open for the paste step
+                                if (!remoteSignIn) viewModel.clearPendingLoginUrl()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ClaudeTerracotta)
+                        ) {
+                            Text("Open Browser", fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 },
                 dismissButton = {
@@ -1188,68 +1496,272 @@ fun ChatScreen(
         Scaffold(
             snackbarHost = {},
             topBar = {
+                // The chat's title on the left, the agents' status dot with the project on the right. A thin line shows
+                // under the bar only once messages scroll beneath it.
+                val scrolledUnder by remember(listState) { derivedStateOf { listState.canScrollBackward } }
+                val topBarLineAlpha by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (scrolledUnder && messages.isNotEmpty()) 1f else 0f,
+                    animationSpec = tween(180),
+                    label = "top_bar_line"
+                )
+                val topBarLineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                 TopAppBar(
+                    // shorter than Material's 64dp: one line of title and the small project pill need less
+                    expandedHeight = 52.dp,
+                    modifier = Modifier.drawWithContent {
+                        drawContent()
+                        if (topBarLineAlpha > 0f) {
+                            drawLine(
+                                color = topBarLineColor.copy(alpha = topBarLineColor.alpha * topBarLineAlpha),
+                                start = androidx.compose.ui.geometry.Offset(0f, size.height - 0.5f),
+                                end = androidx.compose.ui.geometry.Offset(size.width, size.height - 0.5f),
+                                strokeWidth = 1f
+                            )
+                        }
+                    },
                     title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { scope.launch { drawerState.open() } }
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_antibot_logo),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
-                                        tint = Color.Unspecified
-                                    )
-                                }
+                        val displayedChatTitle = remember(currentConv?.title, conversations, currentConv?.id) {
+                            val fromList = conversations.firstOrNull { it.id == currentConv?.id }
+                            val listTitle = fromList?.title?.takeIf {
+                                it.isNotBlank() && it != "New Chat" && it != "Conversation"
                             }
-                            Spacer(modifier = Modifier.width(9.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "AntiBot Studio",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                            val activeTitle = currentConv?.title?.takeIf {
+                                it.isNotBlank() && it != "New Chat" && it != "Conversation"
+                            }
+                            listTitle ?: activeTitle ?: currentConv?.title?.takeIf { it.isNotBlank() } ?: "Antigravity Chat"
+                        }
+
+                        val isChatStarted = messages.isNotEmpty()
+                        val displayedProjectName = remember(currentConv?.workspaceUri, isChatStarted, currentConv?.cloudProjectId, cloudProjects) {
+                            val convUri = currentConv?.workspaceUri
+                            if (currentConv?.isCloud == true) {
+                                // an Antigravity cloud chat: its cloud project
+                                "☁ " + (com.example.gemini.data.agent.agy.AgyCloud.projectName(currentConv?.cloudProjectId) ?: "Cloud")
+                            } else if (!convUri.isNullOrBlank()) {
+                                val clean = convUri.removePrefix("file://").trimEnd('/')
+                                File(clean).name.ifBlank { "Workspace" }
+                            } else {
+                                if (isChatStarted) "Outside" else "Select Project"
+                            }
+                        }
+                        val showStatusDot = isLocalToolsInstalled || AuthPreferences.currentRemoteMode ||
+                            com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context) ||
+                            systemConnectionState.status != com.example.gemini.data.remote.SystemStatus.OFFLINE
+                        var statusMenuOpen by remember { mutableStateOf(false) }
+
+                        // title on the left; "◐ project" and the new-chat button on the right. Title and project shorten
+                        // with "…" and keep a gap between them and from the screen edge, so nothing runs into anything.
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // the real title fades in when the chat gets one (instead of jumping from "New Chat")
+                            Crossfade(
+                                targetState = displayedChatTitle,
+                                animationSpec = tween(250),
+                                label = "chat_title",
+                                modifier = Modifier.weight(1f)
+                            ) { chatTitle ->
+                                Text(
+                                    text = chatTitle,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Box {
+                                // before the chat starts a tap picks the project; after, it shows the agents' status
+                                Row(
+                                    modifier = Modifier
+                                        .widthIn(max = 150.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                                        .clickable {
+                                            if (!isChatStarted) showProjectPickerDialog = true
+                                            else if (showStatusDot) statusMenuOpen = true
+                                        }
+                                        .padding(start = if (showStatusDot) 4.dp else 10.dp, end = if (isChatStarted) 10.dp else 4.dp, top = 3.dp, bottom = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (showStatusDot) {
+                                        // upper half Antigravity, lower half Claude Code (one solid dot when they agree);
+                                        // the dot itself always opens the agents' status, also before the chat starts
+                                        // one slice per enabled agent (Antigravity, Claude Code, OpenCode)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .clickable { statusMenuOpen = true },
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(5.dp)
-                                                    .background(Color(0xFF10B981), CircleShape)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "v${com.example.gemini.BuildConfig.VERSION_NAME}",
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            com.example.gemini.ui.agents.AgentStatusDot(
+                                                colors = agentEntries.map { it.color },
+                                                size = if (agentEntries.size > 2) 10.dp else 8.dp,
+                                                pulsing = agentEntries.any { it.pending }
                                             )
                                         }
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                    }
+                                    if (isAnyGenerationOrTaskActive) {
+                                        // the screen is kept on (work is running): a sun, tap it to see why
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .clickable { screenAwakeInfoOpen = true },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.LightMode,
+                                                contentDescription = "Screen stays on",
+                                                tint = com.example.gemini.theme.AppColors.warning,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            DropdownMenu(
+                                                expanded = screenAwakeInfoOpen,
+                                                onDismissRequest = { screenAwakeInfoOpen = false }
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .widthIn(min = 220.dp, max = 300.dp)
+                                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = Icons.Rounded.LightMode,
+                                                            contentDescription = null,
+                                                            tint = com.example.gemini.theme.AppColors.warning,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Screen stays on",
+                                                            fontSize = 14.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = "The screen won't turn off by itself while:",
+                                                        fontSize = 12.5.sp,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                    )
+                                                    screenAwakeReasons.forEach { reason ->
+                                                        Text(
+                                                            text = "• $reason",
+                                                            fontSize = 12.5.sp,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                            modifier = Modifier.padding(top = 4.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = "It turns off normally again once this is done.",
+                                                        fontSize = 12.sp,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                    }
+                                    Text(
+                                        text = displayedProjectName,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isChatStarted) 0.65f else 0.8f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (!isChatStarted) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "Choose project",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
                                     }
                                 }
-                                Text(
-                                    text = "AI Coding Environment",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 1
+                                com.example.gemini.ui.agents.AgentStatusMenu(
+                                    entries = agentEntries,
+                                    expanded = statusMenuOpen,
+                                    onDismiss = { statusMenuOpen = false },
+                                    onOpenServerLogs = { showLocalServerOutputDialog = true }
                                 )
+                            }
+                            // shortcut icons chosen in Settings > Appearance > Chat Header Icons (default: just New chat)
+                            val headerShortcuts = chatHeaderItems.filter { id ->
+                                when (id) {
+                                    "newchat", "ide", "terminal", "browser" -> true
+                                    "notes" -> onNavigateToNotes != null
+                                    "files" -> onNavigateToFiles != null
+                                    else -> false
+                                }
+                            }
+                            if (headerShortcuts.isNotEmpty()) Spacer(modifier = Modifier.width(4.dp))
+                            headerShortcuts.forEach { id ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            when (id) {
+                                                "newchat" -> {
+                                                    // same as the sidebar's New chat
+                                                    val currentId = currentConv?.id
+                                                    if (!currentId.isNullOrBlank() && feedItems.isNotEmpty()) {
+                                                        ConversationScrollCache.save(currentId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, isAtBottom)
+                                                    }
+                                                    conversationBackStack.clear()
+                                                    viewModel.startNewChat()
+                                                }
+                                                "ide" -> onNavigateToIde()
+                                                "browser" -> onNavigateToBrowser()
+                                                "notes" -> onNavigateToNotes?.invoke()
+                                                "files" -> onNavigateToFiles?.invoke()
+                                                "terminal" -> {
+                                                    // like the floating switcher: needs SSH, server mode or the local Linux tools
+                                                    val ready = useSshTerminal || AuthPreferences.currentRemoteMode ||
+                                                        (isLocalToolsInstalled && isLocalToolsEnabled)
+                                                    when {
+                                                        ready -> onNavigateToTerminal()
+                                                        isLocalToolsInstalled -> {
+                                                            viewModel.setLocalToolsEnabled(true)
+                                                            onNavigateToTerminal()
+                                                        }
+                                                        else -> showLocalToolsInstallDialog = true
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = when (id) {
+                                            "ide" -> Icons.Outlined.Code
+                                            "terminal" -> Icons.Outlined.Terminal
+                                            "browser" -> Icons.Outlined.Language
+                                            "notes" -> Icons.Outlined.EditNote
+                                            "files" -> Icons.Outlined.FolderOpen
+                                            else -> Icons.Outlined.AddComment
+                                        },
+                                        contentDescription = when (id) {
+                                            "ide" -> "Open IDE"
+                                            "terminal" -> "Open Terminal"
+                                            "browser" -> "Open Browser"
+                                            "notes" -> "Open Notes"
+                                            "files" -> "Open Files"
+                                            else -> "New chat"
+                                        },
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
                             }
                         }
                     },
@@ -1273,19 +1785,31 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showChatTelemetryDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Outlined.Notifications,
-                                contentDescription = "Notifications & Diagnostics",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                            )
+                        // Browser, Terminal and the IDE are in the floating switcher (always on)
+                        if (isInFloatingWindow) {
+                            IconButton(onClick = onMinimizeWindow) {
+                                Icon(
+                                    imageVector = Icons.Default.Remove,
+                                    contentDescription = "Minimize to Bubble",
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                )
+                            }
+                            IconButton(onClick = onOpenFullScreen) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                                    contentDescription = "Open Full Screen",
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                                )
+                            }
                         }
-                        IconButton(onClick = { viewModel.startNewChat() }) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "New Chat",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+                        if (isDevModeEnabled) {
+                            IconButton(onClick = { showChatTelemetryDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Analytics,
+                                    contentDescription = "Chat Telemetry & Tokens",
+                                    tint = ClaudeTerracotta
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -1312,12 +1836,14 @@ fun ChatScreen(
                     val sysStatus = systemConnectionState.status
                     val isServerInitializing = sysStatus == com.example.gemini.data.remote.SystemStatus.STARTING || sysStatus == com.example.gemini.data.remote.SystemStatus.ACQUIRING_CSRF || (sysStatus == com.example.gemini.data.remote.SystemStatus.OFFLINE && isInitialGracePeriod)
                     val isServerStopped = sysStatus == com.example.gemini.data.remote.SystemStatus.OFFLINE && !isInitialGracePeriod
-                    val isExistingConversation = currentConv != null && currentConv?.title != "New Chat" && conversations.any { it.id == currentConv?.id }
+                    // Jarvis' chats are not in `conversations` (they are hidden and listed apart, under Jarvis), but they are
+                    // existing chats too: while one loads, show the loading skeleton like for any other chat
+                    val isExistingConversation = currentConv != null && currentConv?.title != "New Chat" &&
+                        (conversations.any { it.id == currentConv?.id } || jarvisConversations.any { it.id == currentConv?.id })
                     val isExistingChat = messages.isEmpty() && isExistingConversation && isLoadingConversation
-                    val effectiveAgent = currentConv?.agent ?: newChatAgent
-                    val isLocalChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
+                    Log.d("CHAT_OPEN_DEBUG", "🖥️ [ChatScreen Render] convId=${currentConv?.id}, title='${currentConv?.title}', isLoading=$isLoadingConversation, isExisting=$isExistingChat, msgCount=${messages.size}, error=$conversationError, isServerStopped=$isServerStopped")
 
-                    if (!isLocalChat && !isAutoModel && isServerStopped && messages.isEmpty()) {
+                    if (isAgyChat && isServerStopped && messages.isEmpty()) {
                         BoxWithConstraints(
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -1334,34 +1860,45 @@ fun ChatScreen(
                                 if (isFreshNewChat) {
                                     com.example.gemini.ui.components.AgentPicker(
                                         selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = { agent ->
-                                            viewModel.setNewChatAgent(agent)
-                                            viewModel.startNewChat(agent)
-                                            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                                                viewModel.selectModel("local-model-only")
-                                            }
-                                        },
+                                        onSelect = pickAgent,
                                         modifier = Modifier.padding(bottom = 20.dp),
                                         agents = enabledAgents,
                                         statusColors = agentEntries.associate { it.agent to it.color }
                                     )
                                 }
-                                com.example.gemini.ui.components.ServerStoppedPromptCard(
-                                    onStartServer = { com.example.gemini.data.local.LocalServerManager.startServer(context, forceRestart = true) },
-                                    onSwitchToLocal = {
-                                        viewModel.setNewChatAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
-                                        viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.LOCAL)
-                                        viewModel.selectModel("local-model-only")
-                                    },
-                                    onOpenServerLogs = { showLocalServerOutputDialog = true },
-                                    onOpenDaemonLogs = { showDaemonLogsDialog = true },
-                                    onOpenInstaller = { showLocalToolsInstallDialog = true },
-                                    isEnvironmentInstalled = isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context)
-                                )
+                                com.example.gemini.ui.components.ServerStoppedPromptCard()
                             }
                         }
-                    } else if (!isLocalChat && !isAutoModel && isServerInitializing && messages.isEmpty()) {
-                        com.example.gemini.ui.components.EngineWarmingUpView()
+                    } else if (isAgyChat && isServerInitializing && messages.isEmpty()) {
+                        if (isFreshNewChat && enabledAgents.size > 1) {
+                            // a new chat keeps its agent picker while Antigravity starts (Claude can be picked and used
+                            // meanwhile); before, the whole view was replaced and the picker vanished until the hub was up
+                            BoxWithConstraints(
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                val minHeight = maxHeight
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(emptyScrollState)
+                                        .heightIn(min = minHeight)
+                                        .padding(horizontal = 24.dp, vertical = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    com.example.gemini.ui.components.AgentPicker(
+                                        selected = currentConv?.agent ?: newChatAgent,
+                                        onSelect = pickAgent,
+                                        modifier = Modifier.padding(bottom = 20.dp),
+                                        agents = enabledAgents,
+                                        statusColors = agentEntries.associate { it.agent to it.color }
+                                    )
+                                    com.example.gemini.ui.components.EngineWarmingUpView()
+                                }
+                            }
+                        } else {
+                            com.example.gemini.ui.components.EngineWarmingUpView()
+                        }
                     } else if (!conversationError.isNullOrBlank() && messages.isEmpty() && (isExistingConversation || currentConv != null)) {
                         Column(
                             modifier = Modifier
@@ -1430,31 +1967,100 @@ fun ChatScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
+                                if (isFreshNewChat) {
+                                    com.example.gemini.ui.components.AgentPicker(
+                                        selected = currentConv?.agent ?: newChatAgent,
+                                        onSelect = pickAgent,
+                                        modifier = Modifier.padding(bottom = 20.dp),
+                                        agents = enabledAgents,
+                                        statusColors = agentEntries.associate { it.agent to it.color }
+                                    )
+                                }
 
-                                AntiBotStudioHero(
-                                    selectedModel = currentModel,
-                                    selectedModelId = selectedModelId,
-                                    onOpenModelSelector = {
-                                        focusManager.clearFocus(force = true)
-                                        keyboardController?.hide()
-                                        showModelSelector = true
-                                    },
-                                    onSelectPrompt = { prompt, targetModelId ->
-                                        if (targetModelId != null) {
-                                            viewModel.selectModel(targetModelId)
+                                if (!isNetworkConnected) {
+                                    com.example.gemini.ui.components.NewChatOfflinePromptCard(
+                                        modifier = Modifier.padding(bottom = 20.dp)
+                                    )
+                                }
+
+                                if (isClaudeChat && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.READY) {
+                                    com.example.gemini.ui.claude.ClaudeStatusPrompt(
+                                        state = claudeChatState,
+                                        error = claudeStatusError,
+                                        onSignIn = { showClaudeLogin = true },
+                                        onSetup = openClaudeSetup,
+                                        onRestartServer = { com.example.gemini.data.local.LocalServerManager.restartServer(context) },
+                                        onRetry = { viewModel.claudeAccount.refreshStatus() },
+                                        onServerLogs = { showLocalServerOutputDialog = true },
+                                        serverStarting = serverRestarting
+                                    )
+                                } else if (isOpenCodeChat && openCodeState != com.example.gemini.data.agent.opencode.OpenCodeState.READY) {
+                                    com.example.gemini.ui.agents.AgentSetupPrompt(
+                                        agent = com.example.gemini.domain.model.AgentKind.OPENCODE,
+                                        title = when (openCodeState) {
+                                            com.example.gemini.data.agent.opencode.OpenCodeState.CHECKING -> "Starting OpenCode…"
+                                            com.example.gemini.data.agent.opencode.OpenCodeState.NOT_INSTALLED -> "OpenCode is not installed"
+                                            else -> "OpenCode is unavailable"
+                                        },
+                                        message = if (openCodeState == com.example.gemini.data.agent.opencode.OpenCodeState.CHECKING)
+                                            "Waiting for the server to come up. This takes a few seconds after the app opens."
+                                        else openCodeEntry?.detail ?: openCodeState.label,
+                                        statusColor = openCodeEntry?.color,
+                                        actionLabel = openCodeEntry?.action?.label,
+                                        onAction = { openCodeEntry?.action?.onClick?.invoke() },
+                                        secondaryLabel = if (openCodeState == com.example.gemini.data.agent.opencode.OpenCodeState.CHECKING) null else "Server logs",
+                                        onSecondary = { showLocalServerOutputDialog = true }
+                                    )
+                                } else if (isCodexChat && codexState != com.example.gemini.data.agent.codex.CodexState.READY) {
+                                    com.example.gemini.ui.agents.AgentSetupPrompt(
+                                        agent = com.example.gemini.domain.model.AgentKind.CODEX,
+                                        title = when (codexState) {
+                                            com.example.gemini.data.agent.codex.CodexState.CHECKING -> "Starting Codex…"
+                                            com.example.gemini.data.agent.codex.CodexState.NOT_INSTALLED -> "Codex is not installed"
+                                            com.example.gemini.data.agent.codex.CodexState.SIGNED_OUT -> "Sign in to Codex"
+                                            else -> "Codex is unavailable"
+                                        },
+                                        message = if (codexState == com.example.gemini.data.agent.codex.CodexState.CHECKING)
+                                            "Waiting for the server to come up. This takes a few seconds after the app opens."
+                                        else codexEntry?.detail ?: codexState.label,
+                                        statusColor = codexEntry?.color,
+                                        actionLabel = codexEntry?.action?.label,
+                                        onAction = { codexEntry?.action?.onClick?.invoke() },
+                                        secondaryLabel = if (codexState == com.example.gemini.data.agent.codex.CodexState.CHECKING) null else "Server logs",
+                                        onSecondary = { showLocalServerOutputDialog = true }
+                                    )
+                                } else when (if (isClaudeChat || isOpenCodeChat || isCodexChat) null else systemConnectionState.status) {
+                                    com.example.gemini.data.remote.SystemStatus.CHECKING_AUTH -> {
+                                        com.example.gemini.ui.components.NewChatCheckingAuthPromptCard()
+                                    }
+                                    com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED -> {
+                                        if (isNetworkConnected) {
+                                            com.example.gemini.ui.components.NewChatSignInPromptCard(
+                                                onSignInClick = { viewModel.loginToAgyHub(force = true) }
+                                            )
                                         }
-                                        textFieldValue = androidx.compose.ui.text.input.TextFieldValue(
-                                            text = prompt,
-                                            selection = androidx.compose.ui.text.TextRange(prompt.length)
+                                    }
+                                    else -> if (isJarvisTextChat) {
+                                        com.example.gemini.ui.jarvis.JarvisChatWelcome { example ->
+                                            inputState.setTextAndPlaceCursorAtEnd(example)
+                                        }
+                                    } else {
+                                        Text(
+                                            text = "How can I help you today?",
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            textAlign = TextAlign.Center
                                         )
-                                        try {
-                                            chatInputFocusRequester.requestFocus()
-                                        } catch (_: Exception) {}
-                                    },
-                                    isLocalChat = isLocalChat,
-                                    isAuth = systemConnectionState.isAuth,
-                                    onSignIn = { viewModel.loginToAgyHub(force = true) }
-                                )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Ask a question, brainstorm ideas, or start coding",
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -1470,10 +2076,15 @@ fun ChatScreen(
                             androidx.compose.ui.platform.LocalDensity provides customDensity,
                             com.example.gemini.ui.components.LocalQuestionPanelActive provides true
                         ) {
+                                // iOS-style vertical bounce at the top and bottom (also for a short chat that cannot scroll);
+                                // only this list: code blocks and other sideways scrollers keep Android's own edge effect
+                                val chatBounce = com.example.gemini.ui.components.rememberBouncyLazyScroll(listState)
                                 LazyColumn(
                                     state = listState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(top = 8.dp, bottom = 12.dp)
+                                    modifier = Modifier.fillMaxSize().then(chatBounce.modifier),
+                                    contentPadding = PaddingValues(top = 8.dp, bottom = 12.dp),
+                                    userScrollEnabled = chatBounce.userScrollEnabled,
+                                    overscrollEffect = chatBounce.overscrollEffect
                                 ) {
                                     items(
                                         items = feedItems,
@@ -1504,8 +2115,12 @@ fun ChatScreen(
                                         is ChatFeedItem.Divider -> com.example.gemini.ui.components.WaveDivider(label = feedItem.label)
                                         is ChatFeedItem.VoiceCall -> com.example.gemini.ui.voice.VoiceCallMarker(feedItem) {
                                             if (feedItem.live) com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
-                                            else feedItem.record?.let { openVoiceTranscript = it }
+                                            else openVoiceTranscript = feedItem.record
                                         }
+                                        is ChatFeedItem.JarvisEvent -> com.example.gemini.ui.jarvis.JarvisEventCard(
+                                            raw = feedItem.message.content,
+                                            onOpenChat = openJarvisLinkedChat
+                                        )
                                         is ChatFeedItem.User -> {
                                             val msgIndex = messages.indexOfFirst { it.id == feedItem.message.id }
                                             val willDeleteOutput = msgIndex < messages.lastIndex
@@ -1518,9 +2133,7 @@ fun ChatScreen(
                                                         pendingMessageAction = PendingMessageAction(MessageActionType.EDIT, targetMsg)
                                                     } else {
                                                         viewModel.revertAndEditLastUserMessage(targetMsg) { restoredText ->
-                                                            val tfv = TextFieldValue(restoredText, selection = TextRange(restoredText.length))
-                                                            textFieldValue = tfv
-                                                            viewModel.setDraft(activeConversationKey, tfv)
+                                                            inputState.setTextAndPlaceCursorAtEnd(restoredText)
                                                         }
                                                     }
                                                 },
@@ -1572,15 +2185,8 @@ fun ChatScreen(
                                             }
                                         }
                                         // with the working animation on, the working row below replaces these dots
-                                        is ChatFeedItem.AssistantTyping -> if (!workingAnimationEnabled) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                                            ) {
-                                                ModelTypingIndicator(modelId = feedItem.modelId)
-                                            }
-                                        }
+                                        // progress shows in the working row under the reply (the working animation is always on)
+                                        is ChatFeedItem.AssistantTyping -> Unit
                                         is ChatFeedItem.AssistantFooter -> {
                                             AssistantMessageFooter(
                                                 message = feedItem.message,
@@ -1634,8 +2240,8 @@ fun ChatScreen(
                                     if (showWorkingRow) {
                                         item(key = "working_spinner", contentType = "working_spinner") {
                                             com.example.gemini.ui.components.AgentWorkingSpinner(
-                                                color = com.example.gemini.ui.components.AgyAccent,
-                                                compacting = false,
+                                                color = if (isClaudeChat) com.example.gemini.ui.components.ClaudeAccent else if (isOpenCodeChat) com.example.gemini.ui.components.OpenCodeAccent else if (isCodexChat) com.example.gemini.ui.components.CodexAccent else com.example.gemini.ui.components.AgyAccent,
+                                                compacting = isClaudeChat && claudeCompacting,
                                                 // leaves in the frame the reply's footer arrives, which fades in in its place
                                                 modifier = Modifier.animateItem(fadeInSpec = tween(180), placementSpec = null, fadeOutSpec = null)
                                             )
@@ -1698,10 +2304,10 @@ fun ChatScreen(
                     }
 
                     // Floating Slash Commands & Skills Autocomplete Suggestions
-                    val slashIndex = inputText.lastIndexOf('/')
-                    val isSlashCommand = slashIndex == 0 || (slashIndex > 0 && inputText.getOrNull(slashIndex - 1)?.isWhitespace() == true)
-                    val isSlashActive = isSlashCommand && !inputText.substring(slashIndex).contains(" ")
-                    val slashQuery = if (isSlashActive) inputText.substring(slashIndex + 1) else ""
+                    val slash = slashTrigger
+                    val slashIndex = slash?.index ?: -1
+                    val isSlashActive = slash != null
+                    val slashQuery = slash?.query ?: ""
 
                     // `/plu:` browses custom AntiGem plugins and their skills; custom commands join the normal list
                     val customCommands = com.example.gemini.data.remote.CustomSlashCommands.commands.toList()
@@ -1719,7 +2325,11 @@ fun ChatScreen(
                         }
                     }
 
-                    val slashRunsOnTap: (com.example.gemini.data.remote.SlashCommandItem) -> Boolean = { false }
+                    // a Claude command that needs no argument runs on tap (when nothing else is typed and no turn runs)
+                    val slashRunsOnTap: (com.example.gemini.data.remote.SlashCommandItem) -> Boolean = { item ->
+                        (isClaudeChat || (isCodexChat && item.type == "command")) && item.type != "app" && item.type != "plugin" && item.type != "custom" && item.argumentHint.isBlank() &&
+                            (slash == null || slash.nothingBefore) && !isActivelyRunning && attachments.isEmpty()
+                    }
                     androidx.compose.animation.AnimatedVisibility(
                         visible = slashSuggestions.isNotEmpty(),
                         enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom),
@@ -1733,20 +2343,46 @@ fun ChatScreen(
                             query = slashQuery,
                             runsOnTap = slashRunsOnTap,
                             onPick = { item ->
-                                val before = inputText.substring(0, slashIndex)
-                                // "/plu:" and "/plu:<plugin>:" keep the picker open for the next level
-                                val newText = if (item.command.endsWith(":")) "$before${item.command}" else "$before${item.command} "
-                                val tfv = TextFieldValue(newText, selection = TextRange(newText.length))
-                                textFieldValue = tfv
-                                viewModel.setDraft(activeConversationKey, tfv)
+                                val before = inputState.text.substring(0, slashIndex)
+                                val appCmd = if (isClaudeChat && item.type == "app") claudeBackend.appCommand(item.command) else null
+                                val codexCmd = if (isCodexChat && item.type == "app") codexBackend.appCommand(item.command) else null
+                                when {
+                                    codexCmd != null -> {
+                                        inputState.setTextAndPlaceCursorAtEnd(before)
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        handleCodexCommand(codexCmd)
+                                    }
+                                    appCmd != null -> {
+                                        inputState.setTextAndPlaceCursorAtEnd(before)
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        handleClaudeCommand(appCmd)
+                                    }
+                                    slashRunsOnTap(item) -> {
+                                        // e.g. /compact: Claude Code runs a command sent as a message
+                                        viewModel.sendMessage(item.command)
+                                        userSentMessageTrigger++
+                                        viewModel.clearDraft(activeConversationKey)
+                                        inputState.clearText()
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                    }
+                                    else -> {
+                                        // "/plu:" and "/plu:<plugin>:" keep the picker open for the next level
+                                        val newText = if (item.command.endsWith(":")) "$before${item.command}" else "$before${item.command} "
+                                        inputState.setTextAndPlaceCursorAtEnd(newText)
+                                    }
+                                }
                             }
                         )
                     }
 
                     // Floating File Autocomplete Suggestions when user types @
-                    val atIndex = inputText.lastIndexOf('@')
-                    val isAtMentioning = atIndex >= 0 && (atIndex == inputText.length - 1 || !inputText.substring(atIndex + 1).contains(" "))
-                    val atQuery = if (atIndex >= 0 && atIndex < inputText.length) inputText.substring(atIndex + 1) else ""
+                    val mention = mentionTrigger
+                    val atIndex = mention?.index ?: -1
+                    val isAtMentioning = mention != null
+                    val atQuery = mention?.query ?: ""
 
                     val fileSuggestions = remember(atQuery, chatProjectFiles, isAtMentioning) {
                         if (!isAtMentioning || chatProjectFiles.isEmpty()) emptyList()
@@ -1784,13 +2420,8 @@ fun ChatScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                val newText = inputText.substring(0, atIndex) + "@${file.path} "
-                                                val tfv = TextFieldValue(
-                                                    text = newText,
-                                                    selection = TextRange(newText.length)
-                                                )
-                                                textFieldValue = tfv
-                                                viewModel.setDraft(activeConversationKey, tfv)
+                                                val newText = inputState.text.substring(0, atIndex) + "@${file.path} "
+                                                inputState.setTextAndPlaceCursorAtEnd(newText)
                                             }
                                             .padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -1825,7 +2456,7 @@ fun ChatScreen(
 
                 // Dynamic Bridge / Project / Model Initialization Banner
                 AnimatedVisibility(
-                    visible = !bridgeStatusMessage.isNullOrBlank(),
+                    visible = isAgyChat && !bridgeStatusMessage.isNullOrBlank(),
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
@@ -1860,7 +2491,7 @@ fun ChatScreen(
 
                 // Disconnection / Reconnecting Inline Banner (Compact, non-intrusive with Reconnect action)
                 AnimatedVisibility(
-                    visible = (isServerOnline == false || isReconnecting) && messages.isNotEmpty(),
+                    visible = isAgyChat && (isServerOnline == false || isReconnecting) && messages.isNotEmpty(),
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -1930,13 +2561,21 @@ fun ChatScreen(
                     }
                 }
 
-                // Agent prompts docked above the input: permission requests, then questions
-                val approvalItems = remember(pendingApprovals) {
-                    com.example.gemini.ui.agents.agyApprovalItems(
-                        pendingApprovals,
-                        onApprove = { toolCall, msgId, scope -> viewModel.approveAndExecuteTerminalTool(toolCall, msgId, scope) },
-                        onReject = { toolCall, msgId, reason -> viewModel.rejectTerminalTool(toolCall, msgId, reason) }
-                    )
+                // Agent prompts docked above the input (both agents): permission requests, then questions
+                val approvalItems = remember(pendingApprovals, claudePending, openCodePending, codexPending, isClaudeChat, isOpenCodeChat, isCodexChat) {
+                    if (isCodexChat) {
+                        com.example.gemini.ui.codex.codexApprovalItems(codexPending, codexBackend, messages)
+                    } else if (isOpenCodeChat) {
+                        com.example.gemini.ui.opencode.openCodeApprovalItems(openCodePending, openCodeBackend)
+                    } else if (isClaudeChat) {
+                        com.example.gemini.ui.claude.claudeApprovalItems(claudePending, claudeBackend)
+                    } else {
+                        com.example.gemini.ui.agents.agyApprovalItems(
+                            pendingApprovals,
+                            onApprove = { toolCall, msgId, scope -> viewModel.approveAndExecuteTerminalTool(toolCall, msgId, scope) },
+                            onReject = { toolCall, msgId, reason -> viewModel.rejectTerminalTool(toolCall, msgId, reason) }
+                        )
+                    }
                 }
                 // keep the last requests on screen while the panel animates away
                 val lastApprovalItems = remember { arrayOf(emptyList<com.example.gemini.ui.agents.ApprovalItem>()) }
@@ -1948,14 +2587,30 @@ fun ChatScreen(
                 ) {
                     com.example.gemini.ui.agents.AgentApprovalPanel(
                         items = approvalItems.ifEmpty { lastApprovalItems[0] },
-                        onAllowAll = { viewModel.approveAllPendingTools(pendingApprovals) },
-                        onDenyAll = { viewModel.rejectAllPendingTools(pendingApprovals) }
+                        onAllowAll = if (isCodexChat) {
+                            { codexPending.forEach { codexBackend.approve(it.key) } }
+                        } else if (isOpenCodeChat) {
+                            { openCodePending.forEach { openCodeBackend.replyPermission(it.id, "once") } }
+                        } else if (isClaudeChat) {
+                            { claudePending.filter { it.toolName != "ExitPlanMode" }.forEach { claudeBackend.approveToolAlways(it.toolUseId, -1) } }
+                        } else {
+                            { viewModel.approveAllPendingTools(pendingApprovals) }
+                        },
+                        onDenyAll = if (isCodexChat) {
+                            { codexPending.forEach { codexBackend.deny(it.key) } }
+                        } else if (isOpenCodeChat) {
+                            { openCodePending.forEach { openCodeBackend.replyPermission(it.id, "reject") } }
+                        } else if (isClaudeChat) {
+                            { claudePending.forEach { claudeBackend.rejectToolById(it.toolUseId, null) } }
+                        } else {
+                            { viewModel.rejectAllPendingTools(pendingApprovals) }
+                        }
                     )
                 }
 
-                val pendingQuestion = remember(messages) {
+                val pendingQuestion = remember(messages, isClaudeChat, isOpenCodeChat, isCodexChat) {
                     com.example.gemini.ui.agents.findPendingQuestion(
-                        com.example.gemini.domain.model.AgentKind.AGY,
+                        currentConv?.agent ?: com.example.gemini.domain.model.AgentKind.AGY,
                         messages
                     )
                 }
@@ -1974,61 +2629,49 @@ fun ChatScreen(
                     }
                 }
 
-                val activeConvId = currentConv?.id
-                var dismissedCheckpointId by remember { mutableStateOf<String?>(null) }
-                val interruptedCheckpoint = remember(activeConvId, messages.size, isActivelyRunning, dismissedCheckpointId) {
-                    if (!isActivelyRunning && activeConvId != null && dismissedCheckpointId != activeConvId) {
-                        com.example.gemini.domain.context.TaskFlightRecorder.checkInterruption(activeConvId)
-                    } else null
+                // Claude Code chat: status notice (the empty chat shows the full prompt instead) and chat controls
+                if (isClaudeChat) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = claudeStartup != null,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        com.example.gemini.ui.claude.ClaudeStartupNotice(claudeStartup ?: "")
+                    }
+                    if (messages.isNotEmpty() && !serverRestarting) {
+                        com.example.gemini.ui.claude.ClaudeStatusBanner(
+                            state = claudeChatState,
+                            onSignIn = { showClaudeLogin = true },
+                            onSetup = openClaudeSetup,
+                            onRestartServer = { com.example.gemini.data.local.LocalServerManager.restartServer(context) },
+                            onRetry = { viewModel.claudeAccount.refreshStatus() }
+                        )
+                    }
+                    com.example.gemini.ui.claude.ClaudeControlsStrip(claudeBackend, viewModel.claudePrefs)
+                }
+                if (isOpenCodeChat) {
+                    com.example.gemini.ui.opencode.OpenCodeControlsStrip(openCodeBackend)
+                }
+                if (isCodexChat) {
+                    com.example.gemini.ui.codex.CodexControlsStrip(codexBackend)
                 }
 
-                TaskRecoveryBanner(
-                    checkpoint = interruptedCheckpoint,
-                    onResume = { resumePrompt ->
-                        textFieldValue = androidx.compose.ui.text.input.TextFieldValue(resumePrompt)
-                        if (activeConvId != null) {
-                            com.example.gemini.domain.context.TaskFlightRecorder.clearCheckpoint(activeConvId)
-                        }
-                    },
-                    onDismiss = {
-                        dismissedCheckpointId = activeConvId
-                        if (activeConvId != null) {
-                            com.example.gemini.domain.context.TaskFlightRecorder.clearCheckpoint(activeConvId)
-                        }
+                // Jarvis chat: its command strip (mission, teams' tasks, voice replies, autopilot)
+                if (jarvisEnabled && currentConv != null && (isJarvisTextChat || jarvisConversations.any { it.id == currentConv?.id })) {
+                    val jarvisToolsMissing = remember(messages) {
+                        messages.lastOrNull { it.role == com.example.gemini.domain.model.MessageRole.ASSISTANT }?.content
+                            ?.contains(com.example.gemini.data.jarvis.JarvisSkill.MCP_MISSING) == true
                     }
-                )
-
-                var dismissedRecapMsgId by remember { mutableStateOf<String?>(null) }
-                val lastAssistantMsg = messages.lastOrNull { it.role == com.example.gemini.domain.model.MessageRole.ASSISTANT }
-                val localRecap = remember(activeConvId, messages.size, isActivelyRunning, dismissedRecapMsgId) {
-                    if (!isActivelyRunning && activeConvId != null && interruptedCheckpoint == null && lastAssistantMsg != null && dismissedRecapMsgId != lastAssistantMsg.id) {
-                        com.example.gemini.domain.context.LocalTurnSynthesizer.synthesizeFromTurn(activeConvId, messages, null)
-                    } else null
+                    com.example.gemini.ui.jarvis.JarvisCommandStrip(chatId = currentConv!!.id, onOpenChat = openJarvisLinkedChat, toolsMissing = jarvisToolsMissing)
                 }
-
-                LocalTurnRecapCard(
-                    recap = localRecap,
-                    onSelectSuggestion = { suggestion ->
-                        textFieldValue = androidx.compose.ui.text.input.TextFieldValue(suggestion)
-                        if (lastAssistantMsg != null) {
-                            dismissedRecapMsgId = lastAssistantMsg.id
-                        }
-                    },
-                    onDismiss = {
-                        if (lastAssistantMsg != null) {
-                            dismissedRecapMsgId = lastAssistantMsg.id
-                        }
-                    }
-                )
 
                 // a minimized Antigravity voice call
                 com.example.gemini.ui.voice.AgyVoiceCallPill(
                     agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId
                 )
 
-                // an Antigravity cloud chat: its project, web preview, run a command
+                // an Antigravity cloud chat: its project, web preview, run a command, the chat on the web
                 if (isAgyChat && currentConv?.isCloud == true) {
-                    val cloudProjects by com.example.gemini.data.agent.agy.AgyCloud.projects.collectAsState()
                     com.example.gemini.ui.cloud.CloudChatStrip(
                         projectName = cloudProjects.firstOrNull { it.id == currentConv?.cloudProjectId }?.name,
                         onProject = { showCloudProjects = true },
@@ -2037,109 +2680,177 @@ fun ChatScreen(
                                 "Send the cloud agent a message first: its VM starts with the chat.", com.example.gemini.ui.components.ChatToastType.INFO
                             ) else showCloudPreview = true
                         },
-                        onRunCommand = {
-                            if (messages.isEmpty()) com.example.gemini.ui.components.AppToastHelper.showToast(
-                                "Send the cloud agent a message first: its VM starts with the chat.", com.example.gemini.ui.components.ChatToastType.INFO
-                            ) else showCloudRunCommand = true
-                        }
+                        onRunCommand = { showCloudRunCommand = true }
                     )
                 }
 
-                // Chat Input Bar with Bottom Model & Thinking Selector Pills
+                // Chat Input Bar with Bottom Model & Thinking Selector Pills (Claude Android Style)
                 ChatInputBar(
-                    isOnline = if (isLocalChat) true else systemConnectionState.canSend,
-                    isAuth = if (isLocalChat) true else systemConnectionState.isAuth,
-                    offlineMessage = "Server is offline. Start the server to send messages.",
+                    isOnline = if (isCodexChat) codexState != com.example.gemini.data.agent.codex.CodexState.OFFLINE && codexState != com.example.gemini.data.agent.codex.CodexState.NOT_INSTALLED && codexState != com.example.gemini.data.agent.codex.CodexState.DISABLED && codexState != com.example.gemini.data.agent.codex.CodexState.OUTDATED
+                        else if (isOpenCodeChat) !openCodeState.isBlocking else if (isClaudeChat) !claudeState.isBlocking else systemConnectionState.canSend,
+                    isAuth = if (isCodexChat) codexState != com.example.gemini.data.agent.codex.CodexState.SIGNED_OUT else if (isOpenCodeChat) true else if (isClaudeChat) claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN else systemConnectionState.isAuth,
+                    offlineMessage = if (isCodexChat) when (codexState) {
+                        com.example.gemini.data.agent.codex.CodexState.NOT_INSTALLED -> "Codex is not installed on the server. See Settings → Codex."
+                        com.example.gemini.data.agent.codex.CodexState.DISABLED, com.example.gemini.data.agent.codex.CodexState.OUTDATED -> "Restart the server to use Codex."
+                        else -> "The server is offline. Start it to send messages."
+                    } else if (isOpenCodeChat) when (openCodeState) {
+                        com.example.gemini.data.agent.opencode.OpenCodeState.NOT_INSTALLED -> "OpenCode is not installed on the server. See Settings → OpenCode."
+                        com.example.gemini.data.agent.opencode.OpenCodeState.DISABLED, com.example.gemini.data.agent.opencode.OpenCodeState.OUTDATED -> "Restart the server to use OpenCode."
+                        else -> "The server is offline. Start it to send messages."
+                    } else if (isClaudeChat) when (claudeState) {
+                        com.example.gemini.data.agent.claude.ClaudeStatus.NOT_INSTALLED -> "Claude Code is not installed. Set it up in Settings."
+                        com.example.gemini.data.agent.claude.ClaudeStatus.BRIDGE_OUTDATED -> "Restart the local server to use Claude Code."
+                        else -> "The local server is offline. Start it to send messages."
+                    } else "Server is offline. Start the server to send messages.",
                     selectedModel = currentModel,
                     quota = currentQuota,
-                    textFieldValue = textFieldValue,
-                    onTextFieldValueChange = {
-                        textFieldValue = it
-                        viewModel.setDraft(activeConversationKey, it)
-                        if (it.text.isNotEmpty()) {
-                            viewModel.onUserStartedTyping()
-                        }
-                    },
+                    thinkingPreference = thinkingPref,
+                    textFieldState = inputState,
                     onOpenModelSelector = {
                         focusManager.clearFocus(force = true)
                         keyboardController?.hide()
                         showModelSelector = true
                     },
+                    onOpenThinkingSelector = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        showThinkingSelector = true
+                    },
                     isStreaming = isActivelyRunning,
                     isBackgroundActive = isBackgroundActive,
-                    queuedMessages = queuedMessages,
-                    onSendQueuedNow = { id -> viewModel.sendImmediately(activeConversationKey, id) },
-                    onEditQueued = { id ->
-                        val text = viewModel.editQueuedMessage(activeConversationKey, id)
-                        if (!text.isNullOrBlank()) {
-                            textFieldValue = TextFieldValue(text, androidx.compose.ui.text.TextRange(text.length))
-                            chatInputFocusRequester.requestFocus()
-                        }
-                    },
-                    onDeleteQueued = { id -> viewModel.deleteQueuedMessage(activeConversationKey, id) },
                     onSendMessage = { text ->
-                        val prunedText = com.example.gemini.domain.context.LocalTurnSynthesizer.prunePrompt(text)
-                        if (isActivelyRunning || isRunningOrStreaming) {
-                            viewModel.enqueueMessage(activeConversationKey, prunedText, attachments.size)
+                        val appCmd = if (isClaudeChat && attachments.isEmpty()) claudeBackend.appCommand(text) else null
+                        val codexCmd = if (isCodexChat && attachments.isEmpty()) codexBackend.appCommand(text) else null
+                        if (codexCmd != null) {
+                            handleCodexCommand(codexCmd)
                             viewModel.clearDraft(activeConversationKey)
-                            textFieldValue = TextFieldValue("")
-                        } else {
-                            viewModel.sendMessage(prunedText)
-                            userSentMessageTrigger++
-                            viewModel.clearDraft(activeConversationKey)
-                            textFieldValue = TextFieldValue("")
+                            inputState.clearText()
+                            return@ChatInputBar
                         }
+                        val unreadable = if (isClaudeChat) attachments.filter { a ->
+                            a.isAudio || a.mimeType?.startsWith("audio/") == true || a.mimeType?.startsWith("video/") == true
+                        } else emptyList()
+                        if (unreadable.isNotEmpty()) {
+                            // Claude models cannot read audio or video: say so instead of sending a file it would reject
+                            com.example.gemini.ui.components.AppToastHelper.showToast(
+                                "Claude can't read audio or video files. Remove them, or tap the mic to dictate instead.",
+                                com.example.gemini.ui.components.ChatToastType.ERROR
+                            )
+                            return@ChatInputBar
+                        }
+                        if (appCmd != null) {
+                            handleClaudeCommand(appCmd)
+                        } else {
+                            viewModel.sendMessage(text)
+                            userSentMessageTrigger++
+                        }
+                        viewModel.clearDraft(activeConversationKey)
+                        inputState.clearText()
                     },
                     onStopStreaming = { showStopConfirmDialog = true },
                     attachments = attachments,
                     isUploadingAttachment = isUploadingAttachment,
+                    attachmentProgress = attachmentProgress,
                     onRemoveAttachment = { viewModel.removeAttachment(it) },
                     onAddAttachment = { viewModel.addAttachment(it) },
-                    onAddAttachmentFromUri = { viewModel.addAttachmentFromUri(it, context) },
                     onAttachClick = { showAttachmentSelector = true },
                     onTranscribeAudioFile = { file, onDone, onError ->
                         viewModel.transcribeAudioFile(file, onDone, onError)
                     },
                     isTranscribingAudio = isTranscribingAudio,
-                    speechManager = viewModel.speechManager,
-                    voiceNotesAsText = false,
+                    speechManager = if (isClaudeChat) viewModel.claudeVoice else if (isCodexChat) viewModel.codexVoice else viewModel.speechManager,
+                    // Claude and Codex cannot take audio: a voice note becomes text
+                    voiceNotesAsText = isClaudeChat || isCodexChat,
+                    voiceEnabled = !isOpenCodeChat,
                     cascadeId = activeConversationKey,
                     focusRequester = chatInputFocusRequester,
+                    queuedMessages = queuedMessages,
+                    onSendQueuedNow = { viewModel.sendQueuedNow(it) },
+                    onDeleteQueued = { viewModel.deleteQueued(it) },
                     onStartVoiceCall = if (isAgyChat) onStartVoiceCall else null,
                     voiceCallActive = voiceCall.active
                 )
-
-                // Studio Bottom Navigation Dock (Chat, IDE, Terminal, Browser, Notes)
-                val isKeyboardOpen = imeInsets.getBottom(density) > 0
-                AnimatedVisibility(
-                    visible = !isKeyboardOpen,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    StudioNavigationDock(
-                        currentTab = "CHAT",
-                        onNavigateToChat = { /* Already on chat */ },
-                        onNavigateToProjects = { showProjectPickerDialog = true },
-                        onNavigateToTerminal = {
-                            if (useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)) {
-                                onNavigateToTerminal()
-                            } else if (isLocalToolsInstalled) {
-                                viewModel.setLocalToolsEnabled(true)
-                                onNavigateToTerminal()
-                            } else {
-                                showLocalToolsInstallDialog = true
-                            }
-                        },
-                        onNavigateToSettings = { showSettingsDialog = true },
-                        isTerminalActive = useSshTerminal || (isLocalToolsInstalled && isLocalToolsEnabled)
-                    )
-                }
             }
         }
     }
 
+    // Antigravity cloud agents: projects and connections, preview, run a command
+    if (showCloudProjects || showCloudCreate) {
+        com.example.gemini.ui.cloud.CloudProjectsDialog(
+            startWithCreate = showCloudCreate,
+            onStartChatIn = { projectId ->
+                showCloudProjects = false
+                showCloudCreate = false
+                com.example.gemini.data.agent.agy.AgyCloud.select(projectId)
+                viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.AGY)
+                viewModel.agyBackend.setNewChatCloudProject(projectId)
+            },
+            onDismiss = { showCloudProjects = false; showCloudCreate = false }
+        )
+    }
+    if (showCloudPreview && currentConv?.isCloud == true) {
+        val previewConvId = currentConv!!.id
+        val previewPorts = remember(messages) { com.example.gemini.ui.cloud.cloudPreviewPorts(messages) }
+        // first: which port, and in the app or in the system browser
+        com.example.gemini.ui.cloud.CloudPreviewChooser(
+            suggestedPorts = previewPorts,
+            onOpenInApp = { port -> showCloudPreview = false; cloudPreviewInApp = previewConvId to port },
+            onOpenInBrowser = { port ->
+                showCloudPreview = false
+                runCatching {
+                    // served on this phone through the hub, so the system browser can show the VM's page
+                    val url = com.example.gemini.data.agent.agy.CloudPreviewServer.urlFor(previewConvId, port)
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    com.example.gemini.ui.components.AppToastHelper.showToast("Couldn't open the browser: ${it.message}", com.example.gemini.ui.components.ChatToastType.ERROR)
+                }
+            },
+            onDismiss = { showCloudPreview = false }
+        )
+    }
+    cloudPreviewInApp?.let { (convId, port) ->
+        val previewPorts = remember(messages) { com.example.gemini.ui.cloud.cloudPreviewPorts(messages) }
+        com.example.gemini.ui.cloud.CloudPreviewDialog(
+            conversationId = convId,
+            suggestedPorts = previewPorts,
+            initialPort = port,
+            onDismiss = { cloudPreviewInApp = null }
+        )
+    }
+    if (showCloudRunCommand) {
+        com.example.gemini.ui.cloud.CloudRunCommandDialog(
+            onRun = { cmd ->
+                viewModel.sendMessage(com.example.gemini.ui.cloud.cloudRunCommandPrompt(cmd))
+                userSentMessageTrigger++
+            },
+            onDismiss = { showCloudRunCommand = false }
+        )
+    }
+
+    // the Antigravity voice call screen (Back minimizes it to the pill above the message box)
+    com.example.gemini.ui.voice.AgyVoiceCallScreen(
+        agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId,
+        onOpenAgySettings = {
+            requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.AGY_CLI
+            showSettingsDialog = true
+        }
+    )
+
     // Model Selector Bottom Sheet (Active Model at Top & Expandable Categories)
-    if (showModelSelector) {
+    if (isClaudeChat) com.example.gemini.ui.claude.ClaudeProviderSwitchDialog(claudeBackend)
+    if (showModelSelector && isClaudeChat) {
+        com.example.gemini.ui.claude.ClaudeModelSheet(claudeBackend, viewModel.claudeAccount) { showModelSelector = false }
+    } else if (showModelSelector && isCodexChat) {
+        com.example.gemini.ui.codex.CodexModelSheet(
+            codexBackend,
+            onOpenSettings = { openCodexSettings = true; showSettingsDialog = true }
+        ) { showModelSelector = false }
+    } else if (showModelSelector && isOpenCodeChat) {
+        com.example.gemini.ui.opencode.OpenCodeModelSheet(
+            openCodeBackend,
+            onOpenSettings = { openCodeSettingsPage = com.example.gemini.ui.opencode.OpenCodeSettingsPage.PROVIDERS; showSettingsDialog = true }
+        ) { showModelSelector = false }
+    } else if (showModelSelector) {
         ModelSelectorBottomSheet(
             selectedModelId = selectedModelId,
             availableModels = enabledModels,
@@ -2149,6 +2860,15 @@ fun ChatScreen(
             onRefresh = { viewModel.refreshQuotas(force = true, showToastFeedback = true) },
             onSelectModel = { modelId -> viewModel.selectModel(modelId) },
             onDismiss = { showModelSelector = false }
+        )
+    }
+
+    // Thinking Selector Bottom Sheet
+    if (showThinkingSelector) {
+        ThinkingSelectorBottomSheet(
+            currentPreference = thinkingPref,
+            onPreferenceSelected = { pref -> viewModel.setThinkingPreference(pref) },
+            onDismiss = { showThinkingSelector = false }
         )
     }
 
@@ -2270,15 +2990,15 @@ fun ChatScreen(
             pluginActionStatusMessage = pluginActionStatusMessage,
             pluginActionErrorMessage = pluginActionErrorMessage,
             onClearPluginStatus = { viewModel.clearPluginActionStatus() },
-            isFloatingSwitcherEnabled = isFloatingSwitcherEnabled,
             floatingSwitcherOrientation = floatingSwitcherOrientation,
             floatingSwitcherItems = floatingSwitcherItems,
             floatingSwitcherAutoCollapseSec = floatingSwitcherAutoCollapseSec,
-            onToggleFloatingSwitcher = { viewModel.setFloatingSwitcherEnabled(it) },
             onSetFloatingSwitcherOrientation = { viewModel.setFloatingSwitcherOrientation(it) },
             onSetFloatingSwitcherItems = { viewModel.setFloatingSwitcherItems(it) },
             onSetFloatingSwitcherAutoCollapseSec = { viewModel.setFloatingSwitcherAutoCollapseSec(it) },
             onResetFloatingSwitcherPosition = { viewModel.resetFloatingSwitcherPosition() },
+            chatHeaderItems = chatHeaderItems,
+            onSetChatHeaderItems = { viewModel.setChatHeaderItems(it) },
             commandAutoExecutionPolicy = commandAutoExecutionPolicy,
             commandSandboxEnabled = commandSandboxEnabled,
             requireApprovalForFileEdits = requireApprovalForFileEdits,
@@ -2312,33 +3032,103 @@ fun ChatScreen(
             isFloatingNetworkInspectorEnabled = isFloatingNetworkInspectorEnabled,
             onToggleFloatingNetworkInspector = { viewModel.setFloatingNetworkInspectorEnabled(it) },
             onOpenNetworkInspector = { showNetworkInspectorDialog = true },
+            claude = claudeSettingsDeps,
+            initialClaudePage = claudeSettingsPage,
+            openCode = viewModel.openCodeBackend,
+            initialOpenCodePage = openCodeSettingsPage,
+            codex = viewModel.codexBackend,
+            initialCodexPage = codexSettingsPage,
+            initialSection = requestedSettingsSection
+                ?: if (openOpenCodeSettings) com.example.gemini.ui.settings.SettingsSection.OPENCODE
+                else if (openCodexSettings) com.example.gemini.ui.settings.SettingsSection.CODEX else null,
             enabledAgents = enabledAgents,
             isApplyingAgents = isApplyingAgents,
             onApplyAgents = { viewModel.applyAgents(it) },
-            onOpenProject = { onNavigateToIde() },
+            onOpenProject = { project ->
+                TermuxDaemonManager.setActiveProject(project)
+                viewModel.onProjectChanged(project.path)
+            },
             onDismiss = {
                 showSettingsDialog = false
+                claudeSettingsPage = null
+                requestedSettingsSection = null
+                openOpenCodeSettings = false
+                openCodeSettingsPage = null
+                openCodexSettings = false
+                codexSettingsPage = null
             }
         )
     }
 
+    if (showClaudeLogin) {
+        com.example.gemini.ui.claude.ClaudeLoginDialog(viewModel.claudeAccount) { showClaudeLogin = false }
+    }
+
     // asked once the local environment (rootfs) is installed, before the local server starts
-    if (!hasChosenAgents && (isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context))) {
-        com.example.gemini.ui.agents.AgentChoiceDialog { viewModel.applyAgents(it) }
+    // First-launch setup, one full-screen step at a time: the agents, then the terminal icon (that one waits for the
+    // agent choice so the two never show at once). The steps are numbered while both are still to do.
+    val agentStepPending = !hasChosenAgents &&
+        (isLocalToolsInstalled || com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(context) || AuthPreferences.currentRemoteMode)
+    val launcherStepPending = !hasSeenTerminalLauncherOnboarding && !isInFloatingWindow
+    var setupSteps by remember { mutableStateOf(0) }
+    LaunchedEffect(agentStepPending, launcherStepPending) {
+        if (agentStepPending && launcherStepPending) setupSteps = 2
+    }
+    if (agentStepPending) {
+        com.example.gemini.ui.agents.AgentChoiceDialog(step = 1, total = if (launcherStepPending) 2 else 1) { viewModel.applyAgents(it) }
     }
     if (isApplyingAgents) {
         com.example.gemini.ui.agents.AgentsApplyingDialog()
+    }
+    if (showClaudeUsage) {
+        com.example.gemini.ui.claude.ClaudeUsageDialog(viewModel.claudeAccount, claudeBackend) { showClaudeUsage = false }
+    }
+    if (showClaudeContext) {
+        com.example.gemini.ui.claude.ClaudeContextDialog(claudeBackend) { showClaudeContext = false }
     }
 
     if (showAccountsDialog) {
         com.example.gemini.ui.agents.AccountsDialog(
             agy = agyEntry,
+            claude = claudeEntry,
             agyAuth = agyAuthInfo,
+            claudeStatus = claudeStatus,
             onAgySignOut = { viewModel.logoutFromAgyHub() },
             onAgyCancelSignIn = { viewModel.cancelAgyLogin() },
-            onDismiss = { showAccountsDialog = false }
+            onClaudeSignOut = { viewModel.claudeAccount.logout() },
+            onClaudeSettings = {
+                scope.launch { drawerState.close() }
+                openClaudeSetup()
+            },
+            onDismiss = { showAccountsDialog = false },
+            openCode = openCodeEntry,
+            openCodeFacts = listOfNotNull(
+                openCodeStatus?.version?.let { "OpenCode $it" },
+                openCodeConnected.takeIf { it.isNotEmpty() }?.let { if (it.size <= 2) it.joinToString(", ") else "${it.size} providers" },
+                openCodeModelCount.takeIf { it > 0 }?.let { "$it models" }
+            ),
+            onOpenCodeSettings = {
+                scope.launch { drawerState.close() }
+                openOpenCodeSettings = true
+                showSettingsDialog = true
+            },
+            codex = codexEntry,
+            codexEmail = codexAccount?.email,
+            codexFacts = listOfNotNull(
+                codexAccount?.plan?.replaceFirstChar { it.uppercase() }?.let { "$it plan" },
+                codexStatus?.version?.let { "Codex $it" },
+                codexLimits?.primary?.let { "${it.usedPercent.toInt()}% of limit used" }
+            ),
+            onCodexSignOut = { viewModel.codexBackend.logout() },
+            onCodexSettings = {
+                scope.launch { drawerState.close() }
+                openCodexSettings = true
+                showSettingsDialog = true
+            }
         )
     }
+
+
 
     // Confirmation Dialog for Edit / Retry when deleting subsequent output
     pendingMessageAction?.let { action ->
@@ -2356,26 +3146,47 @@ fun ChatScreen(
             text = {
                 Column {
                     Text(
-                        text = if (action.type == MessageActionType.EDIT) {
-                            "Editing this message will delete the subsequent response so you can edit and send a fresh query. Do you want to continue?"
-                        } else {
-                            "Retrying will delete the current response and regenerate a fresh answer. Do you want to continue?"
+                        text = when {
+                            isCodexChat && action.type == MessageActionType.EDIT ->
+                                "This chat goes back to right before this message, so you can change it and send again. Everything after it is removed from the chat. Files Codex changed stay as they are."
+                            (isClaudeChat || isOpenCodeChat) && action.type == MessageActionType.EDIT ->
+                                "This chat goes back to right before this message, so you can change it and send again. Everything after it is removed from the chat."
+                            isClaudeChat || isOpenCodeChat || isCodexChat ->
+                                "This chat goes back to right before this reply and ${if (isOpenCodeChat) "OpenCode" else if (isCodexChat) "Codex" else "Claude"} answers the same message again. The current reply is removed from the chat."
+                            action.type == MessageActionType.EDIT ->
+                                "Editing this message will delete the subsequent response so you can edit and send a fresh query. Do you want to continue?"
+                            else ->
+                                "Retrying will delete the current response and regenerate a fresh answer. Do you want to continue?"
                         },
                         fontSize = 14.5.sp,
                         lineHeight = 21.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                     )
+                    if ((isClaudeChat || isOpenCodeChat) && action.type == MessageActionType.EDIT) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(top = 10.dp)
+                                .clickable { restoreCodeOnEdit = !restoreCodeOnEdit }
+                        ) {
+                            androidx.compose.material3.Checkbox(checked = restoreCodeOnEdit, onCheckedChange = { restoreCodeOnEdit = it })
+                            Text("Also restore files ${if (isOpenCodeChat) "OpenCode" else "Claude"} changed after this message", fontSize = 13.5.sp)
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val target = action.message
-                        if (action.type == MessageActionType.EDIT) {
+                        if ((isClaudeChat || isOpenCodeChat || isCodexChat) && action.type == MessageActionType.EDIT) {
+                            viewModel.editClaudeMessage(target, restoreCodeOnEdit) { restoredText ->
+                                inputState.setTextAndPlaceCursorAtEnd(restoredText)
+                            }
+                            restoreCodeOnEdit = false
+                        } else if (action.type == MessageActionType.EDIT) {
                             viewModel.revertAndEditLastUserMessage(target) { restoredText ->
-                                val tfv = TextFieldValue(restoredText, selection = TextRange(restoredText.length))
-                                textFieldValue = tfv
-                                viewModel.setDraft(activeConversationKey, tfv)
+                                inputState.setTextAndPlaceCursorAtEnd(restoredText)
                             }
                         } else {
                             viewModel.retryMessage(target.id)
@@ -2385,7 +3196,11 @@ fun ChatScreen(
                     }
                 ) {
                     Text(
-                        text = if (action.type == MessageActionType.EDIT) "Edit & Delete" else "Regenerate",
+                        text = when {
+                            (isClaudeChat || isOpenCodeChat || isCodexChat) && action.type == MessageActionType.EDIT -> "Edit"
+                            action.type == MessageActionType.EDIT -> "Edit & Delete"
+                            else -> "Regenerate"
+                        },
                         color = ClaudeTerracotta,
                         fontWeight = FontWeight.Bold
                     )
@@ -2466,7 +3281,7 @@ fun ChatScreen(
                     Icon(
                         imageVector = Icons.Default.Cancel,
                         contentDescription = null,
-                        tint = Color(0xFFEF4444),
+                        tint = com.example.gemini.theme.AppColors.danger,
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -2487,7 +3302,7 @@ fun ChatScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF0D0E15),
+                        color = com.example.gemini.theme.AppColors.terminalBg,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
@@ -2578,13 +3393,6 @@ fun ChatScreen(
         )
     }
 
-    // Termux Daemon WebSocket & Logs Dialog
-    if (showDaemonLogsDialog) {
-        com.example.gemini.ui.ide.DaemonLogsDialog(
-            onDismiss = { showDaemonLogsDialog = false }
-        )
-    }
-
     // Local Tools Setup & Progress Dialog
     if (showLocalToolsInstallDialog) {
         LocalToolsInstallDialog(
@@ -2602,9 +3410,12 @@ fun ChatScreen(
         )
     }
 
-    // Terminal Launcher First-Launch Onboarding Dialog
-    if (!hasSeenTerminalLauncherOnboarding && !isInFloatingWindow) {
+    // Terminal Launcher First-Launch Onboarding Dialog: tells users the separate terminal icon exists,
+    // with "hidden" preselected (the icon is off by default; most users only need the in-app terminal)
+    if (launcherStepPending && hasChosenAgents && !agentStepPending) {
         com.example.gemini.ui.onboarding.TerminalLauncherOnboardingDialog(
+            step = if (setupSteps == 2) 2 else 1,
+            total = if (setupSteps == 2) 2 else 1,
             initialEnabled = remember(context) { com.example.gemini.data.preferences.TerminalLauncherManager.isLauncherEnabled(context) },
             initialStyle = remember(context) { com.example.gemini.data.preferences.TerminalLauncherManager.getLauncherStyle(context) },
             onConfirm = { enabled, style ->
@@ -2627,15 +3438,28 @@ fun ChatScreen(
         )
     }
 
-
-
     // Attachment Selector Bottom Sheet
     if (showAttachmentSelector) {
         AttachmentSelectorBottomSheet(
             onPickImage = { photoPickerLauncher.launch("image/*") },
             onPickFile = { filePickerLauncher.launch("*/*") },
-            onPasteClipboardImage = { uri -> viewModel.addAttachmentFromUri(uri, context) },
+            onPickFromFiles = { showAttachFromFiles = true },
             onDismiss = { showAttachmentSelector = false }
+        )
+    }
+
+    // Files on the agent's machine, attached by path (nothing is copied)
+    if (showAttachFromFiles) {
+        com.example.gemini.ui.files.FileExplorerDialog(
+            stateKey = "chat_attach",
+            title = "Attach files",
+            onPickFiles = { picked ->
+                showAttachFromFiles = false
+                viewModel.addExplorerFiles(picked)
+            },
+            pickFilesLabel = "Attach",
+            showClipboard = false,
+            onDismiss = { showAttachFromFiles = false }
         )
     }
 
@@ -2696,6 +3520,9 @@ fun ChatScreen(
         )
     }
 
+    // "Open with" sheet, archive contents and progress for tapped file paths
+    com.example.gemini.ui.files.FileLinkOpenerHost(fileLinkOpener)
+
     // File Details & Quick Action Dialog (Long press / metadata)
     activeFileDetailsPath?.let { path ->
         FileDetailsDialog(
@@ -2703,11 +3530,11 @@ fun ChatScreen(
             onDismiss = { activeFileDetailsPath = null },
             onOpenInIde = { filePath ->
                 activeFileDetailsPath = null
-                scope.launch {
-                    val content = try { File(filePath).readText() } catch (e: Exception) { IdeApiClient.readFile(filePath) ?: "" }
-                    TermuxDaemonManager.openOrSelectTab(filePath, File(filePath).name, content)
-                    onNavigateToIde()
-                }
+                fileLinkOpener.open(filePath)
+            },
+            onOpenWith = { filePath ->
+                activeFileDetailsPath = null
+                fileLinkOpener.openWith(filePath)
             },
             onOpenMarkdownViewer = { filePath ->
                 activeFileDetailsPath = null
@@ -2725,14 +3552,34 @@ fun ChatScreen(
             usedProjects.find { it.path == currentConvPath } ?: ProjectItem(File(currentConvPath).name, currentConvPath)
         } else null
 
+        val cloudSelectedId by com.example.gemini.data.agent.agy.AgyCloud.selectedProjectId.collectAsState()
+        val cloudError by com.example.gemini.data.agent.agy.AgyCloud.error.collectAsState()
+        val chatCloudId = if (isAgyChat) currentConv?.cloudProjectId ?: cloudSelectedId else null
+        val cloudPickerSection: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = if (!isAgyChat || !cloudEnabled) null else fun androidx.compose.foundation.lazy.LazyListScope.() {
+            cloudProjectsSection(
+                projects = cloudProjects,
+                selectedId = chatCloudId,
+                error = cloudError,
+                onSelect = { id ->
+                    viewModel.agyBackend.setNewChatCloudProject(id)
+                    showProjectPickerDialog = false
+                },
+                onCreate = { showProjectPickerDialog = false; showCloudCreate = true },
+                onManage = { showProjectPickerDialog = false; showCloudProjects = true }
+            )
+        }
         ProjectPickerDialog(
             projects = usedProjects,
-            activeProject = activeProj,
+            activeProject = if (chatCloudId != null) null else activeProj,
             onSelectProject = { proj ->
+                if (isAgyChat) viewModel.agyBackend.setNewChatCloudProject(null)
                 TermuxDaemonManager.setActiveProject(proj)
                 viewModel.onProjectChanged(proj?.path ?: "")
                 showProjectPickerDialog = false
             },
+            // Antigravity chats can also run in Google's cloud (Remote Agents) with a cloud project's repos
+            cloudSection = cloudPickerSection,
+            cloudSelected = chatCloudId != null,
             onBrowseFolder = {
                 showProjectPickerDialog = false
                 showWorkspaceFolderBrowserDialog = true
@@ -2762,12 +3609,24 @@ fun ChatScreen(
     }
 
     if (showWorkspaceFolderBrowserDialog) {
-        FileManagerDialog(
-            initialPath = "~",
-            onOpenAsProject = { selectedProj ->
+        com.example.gemini.ui.files.FileExplorerDialog(
+            stateKey = "chat_workspace",
+            title = "Choose the chat's project folder",
+            confirmLabel = "Use this folder",
+            onConfirmFolder = { folder ->
                 showWorkspaceFolderBrowserDialog = false
+                val selectedProj = ProjectItem(File(folder).name.ifBlank { folder }, folder)
                 TermuxDaemonManager.setActiveProject(selectedProj)
                 viewModel.onProjectChanged(selectedProj.path)
+            },
+            onOpenedInIde = {
+                showWorkspaceFolderBrowserDialog = false
+                onNavigateToIde()
+            },
+            onProjectCreated = { created ->
+                showWorkspaceFolderBrowserDialog = false
+                TermuxDaemonManager.setActiveProject(created)
+                viewModel.onProjectChanged(created.path)
             },
             onDismiss = { showWorkspaceFolderBrowserDialog = false }
         )
@@ -2873,66 +3732,15 @@ fun ChatScreen(
         )
     }
 
-    // Antigravity cloud agents: projects and connections, preview, run a command
-    if (showCloudProjects || showCloudCreate) {
-        com.example.gemini.ui.cloud.CloudProjectsDialog(
-            startWithCreate = showCloudCreate,
-            onStartChatIn = { projectId ->
-                showCloudProjects = false
-                showCloudCreate = false
-                com.example.gemini.data.agent.agy.AgyCloud.select(projectId)
-                viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.AGY)
-                viewModel.agyBackend.setNewChatCloudProject(projectId)
-            },
-            onDismiss = { showCloudProjects = false; showCloudCreate = false }
+    // Floating theme picker: above the sidebar and the chat, touches outside it still reach them
+    if (showThemePanel) {
+        com.example.gemini.ui.settings.ThemeQuickPanel(
+            themeMode = themeMode,
+            onSetThemeMode = { viewModel.setThemeMode(it) },
+            onClose = { showThemePanel = false },
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(9999f)
         )
     }
-    if (showCloudPreview && currentConv?.isCloud == true) {
-        val previewConvId = currentConv!!.id
-        val previewPorts = remember(messages) { com.example.gemini.ui.cloud.cloudPreviewPorts(messages) }
-        // first: which port, and in the app or in the system browser
-        com.example.gemini.ui.cloud.CloudPreviewChooser(
-            suggestedPorts = previewPorts,
-            onOpenInApp = { port -> showCloudPreview = false; cloudPreviewInApp = previewConvId to port },
-            onOpenInBrowser = { port ->
-                showCloudPreview = false
-                runCatching {
-                    // served on this phone through the hub, so the system browser can show the VM's page
-                    val url = com.example.gemini.data.agent.agy.CloudPreviewServer.urlFor(previewConvId, port)
-                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.onFailure {
-                    com.example.gemini.ui.components.AppToastHelper.showToast("Couldn't open the browser: ${it.message}", com.example.gemini.ui.components.ChatToastType.ERROR)
-                }
-            },
-            onDismiss = { showCloudPreview = false }
-        )
-    }
-    cloudPreviewInApp?.let { (convId, port) ->
-        val previewPorts = remember(messages) { com.example.gemini.ui.cloud.cloudPreviewPorts(messages) }
-        com.example.gemini.ui.cloud.CloudPreviewDialog(
-            conversationId = convId,
-            suggestedPorts = previewPorts,
-            initialPort = port,
-            onDismiss = { cloudPreviewInApp = null }
-        )
-    }
-    if (showCloudRunCommand) {
-        com.example.gemini.ui.cloud.CloudRunCommandDialog(
-            onRun = { cmd ->
-                viewModel.sendMessage(com.example.gemini.ui.cloud.cloudRunCommandPrompt(cmd))
-                userSentMessageTrigger++
-            },
-            onDismiss = { showCloudRunCommand = false }
-        )
-    }
-
-    // the Antigravity voice call screen (Back minimizes it to the pill above the message box)
-    com.example.gemini.ui.voice.AgyVoiceCallScreen(
-        agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId,
-        onOpenAgySettings = {
-            showSettingsDialog = true
-        }
-    )
     } // End of Box
     } // End of CompositionLocalProvider
 } // End of fun ChatScreen
@@ -2944,18 +3752,18 @@ fun ChatToastBanner(
     modifier: Modifier = Modifier
 ) {
     val bgColor = when (toast.type) {
-        ChatToastType.SUCCESS -> Color(0xFF143324)
-        ChatToastType.ERROR -> Color(0xFF381919)
-        ChatToastType.INFO -> Color(0xFF1F222A)
+        ChatToastType.SUCCESS -> com.example.gemini.theme.AppColors.successContainer
+        ChatToastType.ERROR -> com.example.gemini.theme.AppColors.dangerContainer
+        ChatToastType.INFO -> com.example.gemini.theme.AppColors.card
     }
     val borderColor = when (toast.type) {
-        ChatToastType.SUCCESS -> Color(0xFF34D399).copy(alpha = 0.7f)
-        ChatToastType.ERROR -> Color(0xFFF87171).copy(alpha = 0.7f)
+        ChatToastType.SUCCESS -> com.example.gemini.theme.AppColors.success.copy(alpha = 0.7f)
+        ChatToastType.ERROR -> com.example.gemini.theme.AppColors.danger.copy(alpha = 0.7f)
         ChatToastType.INFO -> ClaudeTerracotta.copy(alpha = 0.7f)
     }
     val iconColor = when (toast.type) {
-        ChatToastType.SUCCESS -> Color(0xFF34D399)
-        ChatToastType.ERROR -> Color(0xFFF87171)
+        ChatToastType.SUCCESS -> com.example.gemini.theme.AppColors.success
+        ChatToastType.ERROR -> com.example.gemini.theme.AppColors.danger
         ChatToastType.INFO -> ClaudeTerracotta
     }
     val icon = when (toast.type) {
@@ -2963,7 +3771,7 @@ fun ChatToastBanner(
         ChatToastType.ERROR -> Icons.Outlined.ErrorOutline
         ChatToastType.INFO -> Icons.Outlined.Info
     }
-    val textColor = Color(0xFFF9FAFB)
+    val textColor = com.example.gemini.theme.AppColors.onBackground
 
     Surface(
         modifier = modifier
@@ -3015,6 +3823,12 @@ fun ChatToastBanner(
 enum class MessageActionType { EDIT, RETRY }
 data class PendingMessageAction(val type: MessageActionType, val message: ChatMessage)
 
+/** A `/command` being typed (no space after it yet): where its `/` is, the text after it, and whether only blanks precede it. */
+private data class SlashTrigger(val index: Int, val query: String, val nothingBefore: Boolean)
+
+/** An `@file` mention being typed (no space after it yet): where its `@` is and the text after it. */
+private data class MentionTrigger(val index: Int, val query: String)
+
 private fun flattenFileNodes(nodes: List<com.example.gemini.data.daemon.FileNode>): List<com.example.gemini.data.daemon.FileNode> {
     val result = mutableListOf<com.example.gemini.data.daemon.FileNode>()
     for (node in nodes) {
@@ -3027,276 +3841,4 @@ private fun flattenFileNodes(nodes: List<com.example.gemini.data.daemon.FileNode
     }
     return result
 }
-
-@Composable
-fun AntiBotStudioHero(
-    selectedModel: AiModel?,
-    selectedModelId: String,
-    onOpenModelSelector: () -> Unit,
-    onSelectPrompt: (prompt: String, targetModelId: String?) -> Unit,
-    isLocalChat: Boolean,
-    isAuth: Boolean,
-    onSignIn: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Soft rounded robot icon container (Image 5)
-        Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            modifier = Modifier.size(76.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    imageVector = Icons.Outlined.SmartToy,
-                    contentDescription = "AntiBot",
-                    modifier = Modifier.size(42.dp),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Main Title (Image 5)
-        Text(
-            text = "How can I help you build today?",
-            fontSize = 25.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-            letterSpacing = (-0.5).sp
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Subtitle (Image 5)
-        Text(
-            text = "Code, debug, design, and ship with Antigravity.",
-            fontSize = 13.5.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // 2x2 Action Cards Grid (Image 5)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            HeroActionCard(
-                icon = Icons.Outlined.Code,
-                title = "Build a project",
-                subtitle = "Create an app, API or website",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onSelectPrompt("Build a new project: ", null)
-                }
-            )
-            HeroActionCard(
-                icon = Icons.Outlined.ViewInAr,
-                title = "Work on code",
-                subtitle = "Refactor, fix or add features",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onSelectPrompt("Work on code: ", null)
-                }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            HeroActionCard(
-                icon = Icons.Outlined.AutoAwesome,
-                title = "Explain & learn",
-                subtitle = "Understand code, concepts and errors",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onSelectPrompt("Explain concepts: ", null)
-                }
-            )
-            HeroActionCard(
-                icon = Icons.Outlined.Layers,
-                title = "Use tools",
-                subtitle = "Terminal, MCP, agents and more",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onSelectPrompt("Use tools: ", null)
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun HeroActionCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = title,
-                fontSize = 14.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(3.dp))
-            Text(
-                text = subtitle,
-                fontSize = 11.5.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                lineHeight = 15.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-fun StudioNavigationDock(
-    currentTab: String = "CHAT",
-    onNavigateToChat: () -> Unit = {},
-    onNavigateToProjects: () -> Unit = {},
-    onNavigateToTerminal: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {},
-    isTerminalActive: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            StudioDockItem(
-                label = "Chat",
-                icon = if (currentTab == "CHAT") Icons.Filled.Home else Icons.Outlined.Home,
-                isSelected = currentTab == "CHAT",
-                onClick = onNavigateToChat
-            )
-            StudioDockItem(
-                label = "Projects",
-                icon = Icons.Outlined.Folder,
-                isSelected = currentTab == "PROJECTS",
-                onClick = onNavigateToProjects
-            )
-            StudioDockItem(
-                label = "Terminal",
-                icon = Icons.Outlined.Terminal,
-                isSelected = currentTab == "TERMINAL",
-                accentTint = if (isTerminalActive) AntiBotCyan else null,
-                onClick = onNavigateToTerminal
-            )
-            StudioDockItem(
-                label = "Settings",
-                icon = Icons.Outlined.Settings,
-                isSelected = currentTab == "SETTINGS",
-                onClick = onNavigateToSettings
-            )
-        }
-    }
-}
-
-@Composable
-private fun StudioDockItem(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isSelected: Boolean,
-    accentTint: Color? = null,
-    onClick: () -> Unit
-) {
-    val isDark = isAppInDarkTheme()
-    val tint = when {
-        isSelected -> MaterialTheme.colorScheme.onSurface
-        accentTint != null -> accentTint
-        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-    }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .size(width = 54.dp, height = 30.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (isDark) Color(0xFF272A34) else Color(0xFFF1F5F9)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = tint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        } else {
-            Box(
-                modifier = Modifier.size(width = 54.dp, height = 30.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = tint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = tint
-        )
-    }
-}
-
 

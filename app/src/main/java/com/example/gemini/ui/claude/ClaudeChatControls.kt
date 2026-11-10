@@ -575,7 +575,7 @@ fun ClaudeUsageDialog(account: ClaudeAccountManager, backend: ClaudeChatBackend,
                 Text("Usage", fontWeight = FontWeight.Bold)
                 val plan = (usage?.subscription_type ?: status?.auth?.subscriptionType)?.let { com.example.gemini.ui.agents.claudePlanLabel(it) }
                 Text(
-                    listOfNotNull("Claude Code", plan?.let { "$it plan" }).joinToString(" · "),
+                    listOfNotNull<String>("Claude Code", plan?.let { "$it plan" }).joinToString(" · "),
                     fontSize = 12.sp,
                     color = ClaudeAccent
                 )
