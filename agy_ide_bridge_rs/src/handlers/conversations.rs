@@ -575,7 +575,273 @@ pub async fn search_conversations_handler(
     )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ContextCompactor  — POST /api/conversations/compact
+//
+// Ports Kotlin ContextCompactor: splitHistory, buildSummarizationPrompt,
+// loadAnchorRules, and buildRolloverSeedPrompt to Rust.
+// executeSummarization() (the LLM streaming call) remains in Kotlin.
+// ─────────────────────────────────────────────────────────────────────────────
+
+use serde::Serialize;
+
+#[derive(Debug, Deserialize)]
+pub struct CompactMessage {
+    pub role: String,         // "user" | "assistant"
+    pub content: String,
+    #[serde(default)]
+    pub tool_calls: Vec<CompactToolCall>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompactToolCall {
+    pub name: String,
+    #[serde(default)]
+    pub command: String,
+    #[serde(default)]
+    pub status: String,
+    pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub output: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompactRequest {
+    pub messages: Vec<CompactMessage>,
+    #[serde(rename = "windowLimit", default = "default_window_limit")]
+    pub window_limit: usize,
+    #[serde(rename = "existingSummary")]
+    pub existing_summary: Option<String>,
+}
+
+fn default_window_limit() -> usize { 20 }
+
+#[derive(Debug, Serialize)]
+pub struct CompactResponse {
+    /// Messages older than the window (should be summarized)
+    pub older: Vec<CompactMessageOut>,
+    /// Messages inside the context window (kept as-is)
+    pub recent: Vec<CompactMessageOut>,
+    /// Ready-to-send summarization prompt for the LLM
+    pub summarization_prompt: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompactMessageOut {
+    pub role: String,
+    pub content: String,
+}
+
+// ── RolloverSeed request ─────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct RolloverSeedRequest {
+    pub summary: String,
+    #[serde(rename = "workspacePath", default)]
+    pub workspace_path: String,
+    #[serde(rename = "pendingObjective")]
+    pub pending_objective: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RolloverSeedResponse {
+    pub seed_prompt: String,
+    pub anchor_rules: Vec<AnchorRule>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AnchorRule {
+    pub name: String,
+    pub content: String,
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/// Strips `<!-- tool_call:<id> -->` comment markers from message content.
+/// Matches Kotlin: `Regex("<!--\\s*tool_call:[a-zA-Z0-9_-]+\\s*-->")`.
+fn strip_tool_call_markers(text: &str) -> String {
+    // Manual scanner — avoids a regex dependency here (regex already in scope via imports above)
+    let re = Regex::new(r"<!--\s*tool_call:[a-zA-Z0-9_\-]+\s*-->").unwrap();
+    re.replace_all(text, "").trim().to_string()
+}
+
+fn build_summarization_prompt(messages: &[CompactMessage], existing_summary: Option<&str>) -> String {
+    let mut conv = String::new();
+
+    if let Some(prev) = existing_summary {
+        if !prev.trim().is_empty() {
+            conv.push_str("=== PREVIOUS CONTEXT SUMMARY ===\n");
+            conv.push_str(prev.trim());
+            conv.push_str("\n================================\n\n");
+        }
+    }
+
+    conv.push_str("=== CONVERSATION TURNS TO SUMMARIZE ===\n");
+    for msg in messages {
+        let role_name = if msg.role == "user" { "User" } else { "Assistant" };
+        let clean = strip_tool_call_markers(&msg.content);
+        conv.push_str(&format!("[{role_name}]: {clean}\n"));
+
+        for tool in &msg.tool_calls {
+            let cmd_snippet = if tool.command.len() > 120 { &tool.command[..120] } else { &tool.command };
+            let exit = tool.exit_code.unwrap_or(0);
+            conv.push_str(&format!(
+                "  [Tool Executed: {}] command: {} (status: {}, exit: {})\n",
+                tool.name, cmd_snippet, tool.status, exit
+            ));
+            if !tool.output.trim().is_empty() {
+                let out_snippet = if tool.output.len() > 250 {
+                    format!("{}...", &tool.output[..250])
+                } else {
+                    tool.output.clone()
+                };
+                conv.push_str(&format!("  [Tool Output Snippet]: {out_snippet}\n"));
+            }
+        }
+        conv.push('\n');
+    }
+    conv.push_str("=======================================\n");
+
+    format!(
+        "You are an expert AI Context Summarizer. Condense the following conversation history into a high-density, crystal-clear executive memory block that an AI can use to continue working seamlessly without losing any critical context.\n\n{conv}\nINSTRUCTIONS:\n1. Output a refined, comprehensive 3-6 word title for this overall conversation enclosed in <chat_title>...</chat_title> at the very top (e.g. <chat_title>Spring Boot Auth Migration</chat_title>).\n2. Produce a concise, structured markdown summary (around 150-300 words) with these exact sections:\n• **Core Goal & Requirements**: What the user is building or asking for.\n• **Key Decisions & Architecture**: Important choices made, libraries/frameworks chosen, preferences specified.\n• **Work Accomplished & Tool Results**: Files created/modified, commands run, features implemented, and key outcomes.\n• **Current Status & Pending Tasks**: Where the conversation currently left off and what needs to happen next.\n\nKeep it factual, concise, and focused on code, files, decisions, and outcomes. Do NOT include filler words."
+    )
+}
+
+fn load_anchor_rules(workspace_path: &str) -> Vec<AnchorRule> {
+    let mut rules = Vec::new();
+    if workspace_path.trim().is_empty() {
+        return rules;
+    }
+    let root = std::path::Path::new(workspace_path);
+    if !root.is_dir() {
+        return rules;
+    }
+
+    // 1. AGENTS.md
+    let agents_md = root.join("AGENTS.md");
+    if agents_md.is_file() {
+        if let Ok(text) = fs::read_to_string(&agents_md) {
+            let content: String = text.chars().take(6000).collect();
+            rules.push(AnchorRule { name: "AGENTS.md".into(), content });
+        }
+    }
+
+    // 2. .gemini/rules/
+    let rules_dir = root.join(".gemini/rules");
+    if rules_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&rules_dir) {
+            let mut dir_rules: Vec<AnchorRule> = entries.flatten()
+                .filter(|e| {
+                    let p = e.path();
+                    p.is_file() && matches!(p.extension().and_then(|x| x.to_str()), Some("md") | Some("txt"))
+                })
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    fs::read_to_string(e.path()).ok().map(|text| AnchorRule {
+                        name,
+                        content: text.chars().take(4000).collect(),
+                    })
+                })
+                .collect();
+            dir_rules.sort_by(|a, b| a.name.cmp(&b.name));
+            rules.extend(dir_rules);
+        }
+    }
+
+    // 3. CLAUDE.md
+    let claude_md = root.join("CLAUDE.md");
+    if claude_md.is_file() {
+        if let Ok(text) = fs::read_to_string(&claude_md) {
+            let content: String = text.chars().take(6000).collect();
+            rules.push(AnchorRule { name: "CLAUDE.md".into(), content });
+        }
+    }
+
+    rules
+}
+
+fn build_rollover_seed_prompt(summary: &str, anchor_rules: &[AnchorRule], pending_objective: Option<&str>) -> String {
+    let mut out = String::new();
+    out.push_str("=== [AUTO-ROLLOVER: FRESH CONTINUATION SESSION] ===\n");
+    out.push_str("This chat was automatically initialized from a previous session to ensure peak agent reasoning and zero memory bloat.\n\n");
+
+    if !anchor_rules.is_empty() {
+        out.push_str("### 📌 INVARIANT PROJECT RULES (ALWAYS CARRIED FULL)\n");
+        for rule in anchor_rules {
+            out.push_str(&format!("--- [{}] ---\n", rule.name));
+            out.push_str(rule.content.trim());
+            out.push_str("\n-------------------\n");
+        }
+        out.push('\n');
+    }
+
+    out.push_str("### 📋 EXECUTIVE PROGRESS FROM PREVIOUS CHAT\n");
+    out.push_str(summary.trim());
+    out.push_str("\n\n");
+
+    if let Some(obj) = pending_objective {
+        if !obj.trim().is_empty() {
+            out.push_str("### 🎯 IMMEDIATE NEXT OBJECTIVE\n");
+            out.push_str(obj.trim());
+            out.push_str("\n\n");
+        }
+    }
+
+    out.push_str("INSTRUCTION: Continue development seamlessly from this point forward. Follow all invariant rules above.\n");
+    out.push_str("===================================================");
+    out
+}
+
+// ── handlers ─────────────────────────────────────────────────────────────────
+
+/// POST /api/conversations/compact
+///
+/// Given a full message list + window limit, returns:
+/// - `older`: messages outside the window (candidates for summarization)
+/// - `recent`: messages inside the window (kept verbatim)
+/// - `summarization_prompt`: ready-to-send prompt for the Kotlin LLM streaming call
+pub async fn conversations_compact_handler(
+    Json(req): Json<CompactRequest>,
+) -> (StatusCode, Json<CompactResponse>) {
+    let n = req.messages.len();
+    let (older_msgs, recent_msgs) = if n <= req.window_limit {
+        (&req.messages[..0], &req.messages[..])
+    } else {
+        let split = n - req.window_limit;
+        (&req.messages[..split], &req.messages[split..])
+    };
+
+    let prompt = build_summarization_prompt(older_msgs, req.existing_summary.as_deref());
+
+    let to_out = |msgs: &[CompactMessage]| -> Vec<CompactMessageOut> {
+        msgs.iter().map(|m| CompactMessageOut {
+            role: m.role.clone(),
+            content: m.content.clone(),
+        }).collect()
+    };
+
+    (StatusCode::OK, Json(CompactResponse {
+        older: to_out(older_msgs),
+        recent: to_out(recent_msgs),
+        summarization_prompt: prompt,
+    }))
+}
+
+/// POST /api/conversations/rollover-seed
+///
+/// Builds the full rollover seed prompt from a summary + workspace anchor rules.
+/// Kotlin calls this after summarization completes, then uses the returned
+/// `seed_prompt` as the first message of the new chat session.
+pub async fn conversations_rollover_seed_handler(
+    Json(req): Json<RolloverSeedRequest>,
+) -> (StatusCode, Json<RolloverSeedResponse>) {
+    let anchor_rules = load_anchor_rules(&req.workspace_path);
+    let seed_prompt = build_rollover_seed_prompt(&req.summary, &anchor_rules, req.pending_objective.as_deref());
+    (StatusCode::OK, Json(RolloverSeedResponse { seed_prompt, anchor_rules }))
+}
+
 #[cfg(test)]
+
 mod tests {
     use super::*;
 
@@ -601,6 +867,47 @@ mod tests {
     fn test_extract_prompt_text_fallback_tags() {
         let content = "<system>Hello</system> World!";
         assert_eq!(extract_prompt_text(content), "Hello World!");
+    }
+
+    #[test]
+    fn test_strip_tool_call_markers() {
+        let text = "Result here <!-- tool_call:abc-123 --> and more text";
+        assert_eq!(strip_tool_call_markers(text), "Result here  and more text");
+    }
+
+    #[tokio::test]
+    async fn test_compact_handler_split_window() {
+        let msgs = vec![
+            CompactMessage { role: "user".into(), content: "Turn 1".into(), tool_calls: vec![] },
+            CompactMessage { role: "assistant".into(), content: "Resp 1".into(), tool_calls: vec![] },
+            CompactMessage { role: "user".into(), content: "Turn 2".into(), tool_calls: vec![] },
+            CompactMessage { role: "assistant".into(), content: "Resp 2".into(), tool_calls: vec![] },
+        ];
+        let req = CompactRequest {
+            messages: msgs,
+            window_limit: 2,
+            existing_summary: None,
+        };
+        let (status, Json(res)) = conversations_compact_handler(Json(req)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(res.older.len(), 2);
+        assert_eq!(res.recent.len(), 2);
+        assert!(res.summarization_prompt.contains("Turn 1"));
+        assert!(!res.summarization_prompt.contains("Turn 2"));
+    }
+
+    #[tokio::test]
+    async fn test_rollover_seed_prompt_generation() {
+        let req = RolloverSeedRequest {
+            summary: "Completed auth migration.".into(),
+            workspace_path: "".into(),
+            pending_objective: Some("Implement refresh tokens".into()),
+        };
+        let (status, Json(res)) = conversations_rollover_seed_handler(Json(req)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(res.seed_prompt.contains("Completed auth migration."));
+        assert!(res.seed_prompt.contains("Implement refresh tokens"));
+        assert!(res.seed_prompt.contains("AUTO-ROLLOVER"));
     }
 }
 

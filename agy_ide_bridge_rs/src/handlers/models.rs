@@ -120,6 +120,7 @@ fn default_fallback_model() -> String { "gemini".into() }
 #[derive(Debug, Deserialize)]
 pub struct ModelRouteRequest {
     pub prompt: String,
+    #[allow(dead_code)]
     #[serde(rename = "hasAttachments", default)]
     pub has_attachments: bool,  // reserved for future attachment-aware routing
     #[serde(rename = "isOnline", default = "bool_true")]

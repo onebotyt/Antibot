@@ -1,5 +1,6 @@
 package com.example.gemini.domain.context
 
+import com.example.gemini.data.preferences.AuthPreferences
 import com.example.gemini.data.remote.AntigravityApiService
 import com.example.gemini.data.remote.StreamEvent
 import com.example.gemini.domain.model.ChatMessage
@@ -7,14 +8,32 @@ import com.example.gemini.domain.model.MessageRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 data class SummarizationResult(
     val summary: String,
     val title: String? = null
 )
 
+data class CompactResult(
+    val older: List<ChatMessage>,
+    val recent: List<ChatMessage>,
+    val summarizationPrompt: String
+)
+
 object ContextCompactor {
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
 
     /**
      * Splits chat history into (olderMessages, recentMessages) based on contextWindowLimit.
@@ -84,6 +103,85 @@ Keep it factual, concise, and focused on code, files, decisions, and outcomes. D
     }
 
     /**
+     * Delegates history compaction and summarization prompt building to the Rust bridge daemon (POST /api/conversations/compact).
+     * Falls back to in-process splitHistory + buildSummarizationPrompt if bridge is unavailable.
+     */
+    suspend fun compactViaBridge(
+        messages: List<ChatMessage>,
+        windowLimit: Int = 20,
+        existingSummary: String? = null
+    ): CompactResult = withContext(Dispatchers.IO) {
+        try {
+            val bridgeBase = AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+            val messagesArray = JSONArray().apply {
+                messages.forEach { msg ->
+                    put(JSONObject().apply {
+                        put("role", if (msg.role == MessageRole.USER) "user" else "assistant")
+                        put("content", msg.content)
+                        val tcArray = JSONArray().apply {
+                            msg.toolCalls.forEach { tc ->
+                                put(JSONObject().apply {
+                                    put("name", tc.name)
+                                    put("command", tc.command)
+                                    put("status", tc.status)
+                                    put("exit_code", tc.exitCode ?: 0)
+                                    put("output", tc.output)
+                                })
+                            }
+                        }
+                        put("tool_calls", tcArray)
+                    })
+                }
+            }
+            val body = JSONObject().apply {
+                put("messages", messagesArray)
+                put("windowLimit", windowLimit)
+                if (!existingSummary.isNullOrBlank()) {
+                    put("existingSummary", existingSummary)
+                }
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$bridgeBase/api/conversations/compact")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            val resp = http.newCall(request).execute()
+            if (resp.isSuccessful) {
+                val json = JSONObject(resp.body!!.string())
+                val summarizationPrompt = json.getString("summarization_prompt")
+                val (older, recent) = splitHistory(messages, windowLimit)
+                return@withContext CompactResult(older, recent, summarizationPrompt)
+            }
+        } catch (_: Exception) {
+            // Fall through to in-process fallback
+        }
+        val (older, recent) = splitHistory(messages, windowLimit)
+        val prompt = buildSummarizationPrompt(older, existingSummary)
+        CompactResult(older, recent, prompt)
+    }
+
+    /**
+     * Builds summarization prompt using the Rust bridge, falling back to local string building.
+     */
+    suspend fun buildSummarizationPromptViaBridge(
+        messagesToSummarize: List<ChatMessage>,
+        existingSummary: String? = null
+    ): String = withContext(Dispatchers.IO) {
+        try {
+            val res = compactViaBridge(
+                messages = messagesToSummarize,
+                windowLimit = 0,
+                existingSummary = existingSummary
+            )
+            if (res.summarizationPrompt.isNotBlank()) {
+                return@withContext res.summarizationPrompt
+            }
+        } catch (_: Exception) {}
+        buildSummarizationPrompt(messagesToSummarize, existingSummary)
+    }
+
+    /**
      * Executes the summarization API call using the selected model.
      */
     suspend fun executeSummarization(
@@ -95,7 +193,7 @@ Keep it factual, concise, and focused on code, files, decisions, and outcomes. D
         existingSummary: String? = null
     ): Result<SummarizationResult> = withContext(Dispatchers.IO) {
         try {
-            val prompt = buildSummarizationPrompt(messagesToSummarize, existingSummary)
+            val prompt = buildSummarizationPromptViaBridge(messagesToSummarize, existingSummary)
             val syntheticMessage = ChatMessage(
                 conversationId = "summary-temp",
                 role = MessageRole.USER,
@@ -221,6 +319,40 @@ Keep it factual, concise, and focused on code, files, decisions, and outcomes. D
             appendLine("INSTRUCTION: Continue development seamlessly from this point forward. Follow all invariant rules above.")
             appendLine("===================================================")
         }
+    }
+
+    /**
+     * Builds rollover seed prompt via the Rust bridge daemon (POST /api/conversations/rollover-seed).
+     * Falls back to local prompt building if bridge is unavailable.
+     */
+    suspend fun buildRolloverSeedPromptViaBridge(
+        summary: String,
+        workspacePath: String,
+        pendingObjective: String? = null
+    ): String = withContext(Dispatchers.IO) {
+        try {
+            val bridgeBase = AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
+            val body = JSONObject().apply {
+                put("summary", summary)
+                put("workspacePath", workspacePath)
+                if (!pendingObjective.isNullOrBlank()) {
+                    put("pendingObjective", pendingObjective)
+                }
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$bridgeBase/api/conversations/rollover-seed")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            val resp = http.newCall(request).execute()
+            if (resp.isSuccessful) {
+                val json = JSONObject(resp.body!!.string())
+                return@withContext json.getString("seed_prompt")
+            }
+        } catch (_: Exception) {}
+        val anchorRules = loadAnchorRules(workspacePath)
+        buildRolloverSeedPrompt(summary, anchorRules, pendingObjective)
     }
 }
 
