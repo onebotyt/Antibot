@@ -1,6 +1,6 @@
 {
-  "version_code": 208,
-  "version_name": "2.4.88",
+  "version_code": 209,
+  "version_name": "2.4.89",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83e\udd16 Multi-CLI Coding Agent Suite: Full support for Antigravity (agy), Claude Code (claude), OpenCode (opencode), OpenAI Codex (codex), and Local SLM offline engine.",
