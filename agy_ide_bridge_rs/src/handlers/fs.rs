@@ -14,6 +14,7 @@ use std::{
 };
 use ignore::WalkBuilder;
 use regex::{Regex, RegexBuilder};
+use antibot_native::crypto::compute_sha256_hex;
 
 use crate::{
     models::{
@@ -268,10 +269,13 @@ pub async fn file_save_handler(Json(req): Json<FileSaveReq>) -> impl IntoRespons
     }
 
     match fs::write(p, &req.content) {
-        Ok(_) => (
-            StatusCode::OK,
-            Json(json!({ "success": true, "path": req.path })),
-        ),
+        Ok(_) => {
+            let hash = compute_sha256_hex(req.content.as_bytes());
+            (
+                StatusCode::OK,
+                Json(json!({ "success": true, "path": req.path, "hash": hash })),
+            )
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": e.to_string() })),
@@ -307,11 +311,12 @@ pub async fn file_patch_handler(Json(req): Json<FilePatchReq>) -> impl IntoRespo
     }
 
     let patched = new_lines.join("\n");
-    if let Err(e) = fs::write(p, patched) {
+    if let Err(e) = fs::write(p, &patched) {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })));
     }
+    let hash = compute_sha256_hex(patched.as_bytes());
 
-    (StatusCode::OK, Json(json!({ "success": true, "path": req.path })))
+    (StatusCode::OK, Json(json!({ "success": true, "path": req.path, "hash": hash })))
 }
 
 pub async fn file_delete_handler(Json(req): Json<FileOpReq>) -> impl IntoResponse {
@@ -602,6 +607,43 @@ pub async fn fs_unwatch_handler(
     match state.watcher.unwatch(&path) {
         Ok(_) => (StatusCode::OK, Json(json!({ "success": true, "path": path.to_string_lossy() }))),
         Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_file_save_and_patch_hash() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("antibot_test_save.txt");
+        let path_str = test_file.to_string_lossy().to_string();
+
+        let content = "Hello AntiBot Rust Hash\nLine 2";
+        let expected_hash = compute_sha256_hex(content.as_bytes());
+
+        let save_req = FileSaveReq {
+            path: path_str.clone(),
+            content: content.to_string(),
+            expected_hash: None,
+            force: None,
+        };
+        let resp = file_save_handler(Json(save_req)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Test patch
+        let patch_req = FilePatchReq {
+            path: path_str.clone(),
+            start_line: 2,
+            end_line: 2,
+            replacement: "Line 2 Patched".to_string(),
+        };
+        let resp_patch = file_patch_handler(Json(patch_req)).await.into_response();
+        assert_eq!(resp_patch.status(), StatusCode::OK);
+
+        let _ = fs::remove_file(test_file);
+        assert!(!expected_hash.is_empty());
     }
 }
 
