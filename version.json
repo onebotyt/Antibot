@@ -1,6 +1,6 @@
 {
-  "version_code": 226,
-  "version_name": "2.4.106",
+  "version_code": 227,
+  "version_name": "2.4.107",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udd27 Fix CI Build & Committer Attribution: Resolved Kotlin OkHttp compilation deprecation errors in NetworkInspectorManager and TrajectoryParser, fixed filterOptions type inference in ChatHistoryDrawer, and attributed CI auto-sync commits to onebotyt instead of github-actions[bot].",
