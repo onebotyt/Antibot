@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post},
+    routing::{any, get, post},
     Router,
 };
 use clap::{Parser, Subcommand};
@@ -306,6 +306,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/ws/audio/telemetry", get(handlers::audio::ws_audio_telemetry_handler))
         // Antigravity Hub Diagnostics & Call Telemetry
         .route("/api/agy/hub/diag", get(handlers::diag::agy_hub_diag_handler))
+        // Antigravity Cloud Agents & Reverse Proxy Preview
+        .route("/api/cloud/status", get(handlers::cloud::cloud_status_handler))
+        .route("/api/cloud/preview/register", post(handlers::cloud::cloud_register_route_handler))
+        .route("/api/cloud/preview/routes", get(handlers::cloud::cloud_routes_handler))
+        .route("/api/cloud/preview/proxy", post(handlers::cloud::cloud_preview_proxy_handler))
+        .route("/api/cloud/ports/scan", post(handlers::cloud::cloud_scan_ports_handler))
+        .route("/api/cloud/preview/:port", any(handlers::cloud::cloud_reverse_proxy_gateway))
+        .route("/api/cloud/preview/:port/*path", any(handlers::cloud::cloud_reverse_proxy_gateway))
         // SQLite FTS5 / BM25 & Hybrid Vector Search Database
         .route("/api/db/index", post(handlers::db::db_index_handler))
         .route("/api/db/search", post(handlers::db::db_search_handler))

@@ -1,13 +1,13 @@
 {
-  "version_code": 202,
-  "version_name": "2.2.0",
+  "version_code": 203,
+  "version_name": "2.3.0",
   "min_supported_version_code": 1,
   "changelog": [
-    "🎙️ Phase 22: Antigravity Live Duplex Voice Call & Native Rust Audio Pipeline.",
-    "🗣️ Live Duplex Voice Calls: Real-time speech interaction with Antigravity agents backed by Voice.proto and background microphone service.",
-    "🎭 Agent Voice Picker: Interactive voice preview dialog with live orb animation and voice sample playback.",
-    "📜 Live Transcripts & Diagnostics: Real-time call transcription sheet and hub diagnostic log capture (/api/agy/hub/diag) for failed calls.",
-    "🦀 Pure Rust Audio DSP: Native VAD, Cooley-Tukey FFT, SNR analysis, and spectral equalizer in agy_ide_bridge_rs and antibot_native."
+    "☁️ Phase 23: Antigravity Cloud Agents & Cloud Web Preview.",
+    "🌐 Cloud Agents & Remote VM: Antigravity chat support in Google-managed VMs with GitHub repository checkout and persistent background execution.",
+    "🚀 Native Rust Reverse Proxy: Pure Tokio/Axum streaming reverse proxy (/api/cloud/preview/:port/*) with zero-copy forwarding and automatic CORS header rewriting.",
+    "📱 In-App Web Preview & Sandbox: Live WebView preview dialog with port detection, CORS bypass, and system browser loopback proxy (CloudPreviewServer).",
+    "🔍 Active Port Scanner: Background TCP port scanner (/api/cloud/ports/scan) detecting active local and cloud development servers."
   ],
   "is_critical": false
 }

@@ -124,8 +124,14 @@ data class Conversation(
     val subagentRole: String? = null,
     val subagentTypeName: String? = null,
     val nestingDepth: Int = 0,
-    val agent: AgentKind = AgentKind.AGY
-)
+    val agent: AgentKind = AgentKind.AGY,
+    /** Archived: listed only in the sidebar's archive view. */
+    val archived: Boolean = false,
+    /** An Antigravity cloud chat (Remote Agents): the cloud project it runs in; null = runs on the hub's machine. */
+    val cloudProjectId: String? = null
+) {
+    val isCloud: Boolean get() = cloudProjectId != null
+}
 
 /** A message sent while the agent was working, waiting to be delivered (shown in the queued-messages card). */
 data class QueuedMessage(

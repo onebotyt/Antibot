@@ -499,6 +499,19 @@ fun ChatScreen(
             onDismiss = { showVoicePicker = false }
         )
     }
+
+    // Antigravity cloud agents (off by default in Settings → Cloud agents)
+    val cloudEnabled by com.example.gemini.data.agent.agy.AgyCloud.enabled.collectAsState()
+    LaunchedEffect(systemConnectionState.canSend, cloudEnabled) {
+        if (systemConnectionState.canSend && cloudEnabled) com.example.gemini.data.agent.agy.AgyCloud.refreshProjects()
+    }
+    var showCloudProjects by remember { mutableStateOf(false) }
+    var showCloudCreate by remember { mutableStateOf(false) }
+    var showCloudPreview by remember { mutableStateOf(false) }
+    /** The in-app preview on screen: (cloud chat, port). */
+    var cloudPreviewInApp by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var showCloudRunCommand by remember { mutableStateOf(false) }
+
     // the voice agent moved the call to another chat (it started a new one): show that chat
     LaunchedEffect(Unit) {
         com.example.gemini.data.voice.AgyVoiceCall.conversationMoved.collect { id -> viewModel.selectConversation(id) }
@@ -2008,6 +2021,25 @@ fun ChatScreen(
                     agentWorking = isActivelyRunning && currentConv?.id == voiceCall.conversationId
                 )
 
+                // an Antigravity cloud chat: its project, web preview, run a command
+                if (isAgyChat && currentConv?.isCloud == true) {
+                    val cloudProjects by com.example.gemini.data.agent.agy.AgyCloud.projects.collectAsState()
+                    com.example.gemini.ui.cloud.CloudChatStrip(
+                        projectName = cloudProjects.firstOrNull { it.id == currentConv?.cloudProjectId }?.name,
+                        onProject = { showCloudProjects = true },
+                        onPreview = {
+                            if (messages.isEmpty()) com.example.gemini.ui.components.AppToastHelper.showToast(
+                                "Send the cloud agent a message first: its VM starts with the chat.", com.example.gemini.ui.components.ChatToastType.INFO
+                            ) else showCloudPreview = true
+                        },
+                        onRunCommand = {
+                            if (messages.isEmpty()) com.example.gemini.ui.components.AppToastHelper.showToast(
+                                "Send the cloud agent a message first: its VM starts with the chat.", com.example.gemini.ui.components.ChatToastType.INFO
+                            ) else showCloudRunCommand = true
+                        }
+                    )
+                }
+
                 // Chat Input Bar with Bottom Model & Thinking Selector Pills
                 ChatInputBar(
                     isOnline = if (isLocalChat) true else systemConnectionState.canSend,
@@ -2833,6 +2865,59 @@ fun ChatScreen(
     if (showNetworkInspectorDialog) {
         com.example.gemini.ui.components.NetworkInspectorDialog(
             onDismiss = { showNetworkInspectorDialog = false }
+        )
+    }
+
+    // Antigravity cloud agents: projects and connections, preview, run a command
+    if (showCloudProjects || showCloudCreate) {
+        com.example.gemini.ui.cloud.CloudProjectsDialog(
+            startWithCreate = showCloudCreate,
+            onStartChatIn = { projectId ->
+                showCloudProjects = false
+                showCloudCreate = false
+                com.example.gemini.data.agent.agy.AgyCloud.select(projectId)
+                viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.AGY)
+                viewModel.agyBackend.setNewChatCloudProject(projectId)
+            },
+            onDismiss = { showCloudProjects = false; showCloudCreate = false }
+        )
+    }
+    if (showCloudPreview && currentConv?.isCloud == true) {
+        val previewConvId = currentConv!!.id
+        val previewPorts = remember(messages) { com.example.gemini.ui.cloud.cloudPreviewPorts(messages) }
+        // first: which port, and in the app or in the system browser
+        com.example.gemini.ui.cloud.CloudPreviewChooser(
+            suggestedPorts = previewPorts,
+            onOpenInApp = { port -> showCloudPreview = false; cloudPreviewInApp = previewConvId to port },
+            onOpenInBrowser = { port ->
+                showCloudPreview = false
+                runCatching {
+                    // served on this phone through the hub, so the system browser can show the VM's page
+                    val url = com.example.gemini.data.agent.agy.CloudPreviewServer.urlFor(previewConvId, port)
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    com.example.gemini.ui.components.AppToastHelper.showToast("Couldn't open the browser: ${it.message}", com.example.gemini.ui.components.ChatToastType.ERROR)
+                }
+            },
+            onDismiss = { showCloudPreview = false }
+        )
+    }
+    cloudPreviewInApp?.let { (convId, port) ->
+        val previewPorts = remember(messages) { com.example.gemini.ui.cloud.cloudPreviewPorts(messages) }
+        com.example.gemini.ui.cloud.CloudPreviewDialog(
+            conversationId = convId,
+            suggestedPorts = previewPorts,
+            initialPort = port,
+            onDismiss = { cloudPreviewInApp = null }
+        )
+    }
+    if (showCloudRunCommand) {
+        com.example.gemini.ui.cloud.CloudRunCommandDialog(
+            onRun = { cmd ->
+                viewModel.sendMessage(com.example.gemini.ui.cloud.cloudRunCommandPrompt(cmd))
+                userSentMessageTrigger++
+            },
+            onDismiss = { showCloudRunCommand = false }
         )
     }
 

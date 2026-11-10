@@ -18,7 +18,6 @@ import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.ChatAttachment
 import com.example.gemini.domain.model.Conversation
 import com.example.gemini.domain.model.MessageRole
-import com.example.gemini.domain.model.ModelFamily
 import com.example.gemini.domain.model.ModelQuota
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -106,6 +105,13 @@ class AgyChatBackend(
     private val _availableModels = MutableStateFlow<List<AiModel>>(AiModel.DEFAULT_MODELS)
     val availableModels: StateFlow<List<AiModel>> = _availableModels.asStateFlow()
 
+    init {
+        // the usage pill under a reply names its model, as the "Switched to …" divider does
+        trajectoryEngine.modelDisplayName = { id ->
+            _availableModels.value.firstOrNull { it.id == id || it.key == id }?.displayName?.takeIf { it.isNotBlank() } ?: id
+        }
+    }
+
     private val _enabledModelIds = MutableStateFlow<Set<String>?>(null)
     val enabledModelIds: StateFlow<Set<String>?> = _enabledModelIds.asStateFlow()
 
@@ -118,6 +124,9 @@ class AgyChatBackend(
     private val _selectedModelId = MutableStateFlow("")
     val selectedModelId: StateFlow<String> = _selectedModelId.asStateFlow()
 
+    /** The model the user last picked (the saved default); new chats start on it. */
+    @Volatile private var pickedModelId = ""
+
     val preferredModelName: StateFlow<String> = authPrefs.preferredModelName
         .map { it ?: "" }
         .stateIn(backendScope, SharingStarted.Eagerly, "")
@@ -127,6 +136,17 @@ class AgyChatBackend(
 
     private val _quotaSummary = MutableStateFlow<com.example.gemini.domain.model.QuotaSummaryResponse?>(null)
     val quotaSummary: StateFlow<com.example.gemini.domain.model.QuotaSummaryResponse?> = _quotaSummary.asStateFlow()
+
+    init {
+        // moving a model to another quota group, or switching the pill between 5h and 7d, updates the pill right away
+        com.example.gemini.domain.model.ModelGroupPrefs.init(application)
+        backendScope.launch {
+            combine(
+                com.example.gemini.domain.model.ModelGroupPrefs.overrides(com.example.gemini.domain.model.QuotaAgent.AGY),
+                com.example.gemini.domain.model.ModelGroupPrefs.pillWindow(com.example.gemini.domain.model.QuotaAgent.AGY)
+            ) { _, _ -> }.collect { recomputeQuotas() }
+        }
+    }
 
     private val _isLoadingConversation = MutableStateFlow(true)
     override val isLoadingConversation: StateFlow<Boolean> = _isLoadingConversation.asStateFlow()
@@ -254,7 +274,10 @@ class AgyChatBackend(
 
     fun checkAgyAuthStatus(userInitiated: Boolean = false) {
         backendScope.launch {
-            agyBridgeService.updateAuthChecking(true)
+            // "Checking sign-in…" only while the sign-in state is unknown (or the user asked). A background re-check of
+            // a confirmed sign-in stays silent: the status only changes if the answer differs (signed out).
+            val alreadySignedIn = _agyAuthInfo.value.isLoggedIn && !_agyAuthInfo.value.isOffline
+            if (userInitiated || !alreadySignedIn) agyBridgeService.updateAuthChecking(true)
             if (!isNetworkConnected()) {
                 android.util.Log.d("ChatViewModel", "Skipping auth status check: device is offline.")
                 _agyAuthInfo.value = _agyAuthInfo.value.copy(
@@ -306,14 +329,50 @@ class AgyChatBackend(
                     status = com.example.gemini.data.remote.AgyHubClient.AgyAuthStatus.OFFLINE,
                     isOffline = true
                 )
-                // Retain current auth state; clear the isChecking flag on network/RPC failure
+                // Retain current auth state; only clear the isChecking flag on network/RPC failure
                 agyBridgeService.updateAuthChecking(false)
-                _isAuthBusy.value = false
                 if (userInitiated) {
-                    _authFeedbackMessage.tryEmit("Unable to reach Antigravity server.")
+                    _authFeedbackMessage.tryEmit("Unable to reach server.")
                 }
             }
         }
+    }
+
+    /** Waits for the hub to report a signed-in account; keeps the "Signing in…" state on until it does or time runs out. */
+    private fun startLoginPoll(hubUrl: String) {
+        _isAuthBusy.value = true
+        agyBridgeService.updateAuthChecking(true)
+        loginPollJob?.cancel()
+        loginPollJob = backendScope.launch {
+                val startTime = System.currentTimeMillis()
+                // a remote hub needs time for the user to paste the redirect address
+                val maxWaitMs = if (AuthPreferences.currentRemoteMode) 420_000L else 120_000L
+                while (isActive && System.currentTimeMillis() - startTime < maxWaitMs) {
+                    delay(800)
+
+                    if (isNetworkConnected()) {
+                        val res = agyHubClient.fetchDetailedAuthInfo(hubUrl)
+                        if (res.isSuccess && res.getOrThrow().isLoggedIn) {
+                            val authed = res.getOrThrow()
+                            _agyAuthInfo.value = authed
+                            agyBridgeService.updateAuthState(isAuth = true, isChecking = false)
+                            lastAuthCheckTimeMs = System.currentTimeMillis()
+                            _isAuthBusy.value = false
+                            _pendingLoginUrl.value = null
+                            _authFeedbackMessage.tryEmit("Signed in successfully!")
+                            refreshQuotas(force = true)
+                            break
+                        }
+                    }
+                }
+                _isAuthBusy.value = false
+                agyBridgeService.updateAuthChecking(false)
+            }
+    }
+
+    /** Remote sign-in: the pasted address reached the server, so the sign-in is finishing: show "Signing in…" until it is done. */
+    fun onLoginCallbackForwarded() {
+        startLoginPoll(AuthPreferences.currentHubUrl)
     }
 
     fun loginToAgyHub(force: Boolean = false) {
@@ -322,25 +381,12 @@ class AgyChatBackend(
             _authFeedbackMessage.tryEmit("Cannot sign in: no internet connection.")
             return
         }
-        val isHubOnline = agyBridgeService.isHubOnline || agyBridgeService.hubStatus.value.status == "online"
-
         _isAuthBusy.value = true
         agyBridgeService.updateAuthChecking(true)
         loginPollJob?.cancel()
 
         backendScope.launch {
             val hubUrl = AuthPreferences.currentHubUrl
-
-            // If hub is not yet ready, wait briefly or abort cleanly instead of hanging
-            if (!isHubOnline) {
-                val ready = agyBridgeService.awaitHubReady(timeoutMs = 4000L)
-                if (!ready) {
-                    _isAuthBusy.value = false
-                    agyBridgeService.updateAuthChecking(false)
-                    _authFeedbackMessage.tryEmit("Antigravity Hub is not running. Please start the engine or use the offline Local Model.")
-                    return@launch
-                }
-            }
 
             // Pre-check: if user is already authenticated, finish immediately!
             val preCheck = agyHubClient.fetchDetailedAuthInfo(hubUrl)
@@ -358,51 +404,12 @@ class AgyChatBackend(
             _authFeedbackMessage.tryEmit("Initiating sign-in with Antigravity...")
 
             // 1. Poll for successful auth completion concurrently every 800ms
-            loginPollJob = launch {
-                val startTime = System.currentTimeMillis()
-                var consecutiveFailures = 0
-                while (isActive && System.currentTimeMillis() - startTime < 45_000) {
-                    delay(800)
-
-                    if (isNetworkConnected()) {
-                        val res = agyHubClient.fetchDetailedAuthInfo(hubUrl)
-                        if (res.isSuccess && res.getOrThrow().isLoggedIn) {
-                            val authed = res.getOrThrow()
-                            _agyAuthInfo.value = authed
-                            agyBridgeService.updateAuthState(isAuth = true, isChecking = false)
-                            lastAuthCheckTimeMs = System.currentTimeMillis()
-                            _isAuthBusy.value = false
-                            _pendingLoginUrl.value = null
-                            _authFeedbackMessage.tryEmit("Signed in successfully!")
-                            refreshQuotas(force = true)
-                            break
-                        } else if (res.isFailure) {
-                            consecutiveFailures++
-                            if (consecutiveFailures >= 8 && !agyBridgeService.isHubOnline) {
-                                break
-                            }
-                        }
-                    }
-                }
-                _isAuthBusy.value = false
-                agyBridgeService.updateAuthChecking(false)
-            }
+            startLoginPoll(hubUrl)
 
             // 2. Kick off login RPC on daemon (Login RPC opens browser / triggers auth flow)
             launch {
                 try {
-                    com.example.gemini.data.remote.core.AgyCsrfManager.instance.getCsrfTokenSync(hubUrl, forceRefresh = true)
-                    val loginRes = agyHubClient.login(hubUrl)
-                    if (loginRes.isFailure) {
-                        val err = loginRes.exceptionOrNull()?.message ?: "Login request failed"
-                        android.util.Log.e("ChatViewModel", "Login RPC failed: $err")
-                        loginPollJob?.cancel()
-                        _isAuthBusy.value = false
-                        agyBridgeService.updateAuthChecking(false)
-                        _authFeedbackMessage.tryEmit("Sign in error: $err")
-                        return@launch
-                    }
-                    val authResult = loginRes.getOrNull()
+                    val authResult = agyHubClient.login(hubUrl).getOrNull()
                     if (authResult != null && !authResult.has_valid_auth) {
                         val verificationUrl = authResult.ineligible?.verification_url?.takeIf { it.isNotBlank() }
                             ?: authResult.verification_required?.verification_url?.takeIf { it.isNotBlank() }
@@ -420,10 +427,6 @@ class AgyChatBackend(
                     }
                 } catch (e: Exception) {
                     android.util.Log.d("ChatViewModel", "Hub login RPC finished/interrupted: ${e.message}")
-                    loginPollJob?.cancel()
-                    _isAuthBusy.value = false
-                    agyBridgeService.updateAuthChecking(false)
-                    _authFeedbackMessage.tryEmit("Sign in error: ${e.message}")
                 }
             }
         }
@@ -463,34 +466,84 @@ class AgyChatBackend(
         instances.isNotEmpty() || convs.any { it.isRunning || it.notFullyIdle || it.hasActivity }
     }.stateIn(backendScope, SharingStarted.WhileSubscribed(5000), false)
 
-    // Authoritative conversation running & background states derived from the sidebar summary stream (_conversations).
-    // Note: We use the daemon's sidebar summaries (JetboxSubscribeToSummaries) as the single source of truth rather than
-    // per-frame stream updates from StreamAgentStateUpdates because the fine-grained gRPC stream in AGY can be buggier
-    // (e.g. continuing to report RUNNING state even when the turn has ended, particularly in long chats with multiple subagents/tools).
+    // Conversation running & background states derived from the sidebar summary stream (_conversations) and the
+    // open chat's live stream (StreamAgentStateUpdates). Both use the hub rule (`status == RUNNING`) for running,
+    // and `!fullyIdle` / `hasActivity` for background work. Without a stream frame yet, the summary decides.
+    private data class StreamRunState(val conversationId: String, val loopRunning: Boolean, val fullyIdle: Boolean)
+    private val _streamRun = MutableStateFlow<StreamRunState?>(null)
+
+    private var quotaAfterRunJob: Job? = null
+
+    init {
+        // A finished run used quota: when the last running chat (the open one or one in the background) stops,
+        // fetch the quota numbers again so the model picker and the chat pill show what is left now.
+        backendScope.launch {
+            combine(
+                _conversations.map { list -> list.any { it.isRunning } },
+                _streamRun.map { it?.loopRunning == true }
+            ) { anyChat, openChat -> anyChat || openChat }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { running -> if (!running) refreshQuotaAfterRun() }
+        }
+    }
+
+    /** Only the quota summary (not the model list, so no spinner); runs ending close together refresh once. */
+    private fun refreshQuotaAfterRun() {
+        quotaAfterRunJob?.cancel()
+        quotaAfterRunJob = backendScope.launch {
+            delay(3_000) // the server books a run's usage a moment after it ends
+            agyHubClient.retrieveUserQuotaSummary(forceRefresh = true, hubUrl = AuthPreferences.currentHubUrl)
+                .onSuccess { applyQuotaSummary(it) }
+                .onFailure { Log.w("AgyQuota", "quota refresh after run failed: ${it.message}") }
+        }
+    }
+
+    // A just-sent (not queued) message shows the chat as running right away, until the stream confirms it
+    // (the hub web UI does the same), so the Send button turns into Stop at once.
+    private data class OptimisticSend(val conversationId: String, val tag: String)
+    private val _optimisticSend = MutableStateFlow<OptimisticSend?>(null)
+    private var optimisticTimeoutJob: Job? = null
+
     val isCurrentChatActivelyRunning: StateFlow<Boolean> = combine(
         _conversations,
         _currentConversation,
-        systemConnectionState
-    ) { convList, current, conn ->
+        systemConnectionState,
+        _streamRun,
+        _optimisticSend
+    ) { convList, current, conn, stream, optimistic ->
         val curId = current?.id ?: return@combine false
-        val conv = convList.find { it.id == curId } ?: current
-        (conv.isRunning) && conn.isHubOnline
+        if (!conn.isHubOnline) return@combine false
+        if (optimistic?.conversationId == curId) return@combine true
+        stream?.takeIf { it.conversationId == curId }?.loopRunning
+            ?: (convList.find { it.id == curId } ?: current).isRunning
     }.distinctUntilChanged()
     .stateIn(backendScope, SharingStarted.Eagerly, false)
 
     val isCurrentChatBackgroundActive: StateFlow<Boolean> = combine(
-        _conversations,
-        _currentConversation,
+        combine(_conversations, _currentConversation, ::Pair),
         systemConnectionState,
-        _activeInstances
-    ) { convList, current, conn, instances ->
+        _activeInstances,
+        _streamRun,
+        isCurrentChatActivelyRunning
+    ) { (convList, current), conn, instances, stream, activelyRunning ->
         val curId = current?.id ?: return@combine false
         val conv = convList.find { it.id == curId } ?: current
-        val isActivelyRunning = (conv.isRunning) && conn.isHubOnline
         val activeInst = instances.find { it.conversationId == curId }
-        conn.isHubOnline && !isActivelyRunning && (conv.notFullyIdle || conv.hasActivity || activeInst != null)
+        val streamBusy = stream?.takeIf { it.conversationId == curId }?.let { !it.fullyIdle } == true
+        // a summary still RUNNING while the loop is idle is background work (subagents, background tasks)
+        conn.isHubOnline && !activelyRunning &&
+            (streamBusy || conv.isRunning || conv.notFullyIdle || conv.hasActivity || activeInst != null)
     }.distinctUntilChanged()
     .stateIn(backendScope, SharingStarted.Eagerly, false)
+
+    // ---- queued messages (sent while the agent was working; the daemon delivers them when it is done)
+    private val _queuedMessages = MutableStateFlow<List<com.example.gemini.domain.model.QueuedMessage>>(emptyList())
+    val queuedMessages: StateFlow<List<com.example.gemini.domain.model.QueuedMessage>> = _queuedMessages.asStateFlow()
+    // queued sends from this app the daemon's queue does not list yet: chat id → (client tag → entry)
+    private val localQueued = java.util.concurrent.ConcurrentHashMap<String, LinkedHashMap<String, com.example.gemini.domain.model.QueuedMessage>>()
+    // server queue entries removed here, hidden until the daemon's queue drops them
+    private val hiddenQueuedIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     val connectionState: StateFlow<com.example.gemini.data.remote.BridgeConnectionState> = combine(_isServerOnline, isCurrentChatActivelyRunning) { online, streaming ->
         when {
@@ -510,9 +563,6 @@ class AgyChatBackend(
 
     private var streamingJob: Job? = null
     private var persistentStreamJob: Job? = null
-    private var networkRecoveryJob: Job? = null
-    @Volatile private var isNetworkRecoveryActive: Boolean = false
-    @Volatile private var networkRecoveryRemainingSeconds: Int = 10
     @Volatile private var activeStreamConversationId: String? = null
     @Volatile private var currentTurnStartStep: Int = 0
     @Volatile private var totalStepsCount: Int = 0
@@ -527,6 +577,8 @@ class AgyChatBackend(
                 try {
                     val wsUrl = AuthPreferences.currentBridgeWsUrl
                     agyBridgeService.monitorHubStatus(wsUrl).collect { status ->
+                        // the bridge answers: learn its version (the app warns when it differs from the app's)
+                        com.example.gemini.data.remote.BridgeInfo.refreshVersionIfUnknown()
                         when (status.status) {
                             "online" -> {
                                 _isServerOnline.value = true
@@ -570,6 +622,7 @@ class AgyChatBackend(
                     _isServerOnline.value = false
                     _isBridgeOnline.value = false
                     agyBridgeService.resetState()
+                    com.example.gemini.data.remote.BridgeInfo.reset()
                     delay(1000)
                 }
             }
@@ -579,6 +632,8 @@ class AgyChatBackend(
             agyBridgeService.loginUrlEvents.collect { url ->
                 if (url.isNotBlank()) {
                     _pendingLoginUrl.value = url
+                    // a sign-in has started (even one the server started): show "Signing in…" until it finishes
+                    if (!_isAuthBusy.value && !_agyAuthInfo.value.isLoggedIn) startLoginPoll(AuthPreferences.currentHubUrl)
                 }
             }
         }
@@ -590,7 +645,9 @@ class AgyChatBackend(
             if (initial.isNotBlank() && _selectedModelId.value.isBlank()) {
                 _selectedModelId.value = initial
             }
-            // the start-up chat: only when nothing is open yet or it is still an empty Antigravity chat
+            if (initial.isNotBlank() && pickedModelId.isBlank()) pickedModelId = initial
+            // the start-up chat: only when nothing is open yet or it is still an empty Antigravity chat (a Claude
+            // chat opened meanwhile must not be replaced)
             val cur = _currentConversation.value
             if (cur == null || (cur.agent == AgentKind.AGY && cur.title == "New Chat" && _messages.value.isEmpty())) {
                 startNewChat()
@@ -670,8 +727,96 @@ class AgyChatBackend(
     }
 
     private var syncJob: Job? = null
+    private var cloudSyncJob: Job? = null
+    private val summariesLock = Any()
+
+    /**
+     * Keeps the Antigravity cloud chats (Remote Agents) in the chat list, next to the hub's own. Quietly does nothing
+     * for an account or hub without cloud agents.
+     */
+    @Volatile private var cloudSyncHealthy = false
+
+    private fun syncCloudConversations(force: Boolean) {
+        // the cloud project list loaded (the hub is ready for cloud calls): restart a cloud list that never got going
+        AgyCloud.onAvailable = { if (!cloudSyncHealthy) syncCloudConversations(force = true) }
+        // Settings → Antigravity → Cloud agents switched on or off
+        AgyCloud.onEnabledChanged = { syncCloudConversations(force = true) }
+        if (!AgyCloud.enabled.value) {
+            // off: no cloud calls to the hub, and no cloud chats in the list (the open one stays until left)
+            cloudSyncJob?.cancel()
+            cloudSyncJob = null
+            cloudSyncHealthy = false
+            val activeId = _currentConversation.value?.id
+            synchronized(summariesLock) {
+                val all = _conversations.value
+                if (all.any { it.isCloud && it.id != activeId }) {
+                    _conversations.value = all.filter { !it.isCloud || it.id == activeId }
+                }
+            }
+            return
+        }
+        if (!force && cloudSyncJob?.isActive == true) return
+        cloudSyncJob?.cancel()
+        cloudSyncHealthy = false
+        cloudSyncJob = backendScope.launch {
+            var backoff = 15_000L
+            var warmups = 0
+            while (currentCoroutineContext().isActive) {
+                try {
+                    agyHubClient.subscribeToSummaries(AuthPreferences.currentHubUrl, cloud = true).collect { update ->
+                        backoff = 15_000L
+                        cloudSyncHealthy = true
+                        val activeId = _currentConversation.value?.id
+                        val byId = synchronized(summariesLock) {
+                            val map = _conversations.value.associateBy { it.id }.toMutableMap()
+                            for (id in update.removedIds) {
+                                if (map[id]?.isCloud == true && (id != activeId || _messages.value.isEmpty())) {
+                                    map.remove(id)
+                                    knownDaemonCascadeIds.remove(id)
+                                }
+                            }
+                            for (c in update.updated) {
+                                map[c.id] = c
+                                knownDaemonCascadeIds.add(c.id)
+                            }
+                            _conversations.value = map.values.sortedByDescending { it.updatedAt }
+                            map
+                        }
+                        // the open cloud chat follows its title and running state
+                        val curr = _currentConversation.value
+                        val fresh = activeId?.let { byId[it] }
+                        if (curr != null && fresh != null && fresh.isCloud && curr.id == fresh.id) {
+                            val title = fresh.title.takeIf { it.isNotBlank() && it != "Conversation" && it != "New Chat" } ?: curr.title
+                            if (title != curr.title || curr.isRunning != fresh.isRunning || curr.notFullyIdle != fresh.notFullyIdle) {
+                                _currentConversation.value = curr.copy(
+                                    title = title, isRunning = fresh.isRunning, notFullyIdle = fresh.notFullyIdle,
+                                    hasActivity = fresh.hasActivity, cloudProjectId = curr.cloudProjectId ?: fresh.cloudProjectId
+                                )
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) break
+                    val msg = e.message.orEmpty()
+                    android.util.Log.w("AgyCloud", "cloud chat list: $msg")
+                    cloudSyncHealthy = false
+                    // no cloud agents for this account / hub: stop asking
+                    if (msg.contains("PERMISSION_DENIED", true) || msg.contains("unimplemented", true)) break
+                    // the hub is still starting (account switches not loaded): ask again soon
+                    if (AgyCloud.isWarmingUp(msg) && warmups < 60) {
+                        warmups++
+                        delay(3_000L)
+                        continue
+                    }
+                }
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(5 * 60_000L)
+            }
+        }
+    }
 
     fun syncAgyConversations(force: Boolean = false) {
+        syncCloudConversations(force)
         if (!force && syncJob?.isActive == true) return
         syncJob?.cancel()
         syncJob = backendScope.launch {
@@ -680,26 +825,33 @@ class AgyChatBackend(
                 try {
                     val hubUrl = AuthPreferences.currentHubUrl
                     agyHubClient.subscribeToSummaries(hubUrl).collect { update ->
-                        val currentMap = _conversations.value.associateBy { it.id }.toMutableMap()
                         val activeId = _currentConversation.value?.id
+                        // the cloud chats' list (syncCloudConversations) writes the same list: one at a time
+                        val (currentMap, sortedConvs) = synchronized(summariesLock) {
+                            val currentMap = _conversations.value.associateBy { it.id }.toMutableMap()
 
-                        // Remove empty, deleted, or abandoned sessions
-                        for (delId in update.removedIds) {
-                            if (delId != activeId || _messages.value.isEmpty()) {
-                                currentMap.remove(delId)
-                                knownDaemonCascadeIds.remove(delId)
+                            // Remove empty, deleted, or abandoned sessions
+                            for (delId in update.removedIds) {
+                                if (delId != activeId || _messages.value.isEmpty()) {
+                                    currentMap.remove(delId)
+                                    knownDaemonCascadeIds.remove(delId)
+                                }
                             }
-                        }
 
-                        // Add or update valid conversations
-                        for (conv in update.updated) {
-                            currentMap[conv.id] = conv
-                            knownDaemonCascadeIds.add(conv.id)
-                        }
+                            // Add or update valid conversations
+                            for (conv in update.updated) {
+                                // a cloud chat the hub lists itself, while cloud agents are off in Settings
+                                if (conv.isCloud && !AgyCloud.enabled.value && conv.id != activeId) continue
+                                currentMap[conv.id] = conv
+                                knownDaemonCascadeIds.add(conv.id)
+                            }
 
-                        val sortedConvs = currentMap.values.sortedByDescending { it.updatedAt }
-                        _conversations.value = sortedConvs
-                        com.example.gemini.data.daemon.TermuxDaemonManager.loadProjects(sortedConvs)
+                            val sortedConvs = currentMap.values.sortedByDescending { it.updatedAt }
+                            _conversations.value = sortedConvs
+                            currentMap to sortedConvs
+                        }
+                        // cloud chats run in Google's VM: their folders are not projects on this machine
+                        com.example.gemini.data.daemon.TermuxDaemonManager.loadProjects(sortedConvs.filterNot { it.isCloud })
 
                         // Automatically synchronize active conversation title and metadata from daemon
                         if (activeId != null) {
@@ -787,12 +939,6 @@ class AgyChatBackend(
             _isLoadingConversation.value = true
         }
         _isReconnecting.value = true
-        if (com.example.gemini.data.local.LocalEnvironmentManager.isInstalled(application)) {
-            val s = com.example.gemini.data.local.LocalServerManager.status.value
-            if (s !is com.example.gemini.data.local.LocalServerStatus.Running) {
-                com.example.gemini.data.local.LocalServerManager.startServer(application, forceRestart = false)
-            }
-        }
         syncAgyConversations(force = true)
         val convId = conv?.id
         if (!convId.isNullOrBlank() && isExistingConv) {
@@ -873,6 +1019,12 @@ class AgyChatBackend(
         hasSeenTurnActivity = false
         _isStreaming.value = false
         _bridgeStatusMessage.value = null
+        clearOptimisticSend()
+        _streamRun.value = null
+        _queuedMessages.value = emptyList()
+        // a new chat starts on the model the user last picked, not on the one an opened chat showed
+        _availableModels.value.firstOrNull { it.id == pickedModelId || it.key == pickedModelId }
+            ?.let { _selectedModelId.value = it.id }
 
         val modelToUse = if (_selectedModelId.value.isNotBlank()) {
             com.example.gemini.data.remote.AgyHubClient.resolveModelEnum(_selectedModelId.value)
@@ -883,12 +1035,15 @@ class AgyChatBackend(
         val defaultWorkspaceUri = if (defaultProjPath.isNotBlank()) {
             if (defaultProjPath.startsWith("file://")) defaultProjPath else "file://$defaultProjPath"
         } else ""
+        // a cloud project picked in the project chooser: the chat runs in Google's cloud (Remote Agents)
+        val cloudProject = AgyCloud.selectedProjectId.value?.takeIf { AgyCloud.enabled.value }
         val newConv = Conversation(
             id = UUID.randomUUID().toString(),
             title = "New Chat",
             modelId = modelToUse,
             sessionId = UUID.randomUUID().toString(),
-            workspaceUri = defaultWorkspaceUri
+            workspaceUri = if (cloudProject != null) "" else defaultWorkspaceUri,
+            cloudProjectId = cloudProject
         )
         _currentConversation.value = newConv
         trajectoryEngine.reset(newConv.id, force = true)
@@ -908,9 +1063,6 @@ class AgyChatBackend(
 
         persistentStreamJob?.cancel()
         persistentStreamJob = null
-        networkRecoveryJob?.cancel()
-        networkRecoveryJob = null
-        isNetworkRecoveryActive = false
         activeStreamConversationId = id
         currentAssistantMsgId = null
         currentTurnStartStep = 0
@@ -926,6 +1078,9 @@ class AgyChatBackend(
         _bridgeStatusMessage.value = null
         _messages.value = emptyList()
         _isLoadingConversation.value = true
+        clearOptimisticSend()
+        _streamRun.value = null
+        _queuedMessages.value = emptyList()
 
         backendScope.launch {
             _conversationError.value = null
@@ -934,12 +1089,32 @@ class AgyChatBackend(
                 ?: Conversation(id = id, title = "Antigravity Chat", sessionId = id)
             Log.d("CHAT_OPEN_DEBUG", "👉 [ChatViewModel.selectConversation] Launching stream for conv: title='${conv.title}', id=${conv.id}")
             _currentConversation.value = conv
+            // this app's pending queued sends for the chat (the daemon's queue arrives with the first frame)
+            refreshQueuedMessages(id)
+            chatModels[id]?.let { _selectedModelId.value = it }
             knownDaemonCascadeIds.add(id)
 
             // Connect persistent stream for real-time live streaming.
             // StreamAgentStateUpdates delivers the complete history in Chunk 0!
             startPersistentStream(id)
         }
+    }
+
+    /**
+     * The project chooser picked a cloud project ([projectId]) or a local one (null). New chats start there, and the
+     * chat on screen moves there too while nothing was sent in it yet.
+     */
+    fun setNewChatCloudProject(projectId: String?) {
+        AgyCloud.select(projectId)
+        val conv = _currentConversation.value ?: return
+        if (conv.agent != AgentKind.AGY || _messages.value.isNotEmpty() || conv.cloudProjectId == projectId) return
+        if (knownDaemonCascadeIds.contains(conv.id)) {
+            // nothing sent yet, but the chat already exists on the hub (e.g. a voice call started it) and a hub chat
+            // can't move between the cloud and the hub's machine: a fresh chat starts in the picked place instead
+            startNewChat()
+            return
+        }
+        _currentConversation.value = conv.copy(cloudProjectId = projectId, workspaceUri = if (projectId != null) "" else conv.workspaceUri)
     }
 
     /** The `Model` number of the model picked for the chat on screen (0 = not known), for voice calls. */
@@ -1009,6 +1184,8 @@ class AgyChatBackend(
         persistentStreamJob = backendScope.launch(Dispatchers.IO) {
             val hubUrl = AuthPreferences.currentHubUrl
             var isFirstChunk = true
+            val lastFrameAtMs = java.util.concurrent.atomic.AtomicLong(android.os.SystemClock.elapsedRealtime())
+            var lastRehydrateAtMs = 0L
 
             if (trajectoryEngine.conversationId != conversationId || _messages.value.isEmpty()) {
                 trajectoryEngine.reset(conversationId)
@@ -1017,88 +1194,109 @@ class AgyChatBackend(
             Log.d("CHAT_OPEN_DEBUG", "🌊 [ChatViewModel.startPersistentStream] Starting loop for $conversationId on $hubUrl")
 
             while (activeStreamConversationId == conversationId) {
+                var rehydrateRequested = false
+                var streamFailure: Exception? = null
                 try {
-                    agyHubClient.streamAgentStateUpdates(conversationId, hubUrl).collect { resp ->
-                        if (activeStreamConversationId != conversationId) {
-                            Log.d("CHAT_OPEN_DEBUG", "🌊 [ChatViewModel Stream] Dropping frame for inactive conversation (active=$activeStreamConversationId vs frame=$conversationId)")
-                            return@collect
-                        }
+                    kotlinx.coroutines.coroutineScope {
+                        val collectJob = launch {
+                            try {
+                                agyHubClient.streamAgentStateUpdates(conversationId, hubUrl).collect { resp ->
+                                    if (activeStreamConversationId != conversationId) {
+                                        Log.d("CHAT_OPEN_DEBUG", "🌊 [ChatViewModel Stream] Dropping frame for inactive conversation (active=$activeStreamConversationId vs frame=$conversationId)")
+                                        return@collect
+                                    }
 
-                        val update = resp.update
-                        val statusStr = update?.status?.name ?: ""
-                        val stepsCount = update?.main_trajectory_update?.steps_update?.steps?.size ?: 0
-                        Log.d("CHAT_OPEN_DEBUG", "📥 [ChatViewModel Stream Frame] convId=$conversationId, isFirstChunk=$isFirstChunk, status=$statusStr, stepsCount=$stepsCount")
-                        isFirstChunk = false
-                        val turns = if (update != null) trajectoryEngine.ingestAgentStateUpdate(update) else emptyList()
-                        val msgs = trajectoryEngine.toChatMessages(conversationId)
+                                    lastFrameAtMs.set(android.os.SystemClock.elapsedRealtime())
 
-                        val lastAsstMsg = msgs.lastOrNull { it.role == MessageRole.ASSISTANT }
-                        val rawContent = lastAsstMsg?.content ?: ""
-                        val hasNetworkDisconnection = lastAsstMsg != null && isNetworkDisconnectionError(rawContent)
+                                    val update = resp.update
+                                    val statusStr = update?.status?.name ?: ""
+                                    val stepsCount = update?.main_trajectory_update?.steps_update?.steps?.size ?: 0
+                                    Log.d("CHAT_OPEN_DEBUG", "📥 [ChatViewModel Stream Frame] convId=$conversationId, isFirstChunk=$isFirstChunk, status=$statusStr, stepsCount=$stepsCount")
+                                    val historyChunk = isFirstChunk
+                                    isFirstChunk = false
+                                    val turns = if (update != null) trajectoryEngine.ingestAgentStateUpdate(update) else emptyList()
+                                    val msgs = trajectoryEngine.toChatMessages(conversationId)
 
-                        if (hasNetworkDisconnection && !trajectoryEngine.isRunning) {
-                            if (!isNetworkRecoveryActive) {
-                                launchNetworkRecovery(conversationId, rawContent)
-                            }
-                        }
 
-                        withContext(Dispatchers.Main) {
-                            if (activeStreamConversationId != conversationId) return@withContext
-                            val inRecovery = isNetworkRecoveryActive || hasNetworkDisconnection
-                            _isServerOnline.value = !inRecovery
-                            _conversationError.value = null
-                            _isLoadingConversation.value = false
-                            _isReconnecting.value = inRecovery
+                                    withContext(Dispatchers.Main) {
+                                        if (activeStreamConversationId != conversationId) return@withContext
+                                        _isServerOnline.value = true
+                                        _conversationError.value = null
+                                        _isLoadingConversation.value = false
+                                        _isReconnecting.value = false
 
-                            val isRunning = trajectoryEngine.isRunning
-                            val isWaiting = trajectoryEngine.isWaitingInteraction
-                            _isStreaming.value = (isRunning && !isWaiting) || inRecovery
+                                        val isRunning = trajectoryEngine.isRunning
+                                        val isWaiting = trajectoryEngine.isWaitingInteraction
+                                        _isStreaming.value = isRunning && !isWaiting
+                                        _streamRun.value = StreamRunState(conversationId, isRunning, trajectoryEngine.fullyIdle)
+                                        _optimisticSend.value?.let { o ->
+                                            // the sent message started (loop running) or already finished (its step is there)
+                                            if (o.conversationId == conversationId && (isRunning || trajectoryEngine.hasSeenClientTag(o.tag))) {
+                                                clearOptimisticSend()
+                                            }
+                                        }
+                                        refreshQueuedMessages(conversationId)
 
-                            val runningTool = msgs.lastOrNull()?.toolCalls?.lastOrNull { it.status == "RUNNING" || it.status == "EXECUTING" }
-                            if (runningTool != null) {
-                                com.example.gemini.domain.context.TaskFlightRecorder.recordActionInFlight(
-                                    conversationId,
-                                    runningTool.name,
-                                    runningTool.command.ifBlank { runningTool.name }
-                                )
-                            } else if (!isRunning && !isWaiting && msgs.isNotEmpty() && !inRecovery) {
-                                com.example.gemini.domain.context.TaskFlightRecorder.recordTurnCompleted(conversationId)
-                            }
+                                        Log.d("CHAT_OPEN_DEBUG", "✨ [ChatViewModel State Update] convId=$conversationId, turnsCount=${turns.size}, msgsCount=${msgs.size}, isRunning=$isRunning, isWaiting=$isWaiting")
 
-                            Log.d("CHAT_OPEN_DEBUG", "✨ [ChatViewModel State Update] convId=$conversationId, turnsCount=${turns.size}, msgsCount=${msgs.size}, isRunning=$isRunning, isWaiting=$isWaiting, inRecovery=$inRecovery")
+                                        _messages.value = msgs
+                                        if (historyChunk) adoptChatModelFromHistory(conversationId, msgs)
+                                        if (msgs.isNotEmpty()) {
+                                            com.example.gemini.ui.chat.ChatFeedCache.prewarm(msgs)
 
-                            val displayMsgs = if (inRecovery) {
-                                val remaining = networkRecoveryRemainingSeconds.coerceIn(1, 10)
-                                val waitingTag = "<!-- network_waiting:$remaining -->\n⏳ Internet connection lost. Waiting up to 10s for connection to restore (${remaining}s)...\n<!-- /network_waiting -->"
-                                val cleaned = cleanNetworkWaitingAndErrorBlocks(rawContent)
-                                val newContent = if (cleaned.isNotBlank()) "$cleaned\n\n$waitingTag" else waitingTag
-                                msgs.map { msg ->
-                                    if (lastAsstMsg != null && msg.id == lastAsstMsg.id) {
-                                        msg.copy(content = newContent, isStreaming = true)
-                                    } else {
-                                        msg
+                                            msgs.flatMap { it.toolCalls }.filter {
+                                                it.toolType == com.example.gemini.domain.model.ToolType.GENERATE_IMAGE && it.output.isNotBlank()
+                                            }.forEach { tc ->
+                                                com.example.gemini.data.remote.HubMediaResolver.resolveMediaUri(application, tc.output, agyHubClient, hubUrl)
+                                            }
+                                            msgs.flatMap { it.attachments }.filter { it.isImage && it.path.isNotBlank() }.forEach { att ->
+                                                val rawUri = if (att.path.startsWith("file://") || att.path.startsWith("http")) att.path else "file://${att.path}"
+                                                com.example.gemini.data.remote.HubMediaResolver.resolveMediaUri(application, rawUri, agyHubClient, hubUrl)
+                                            }
+                                        }
                                     }
                                 }
-                            } else {
-                                msgs
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                streamFailure = e
                             }
+                        }
 
-                            _messages.value = displayMsgs
-                            if (msgs.isNotEmpty()) {
-                                com.example.gemini.ui.chat.ChatFeedCache.prewarm(msgs)
-
-                                msgs.flatMap { it.toolCalls }.filter {
-                                    it.toolType == com.example.gemini.domain.model.ToolType.GENERATE_IMAGE && it.output.isNotBlank()
-                                }.forEach { tc ->
-                                    com.example.gemini.data.remote.HubMediaResolver.resolveMediaUri(application, tc.output, agyHubClient, hubUrl)
-                                }
-                                msgs.flatMap { it.attachments }.filter { it.isImage && it.path.isNotBlank() }.forEach { att ->
-                                    val rawUri = if (att.path.startsWith("file://") || att.path.startsWith("http")) att.path else "file://${att.path}"
-                                    com.example.gemini.data.remote.HubMediaResolver.resolveMediaUri(application, rawUri, agyHubClient, hubUrl)
+                        val watchdogJob = launch {
+                            var mismatchSinceMs = 0L
+                            while (isActive && collectJob.isActive && activeStreamConversationId == conversationId) {
+                                delay(1_000L)
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                val streamRunning = _streamRun.value?.let { it.conversationId == conversationId && it.loopRunning } == true
+                                val optimisticActive = _optimisticSend.value?.conversationId == conversationId
+                                val summaryConv = _conversations.value.find { it.id == conversationId }
+                                val summaryIdle = summaryConv != null && !summaryConv.isRunning
+                                val silentMs = now - lastFrameAtMs.get()
+                                if (streamRunning && !optimisticActive && summaryIdle && silentMs >= 5_000L) {
+                                    if (mismatchSinceMs == 0L) mismatchSinceMs = now
+                                    if (now - mismatchSinceMs >= 4_000L && now - lastRehydrateAtMs >= 10_000L) {
+                                        Log.w("CHAT_OPEN_DEBUG", "🔄 [ChatViewModel Stream Watchdog] Stream RUNNING while summary IDLE and silent for ${silentMs}ms (convId=$conversationId); rehydrating")
+                                        lastRehydrateAtMs = now
+                                        rehydrateRequested = true
+                                        collectJob.cancel()
+                                        break
+                                    }
+                                } else {
+                                    mismatchSinceMs = 0L
                                 }
                             }
                         }
+
+                        collectJob.join()
+                        watchdogJob.cancel()
                     }
+
+                    if (rehydrateRequested && activeStreamConversationId == conversationId) {
+                        isFirstChunk = true
+                        continue
+                    }
+                    streamFailure?.let { throw it }
 
                     if (isFirstChunk) {
                         if (activeStreamConversationId != conversationId) break
@@ -1127,11 +1325,7 @@ class AgyChatBackend(
                                 isPromptInFlight = false
                                 _isStreaming.value = false
                                 trajectoryEngine.cancelRunning()
-                                if (!isNetworkConnected() && !isNetworkRecoveryActive) {
-                                    launchNetworkRecovery(conversationId, "Stream disconnected unexpectedly")
-                                } else if (!isNetworkRecoveryActive) {
-                                    markLastAssistantMessageDisconnected(conversationId)
-                                }
+                                markLastAssistantMessageDisconnected()
                             }
                         }
                         break
@@ -1143,10 +1337,6 @@ class AgyChatBackend(
                     Log.e("CHAT_OPEN_DEBUG", "❌ [ChatViewModel Stream Exception] convId=$conversationId: ${e.message}", e)
                     Log.w("ChatViewModel", "Persistent stream error ($conversationId): ${e.message}")
                     val rawErr = e.localizedMessage ?: e.message ?: e.toString()
-                    if (isNetworkDisconnectionError(rawErr) && !isNetworkRecoveryActive) {
-                        launchNetworkRecovery(conversationId, rawErr)
-                        break
-                    }
                     val helpfulMsg = if (rawErr.contains("Connect", ignoreCase = true) || rawErr.contains("Failed to connect", ignoreCase = true)) {
                         "Cannot connect to Antigravity. Make sure Antigravity is running and tap Retry."
                     } else {
@@ -1164,263 +1354,66 @@ class AgyChatBackend(
                             isPromptInFlight = false
                             _isStreaming.value = false
                             trajectoryEngine.cancelRunning()
-                            if (!isNetworkRecoveryActive) {
-                                markLastAssistantMessageDisconnected(conversationId)
-                            }
+                            markLastAssistantMessageDisconnected()
                         }
                     }
                     break
                 }
             }
+            // no live stream for this chat any more: its sidebar summary decides again
+            _streamRun.compareAndSet(_streamRun.value?.takeIf { it.conversationId == conversationId }, null)
         }
     }
 
-    fun isNetworkDisconnectionError(text: String): Boolean {
-        if (text.isBlank()) return false
-        val lower = text.lowercase()
-        return lower.contains("connection abort") ||
-                lower.contains("connection reset") ||
-                lower.contains("stream reading error") ||
-                lower.contains("read tcp") ||
-                lower.contains("software caused connection abort") ||
-                lower.contains("network / server connection error") ||
-                lower.contains("broken pipe") ||
-                lower.contains("no such host") ||
-                lower.contains("unknownhostexception") ||
-                lower.contains("socketexception") ||
-                lower.contains("sockettimeoutexception") ||
-                lower.contains("connectexception") ||
-                lower.contains("network is unreachable") ||
-                lower.contains("network unreachable") ||
-                lower.contains("failed to connect") ||
-                lower.contains("internet disconnected")
+    private fun clearOptimisticSend() {
+        optimisticTimeoutJob?.cancel()
+        optimisticTimeoutJob = null
+        _optimisticSend.value = null
     }
 
-    fun cleanNetworkWaitingAndErrorBlocks(text: String): String {
-        var result = text
-        result = result.replace(Regex("<!-- network_waiting:\\d+ -->[\\s\\S]*?<!-- /network_waiting -->"), "")
-        result = result.replace(Regex("<!-- error(:\\d+)? -->[\\s\\S]*?<!-- /error -->"), "")
-        return result.trim()
-    }
-
-    private suspend fun isInternetAvailable(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            if (isNetworkConnected()) return@withContext true
-        } catch (_: Throwable) {}
-        try {
-            java.net.Socket().use { socket ->
-                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 600)
-                true
-            }
-        } catch (_: Throwable) {
-            try {
-                java.net.Socket().use { socket ->
-                    socket.connect(java.net.InetSocketAddress("1.1.1.1", 53), 600)
-                    true
-                }
-            } catch (_: Throwable) {
-                false
-            }
+    private fun startOptimisticSend(conversationId: String, tag: String) {
+        optimisticTimeoutJob?.cancel()
+        _optimisticSend.value = OptimisticSend(conversationId, tag)
+        // safety net only: the stream normally confirms within a moment
+        optimisticTimeoutJob = backendScope.launch {
+            delay(30_000)
+            if (_optimisticSend.value?.tag == tag) _optimisticSend.value = null
         }
     }
 
-    private fun launchNetworkRecovery(convId: String, originalError: String) {
-        if (isNetworkRecoveryActive || networkRecoveryJob?.isActive == true) {
-            Log.d("ChatViewModel", "Network recovery already active for $convId, skipping duplicate launch")
-            return
+    /** The open chat's queue: the daemon's queued messages plus sends from this app it does not list yet. */
+    private fun refreshQueuedMessages(conversationId: String) {
+        if (_currentConversation.value?.id != conversationId) return
+        val server = trajectoryEngine.queuedMessages()
+        val serverIds = server.map { it.id }.toSet()
+        synchronized(hiddenQueuedIds) { hiddenQueuedIds.retainAll(serverIds) }
+        val serverTags = server.flatMap { it.tags }.toSet()
+        val local = localQueued[conversationId]
+        val pending = if (local == null) emptyList() else synchronized(local) {
+            // listed by the daemon now (or already delivered): no longer pending here
+            local.keys.removeAll { it in serverTags || trajectoryEngine.hasSeenClientTag(it) }
+            local.values.toList()
         }
-
-        networkRecoveryJob = backendScope.launch {
-            isNetworkRecoveryActive = true
-            networkRecoveryRemainingSeconds = 10
-            Log.w("ChatViewModel", "⏳ [NetworkRecovery] Disconnection detected for convId=$convId. Starting 10-second resilience retry window.")
-
-            withContext(Dispatchers.Main) {
-                _isServerOnline.value = false
-                _isReconnecting.value = true
-            }
-
-            var recovered = false
-            for (remaining in 10 downTo 1) {
-                networkRecoveryRemainingSeconds = remaining
-                if (!isActive || activeStreamConversationId != convId) {
-                    Log.d("ChatViewModel", "[NetworkRecovery] Cancelled or conversation changed.")
-                    isNetworkRecoveryActive = false
-                    return@launch
-                }
-
-                withContext(Dispatchers.Main) {
-                    val currentMsgs = _messages.value.toMutableList()
-                    val lastIdx = currentMsgs.indexOfLast { it.role == MessageRole.ASSISTANT }
-                    val waitingTag = "<!-- network_waiting:$remaining -->\n⏳ Internet connection lost. Waiting up to 10s for connection to restore (${remaining}s)...\n<!-- /network_waiting -->"
-
-                    if (lastIdx >= 0) {
-                        val existingMsg = currentMsgs[lastIdx]
-                        val cleanedContent = cleanNetworkWaitingAndErrorBlocks(existingMsg.content)
-                        val newContent = if (cleanedContent.isNotBlank()) "$cleanedContent\n\n$waitingTag" else waitingTag
-                        currentMsgs[lastIdx] = existingMsg.copy(
-                            content = newContent,
-                            isStreaming = true
-                        )
-                        _messages.value = currentMsgs
-                    } else {
-                        val newMsg = ChatMessage(
-                            id = "asst_recovering_${System.currentTimeMillis()}",
-                            conversationId = convId,
-                            role = MessageRole.ASSISTANT,
-                            content = waitingTag,
-                            isStreaming = true
-                        )
-                        currentMsgs.add(newMsg)
-                        _messages.value = currentMsgs
-                    }
-                }
-
-                if (isInternetAvailable()) {
-                    Log.i("ChatViewModel", "🌐 [NetworkRecovery] Internet connection restored after ${10 - remaining}s!")
-                    recovered = true
-                    break
-                }
-
-                delay(1000L)
-            }
-
-            if (recovered) {
-                handleNetworkRecoverySuccess(convId)
-            } else {
-                handleNetworkRecoveryTimeout(convId, originalError)
-            }
-        }
-    }
-
-    private suspend fun handleNetworkRecoverySuccess(convId: String) {
-        Log.i("ChatViewModel", "🚀 [NetworkRecovery] Resuming AI execution for convId=$convId")
-        isNetworkRecoveryActive = false
-        networkRecoveryJob = null
-
-        withContext(Dispatchers.Main) {
-            val currentMsgs = _messages.value.toMutableList()
-            val lastIdx = currentMsgs.indexOfLast { it.role == MessageRole.ASSISTANT }
-            val resumingTag = "🌐 **Internet connection restored!** Resuming AI..."
-            if (lastIdx >= 0) {
-                val existing = currentMsgs[lastIdx]
-                val cleaned = cleanNetworkWaitingAndErrorBlocks(existing.content)
-                val newContent = if (cleaned.isNotBlank()) "$cleaned\n\n$resumingTag" else resumingTag
-                currentMsgs[lastIdx] = existing.copy(
-                    content = newContent,
-                    isStreaming = true
-                )
-                _messages.value = currentMsgs
-            }
-            _isServerOnline.value = true
-            _isReconnecting.value = false
-            _isStreaming.value = true
-        }
-
-        delay(300L)
-
-        // Ensure persistent stream is connected to receive updates
-        startPersistentStream(convId)
-
-        val lastUserPrompt = _messages.value.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
-        val promptToSend = if (totalStepsCount > 0 || _messages.value.any { it.role == MessageRole.ASSISTANT && it.toolCalls.isNotEmpty() }) {
-            "continue"
-        } else {
-            lastUserPrompt.ifBlank { "continue" }
-        }
-
-        val hubUrl = AuthPreferences.currentHubUrl
-        val currentAutoExecPolicy = authPrefs.commandAutoExecutionPolicy.firstOrNull() ?: "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER"
-        val modelEnum = _selectedModelId.value.ifBlank { "MODEL_GEMINI_3_8_FLASH_HIGH" }
-
-        Log.i("ChatViewModel", "📡 [NetworkRecovery] Sending '$promptToSend' to resume cascade for $convId")
-        val res = agyHubClient.sendUserPrompt(
-            cascadeId = convId,
-            text = promptToSend,
-            modelEnum = modelEnum,
-            thinkingBudget = 0,
-            autoExecutionPolicy = currentAutoExecPolicy,
-            media = emptyList(),
-            hubUrl = hubUrl
-        )
-
-        if (res.isFailure) {
-            val err = res.exceptionOrNull()?.message ?: "Failed to resume AI"
-            Log.e("ChatViewModel", "❌ [NetworkRecovery] Failed to resume AI: $err")
-            withContext(Dispatchers.Main) {
-                _isStreaming.value = false
-                trajectoryEngine.cancelRunning()
-            }
-        } else {
-            Log.i("ChatViewModel", "✅ [NetworkRecovery] AI successfully resumed for $convId")
-        }
-    }
-
-    private suspend fun handleNetworkRecoveryTimeout(convId: String, originalError: String) {
-        Log.w("ChatViewModel", "⏰ [NetworkRecovery] Timeout reached (10s). Internet connection still unavailable.")
-        isNetworkRecoveryActive = false
-        networkRecoveryJob = null
-
-        val lastUserPrompt = _messages.value.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
-        if (lastUserPrompt.isNotBlank()) {
-            com.example.gemini.domain.model.OfflineRecoveryManager.recordInterruptedTask(
-                conversationId = convId,
-                prompt = lastUserPrompt,
-                preferredModelId = "MODEL_GEMINI_3_8_FLASH_HIGH",
-                reason = "Internet disconnected (timeout after 10s)"
+        _queuedMessages.value = server.filter { it.id !in hiddenQueuedIds }.map { e ->
+            com.example.gemini.domain.model.QueuedMessage(
+                id = e.id,
+                text = e.text,
+                attachmentCount = e.media.size,
+                // NEXT_INVOCATION ones are being delivered right now
+                canSendNow = e.deliveryStrategy != exa.language_server_pb.MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_NEXT_INVOCATION,
+                canDelete = true
             )
-        }
-
-        withContext(Dispatchers.Main) {
-            _isServerOnline.value = false
-            _isReconnecting.value = false
-            _isStreaming.value = false
-            isPromptInFlight = false
-            trajectoryEngine.cancelRunning()
-
-            val currentMsgs = _messages.value.toMutableList()
-            val lastIdx = currentMsgs.indexOfLast { it.role == MessageRole.ASSISTANT }
-            val formattedErr = formatStructuredErrorMessage(
-                title = "Internet Disconnected",
-                userMessage = "Internet connection was lost and did not return within 10 seconds. AntiBot Smart Manager saved your task as an offline checkpoint. When internet returns, Gemini will automatically resume.",
-                shortError = "Offline Checkpoint Saved (10s timeout)",
-                fullError = originalError
-            )
-            if (lastIdx >= 0) {
-                val existing = currentMsgs[lastIdx]
-                val cleaned = cleanNetworkWaitingAndErrorBlocks(existing.content)
-                val finalContent = if (cleaned.isNotBlank()) "$cleaned\n\n$formattedErr" else formattedErr
-                currentMsgs[lastIdx] = existing.copy(
-                    content = finalContent,
-                    isStreaming = false
-                )
-                _messages.value = currentMsgs
-            }
-        }
+        } + pending
     }
 
-    private fun markLastAssistantMessageDisconnected(convId: String = "") {
-        if (isNetworkRecoveryActive) return
+    private fun markLastAssistantMessageDisconnected() {
         val list = _messages.value.toMutableList()
         var updated = false
-        val lastUserPrompt = list.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
-        if (lastUserPrompt.isNotBlank() && convId.isNotBlank()) {
-            com.example.gemini.domain.model.OfflineRecoveryManager.recordInterruptedTask(
-                conversationId = convId,
-                prompt = lastUserPrompt,
-                preferredModelId = "MODEL_GEMINI_3_8_FLASH_HIGH",
-                reason = "Internet disconnected"
-            )
-        }
         for (i in list.indices.reversed()) {
             val msg = list[i]
             if (msg.role == MessageRole.ASSISTANT && msg.isStreaming) {
                 val newContent = if (msg.content.isBlank() && msg.toolCalls.isEmpty()) {
-                    formatStructuredErrorMessage(
-                        title = "Internet Disconnected",
-                        userMessage = "Internet connection stopped working. AntiBot Smart Manager recorded your task. When internet returns, Gemini will automatically resume and work on it.",
-                        shortError = "Offline checkpoint recorded"
-                    )
+                    "⚠️ Connection to Antigravity daemon was interrupted."
                 } else {
                     msg.content
                 }
@@ -1451,6 +1444,44 @@ class AgyChatBackend(
         }
     }
 
+    /** Renames a chat: the daemon stores the title in its annotations and the summaries stream pushes it back. */
+    fun renameConversation(id: String, title: String) {
+        val clean = title.trim().ifBlank { return }
+        val oldTitle = _conversations.value.find { it.id == id }?.title
+        _conversations.value = _conversations.value.map { if (it.id == id) it.copy(title = clean) else it }
+        _currentConversation.value?.let { if (it.id == id) _currentConversation.value = it.copy(title = clean) }
+        backendScope.launch {
+            agyHubClient.updateConversationTitle(id, clean, AuthPreferences.currentHubUrl).onFailure { e ->
+                Log.w("AgyChatBackend", "rename failed: ${e.message}")
+                if (oldTitle != null) {
+                    _conversations.value = _conversations.value.map { if (it.id == id && it.title == clean) it.copy(title = oldTitle) else it }
+                    _currentConversation.value?.let { if (it.id == id && it.title == clean) _currentConversation.value = it.copy(title = oldTitle) }
+                }
+                com.example.gemini.ui.components.AppToastHelper.showToast(
+                    "Could not rename: ${e.message}", com.example.gemini.ui.components.ChatToastType.ERROR
+                )
+            }
+        }
+    }
+
+    /** Archives / unarchives a chat: the daemon stores it in the chat's annotations and the summaries stream pushes it back. */
+    fun setArchived(id: String, archived: Boolean) {
+        val before = _conversations.value.find { it.id == id }?.archived ?: return
+        if (before == archived) return
+        _conversations.value = _conversations.value.map { if (it.id == id) it.copy(archived = archived) else it }
+        _currentConversation.value?.let { if (it.id == id) _currentConversation.value = it.copy(archived = archived) }
+        backendScope.launch {
+            agyHubClient.setConversationArchived(id, archived, AuthPreferences.currentHubUrl).onFailure { e ->
+                Log.w("AgyChatBackend", "archive failed: ${e.message}")
+                _conversations.value = _conversations.value.map { if (it.id == id) it.copy(archived = before) else it }
+                _currentConversation.value?.let { if (it.id == id) _currentConversation.value = it.copy(archived = before) }
+                com.example.gemini.ui.components.AppToastHelper.showToast(
+                    "Could not ${if (archived) "archive" else "unarchive"}: ${e.message}", com.example.gemini.ui.components.ChatToastType.ERROR
+                )
+            }
+        }
+    }
+
     override fun forkConversation(id: String) {
         backendScope.launch {
             _isLoadingConversation.value = true
@@ -1475,8 +1506,33 @@ class AgyChatBackend(
         }
     }
 
+    /** The model each chat was last given (the picker shows it when the chat is opened). */
+    private val chatModels = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun rememberChatModel(chatId: String, modelId: String) {
+        if (chatId.isBlank() || modelId.isBlank()) return
+        chatModels[chatId] = modelId
+        if (_currentConversation.value?.id == chatId) _selectedModelId.value = modelId
+    }
+
+    /**
+     * On opening a chat whose model was not picked in this session, the picker shows the model of its last reply
+     * (as Claude / OpenCode chats do). Only for this chat: the saved default model is left as it is.
+     */
+    private fun adoptChatModelFromHistory(chatId: String, msgs: List<ChatMessage>) {
+        if (chatModels.containsKey(chatId)) return
+        val lastModel = msgs.lastOrNull { it.role == MessageRole.ASSISTANT && !it.modelId.isNullOrBlank() }?.modelId ?: return
+        val model = _availableModels.value.firstOrNull { it.id == lastModel || it.key == lastModel } ?: return
+        rememberChatModel(chatId, model.id)
+    }
+
+    /** The model a message to [chatId] should use: the one set for that chat, else the picker's. */
+    fun modelOfChat(chatId: String): String = chatModels[chatId] ?: _selectedModelId.value
+
     fun selectModel(modelId: String) {
+        _currentConversation.value?.takeIf { it.agent == AgentKind.AGY }?.let { chatModels[it.id] = modelId }
         _selectedModelId.value = modelId
+        pickedModelId = modelId
         _bridgeStatusMessage.value = null
         val conv = _currentConversation.value
         if (conv != null && conv.agent == AgentKind.AGY) {
@@ -1494,7 +1550,7 @@ class AgyChatBackend(
 
 
     override fun sendMessage(content: String) {
-        if ((content.isBlank() && _attachments.value.isEmpty()) || isCurrentChatActivelyRunning.value) return
+        if (content.isBlank() && _attachments.value.isEmpty()) return
 
         val state = systemConnectionState.value
         if (!state.canSend) {
@@ -1537,11 +1593,34 @@ class AgyChatBackend(
         updatedConv = updatedConv.copy(updatedAt = System.currentTimeMillis())
         _currentConversation.value = updatedConv
 
-        trajectoryEngine.submitUserPrompt(finalPrompt, currentAtts, conv.id)
-        com.example.gemini.domain.context.TaskFlightRecorder.recordTurnStart(conv.id, finalPrompt)
-        val updatedList = trajectoryEngine.toChatMessages(conv.id)
-        _messages.value = updatedList
-        com.example.gemini.ui.chat.ChatFeedCache.prewarm(updatedList)
+        // Like the hub web UI: a fully idle chat runs the message now; otherwise it is queued and the daemon sends it
+        // when the agent is done (it was always WHEN_IDLE before, so a message sent while the chat was "idle" with
+        // background work vanished until then)
+        val queued = isCurrentChatActivelyRunning.value || isCurrentChatBackgroundActive.value
+        val clientMessageId = UUID.randomUUID().toString()
+        val clientTag = com.example.gemini.data.remote.services.AgyChatService.clientMsgTag(clientMessageId)
+        val updatedList: List<ChatMessage>
+        if (queued) {
+            val entries = localQueued.getOrPut(conv.id) { LinkedHashMap() }
+            synchronized(entries) {
+                entries[clientTag] = com.example.gemini.domain.model.QueuedMessage(
+                    id = clientTag,
+                    text = finalPrompt,
+                    attachmentCount = currentAtts.size,
+                    canSendNow = false,
+                    canDelete = false,
+                    isPending = true
+                )
+            }
+            refreshQueuedMessages(conv.id)
+            updatedList = _messages.value
+        } else {
+            startOptimisticSend(conv.id, clientTag)
+            trajectoryEngine.submitUserPrompt(finalPrompt, currentAtts, conv.id)
+            updatedList = trajectoryEngine.toChatMessages(conv.id)
+            _messages.value = updatedList
+            com.example.gemini.ui.chat.ChatFeedCache.prewarm(updatedList)
+        }
 
         backendScope.launch {
             val exists = _conversations.value.any { it.id == updatedConv.id }
@@ -1557,26 +1636,17 @@ class AgyChatBackend(
             val hubUrl = AuthPreferences.currentHubUrl
 
             for (att in currentAtts) {
-                var hostPath = if (att.path.isNotBlank() && !att.path.startsWith("content://")) att.path else ""
-                val f = if (att.path.isNotBlank() && !att.path.startsWith("content://")) java.io.File(att.path) else null
-                val fUri = if (!att.localUri.isNullOrBlank() && !att.localUri.startsWith("content://")) {
-                    java.io.File(android.net.Uri.parse(att.localUri).path ?: "")
-                } else null
-                val candidateFile = if (f?.exists() == true) f else if (fUri?.exists() == true) fUri else null
-
-                if (candidateFile != null && hostPath.isBlank()) {
-                    hostPath = candidateFile.absolutePath
-                }
-
+                // A file by path is already listed in the message's text. Its own path is never sent as Media.uri:
+                // the hub MOVES a file given that way, so only an image's shrunk copy goes (saved as a hub artifact)
+                if (att.reference && att.base64.isNullOrBlank()) continue
+                var hostPath = if (!att.reference && att.path.isNotBlank() && !att.path.startsWith("/data/") && !att.path.startsWith("content://")) att.path else ""
                 val b64 = when {
                     !att.base64.isNullOrBlank() -> att.base64
-                    candidateFile != null && candidateFile.length() in 1L..(5 * 1024 * 1024L) -> {
-                        try {
-                            android.util.Base64.encodeToString(candidateFile.readBytes(), android.util.Base64.NO_WRAP)
-                        } catch (oom: OutOfMemoryError) {
-                            Log.w("ChatViewModel", "Base64 skipped for attachment due to low memory: ${oom.message}")
-                            null
-                        }
+                    att.path.isNotBlank() && java.io.File(att.path).exists() -> {
+                        android.util.Base64.encodeToString(java.io.File(att.path).readBytes(), android.util.Base64.NO_WRAP)
+                    }
+                    !att.localUri.isNullOrBlank() && java.io.File(android.net.Uri.parse(att.localUri).path ?: "").exists() -> {
+                        android.util.Base64.encodeToString(java.io.File(android.net.Uri.parse(att.localUri).path ?: "").readBytes(), android.util.Base64.NO_WRAP)
                     }
                     else -> null
                 }
@@ -1621,8 +1691,76 @@ class AgyChatBackend(
                 }
             }
 
-            executeStream(updatedConv, updatedList, mediaItems = mediaList)
+            executeStream(
+                updatedConv, updatedList,
+                mediaItems = mediaList,
+                promptText = finalPrompt,
+                queued = queued,
+                clientMessageId = clientMessageId
+            )
         }
+    }
+
+    /**
+     * "Send now" on a queued message: it is sent again to run right away (interrupting the current work), then
+     * removed from the queue (the hub web UI does the same).
+     */
+    fun sendQueuedNow(id: String) {
+        val conv = _currentConversation.value ?: return
+        val entry = trajectoryEngine.queuedMessages().find { it.id == id } ?: return
+        val clientMessageId = UUID.randomUUID().toString()
+        startOptimisticSend(conv.id, com.example.gemini.data.remote.services.AgyChatService.clientMsgTag(clientMessageId))
+        hiddenQueuedIds.add(id)
+        refreshQueuedMessages(conv.id)
+        backendScope.launch(Dispatchers.IO) {
+            val (modelEnum, thinkingBudget, policy) = promptSettings()
+            val res = agyHubClient.sendUserPrompt(
+                cascadeId = conv.id,
+                text = entry.text,
+                modelEnum = modelEnum,
+                thinkingBudget = thinkingBudget,
+                autoExecutionPolicy = policy,
+                deliveryStrategy = exa.language_server_pb.MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_NEXT_INVOCATION,
+                clientMessageId = clientMessageId,
+                rawMedia = entry.media,
+                cloud = conv.isCloud
+            )
+            if (res.isSuccess) {
+                agyHubClient.deleteAgentMessage(conv.id, id).onFailure { Log.w("ChatViewModel", "deleteAgentMessage: ${it.message}") }
+            } else {
+                withContext(Dispatchers.Main) {
+                    clearOptimisticSend()
+                    hiddenQueuedIds.remove(id)
+                    refreshQueuedMessages(conv.id)
+                    android.widget.Toast.makeText(application, "Couldn't send the queued message: ${res.exceptionOrNull()?.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /** "Delete" on a queued message: removes it from the daemon's queue. */
+    fun deleteQueued(id: String) {
+        val conv = _currentConversation.value ?: return
+        hiddenQueuedIds.add(id)
+        refreshQueuedMessages(conv.id)
+        backendScope.launch(Dispatchers.IO) {
+            agyHubClient.deleteAgentMessage(conv.id, id).onFailure { e ->
+                withContext(Dispatchers.Main) {
+                    hiddenQueuedIds.remove(id)
+                    refreshQueuedMessages(conv.id)
+                    android.widget.Toast.makeText(application, "Couldn't delete the queued message: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /** Model, thinking budget and command auto-execution policy a prompt is sent with. */
+    private suspend fun promptSettings(): Triple<String, Int, String> {
+        val modelEnum = com.example.gemini.data.remote.AgyHubClient.resolveModelEnum(_selectedModelId.value)
+        val selectedModel = _enabledModels.value.find { it.id == modelEnum }
+        val supportsThinking = selectedModel?.supportsThinking ?: (modelEnum.contains("thinking", ignoreCase = true) || modelEnum.contains("flash", ignoreCase = true) || modelEnum.contains("pro", ignoreCase = true))
+        val policy = authPrefs.commandAutoExecutionPolicy.firstOrNull() ?: "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER"
+        return Triple(modelEnum, if (supportsThinking) 8192 else 0, policy)
     }
 
     val isTranscribingAudio = MutableStateFlow(false)
@@ -1636,25 +1774,11 @@ class AgyChatBackend(
             onError("Audio file empty or not found")
             return
         }
-        if (file.length() > 25 * 1024 * 1024L) {
-            onError("Audio file too large for transcription (max 25MB)")
-            return
-        }
         backendScope.launch {
             isTranscribingAudio.value = true
             try {
-                val bytes = try {
-                    file.readBytes()
-                } catch (oom: OutOfMemoryError) {
-                    onError("Not enough memory to load audio file")
-                    return@launch
-                }
-                val b64 = try {
-                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                } catch (oom: OutOfMemoryError) {
-                    onError("Not enough memory to encode audio file")
-                    return@launch
-                }
+                val bytes = file.readBytes()
+                val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                 val hub = AuthPreferences.currentHubUrl
                 val res = agyHubClient.getTranscription(audioBase64 = b64, hubUrl = hub)
                 if (res.isSuccess) {
@@ -1809,14 +1933,29 @@ class AgyChatBackend(
         existingAssistantMsgId: String? = null,
         existingToolCalls: List<com.example.gemini.domain.model.ToolCall> = emptyList(),
         priorTextPrefix: String = "",
-        mediaItems: List<com.example.gemini.data.remote.AgyHubClient.AgyMediaItem> = emptyList()
+        mediaItems: List<com.example.gemini.data.remote.AgyHubClient.AgyMediaItem> = emptyList(),
+        // the text to send; null = the last user message of [currentHistory]
+        promptText: String? = null,
+        // queued for after the current work: no reply placeholder, it shows in the queued-messages card
+        queued: Boolean = false,
+        clientMessageId: String? = null
     ) {
         _bridgeStatusMessage.value = null
 
-        val assistantMsgId = existingAssistantMsgId ?: UUID.randomUUID().toString()
-        currentAssistantMsgId = assistantMsgId
+        val assistantMsgId = if (queued) (currentAssistantMsgId ?: "") else existingAssistantMsgId ?: UUID.randomUUID().toString()
+        if (!queued) currentAssistantMsgId = assistantMsgId
+        val clientTag = clientMessageId?.let { com.example.gemini.data.remote.services.AgyChatService.clientMsgTag(it) }
 
-        if (existingAssistantMsgId == null) {
+        // a queued message that could not be sent: out of the queue card, and say so
+        suspend fun failQueued(err: String) = withContext(Dispatchers.Main) {
+            localQueued[conv.id]?.let { synchronized(it) { it.remove(clientTag) } }
+            refreshQueuedMessages(conv.id)
+            android.widget.Toast.makeText(application, "Couldn't queue the message: $err", android.widget.Toast.LENGTH_SHORT).show()
+        }
+
+        if (queued) {
+            // nothing to show in the chat yet
+        } else if (existingAssistantMsgId == null) {
             val hasStreamingAssistant = _messages.value.any { it.role == MessageRole.ASSISTANT && it.isStreaming }
             if (!hasStreamingAssistant) {
                 val assistantMsg = ChatMessage(
@@ -1842,7 +1981,9 @@ class AgyChatBackend(
         }
 
         val hubUrl = AuthPreferences.currentHubUrl
-        val userPrompt = currentHistory.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
+        val userPrompt = promptText ?: currentHistory.lastOrNull { it.role == MessageRole.USER }?.content ?: ""
+        val deliveryStrategy = if (queued) exa.language_server_pb.MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_WHEN_IDLE
+            else exa.language_server_pb.MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_NEXT_INVOCATION
         val modelEnum = com.example.gemini.data.remote.AgyHubClient.resolveModelEnum(_selectedModelId.value)
         val selectedModel = _enabledModels.value.find { it.id == modelEnum }
         val supportsThinking = selectedModel?.supportsThinking ?: (modelEnum.contains("thinking", ignoreCase = true) || modelEnum.contains("flash", ignoreCase = true) || modelEnum.contains("pro", ignoreCase = true))
@@ -1864,17 +2005,25 @@ class AgyChatBackend(
                         cascadeId = conv.id,
                         modelEnum = modelEnum,
                         workspaceUri = workspaceUri,
-                        hubUrl = hubUrl
+                        hubUrl = hubUrl,
+                        cloudProjectId = conv.cloudProjectId
                     )
                     if (startRes.isFailure) {
-                        val err = startRes.exceptionOrNull()?.message ?: "Failed to start conversation on daemon"
-                        Log.e("ChatViewModel", "startCascade error: $err")
+                        val rawErr = startRes.exceptionOrNull()?.message ?: "Failed to start conversation on daemon"
+                        val err = if (conv.isCloud) AgyCloud.friendlyError(rawErr) else rawErr
+                        Log.e("ChatViewModel", "startCascade error: $rawErr")
                         val formattedErr = formatStructuredErrorMessage(
-                            title = if (err.contains("auth", ignoreCase = true)) "Authentication Required" else "Failed to Start Conversation",
+                            title = if (conv.isCloud) "The cloud agent couldn't start"
+                                else if (err.contains("auth", ignoreCase = true)) "Authentication Required" else "Failed to Start Conversation",
                             userMessage = err,
                             shortError = err
                         )
+                        if (queued) {
+                            failQueued(err)
+                            return@launch
+                        }
                         withContext(Dispatchers.Main) {
+                            clearOptimisticSend()
                             isPromptInFlight = false
                             _isStreaming.value = false
                             hasSeenTurnActivity = false
@@ -1911,10 +2060,12 @@ class AgyChatBackend(
                     delay(50)
                 }
 
-                // Reset turn boundary and state for this active turn
-                currentTurnStartStep = totalStepsCount
-                hasStartedRunning = false
-                hasSeenTurnActivity = false
+                // Reset turn boundary and state for this active turn (a queued message does not start one now)
+                if (!queued) {
+                    currentTurnStartStep = totalStepsCount
+                    hasStartedRunning = false
+                    hasSeenTurnActivity = false
+                }
 
                 val currentAutoExecPolicy = authPrefs.commandAutoExecutionPolicy.firstOrNull() ?: "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER"
 
@@ -1925,7 +2076,10 @@ class AgyChatBackend(
                     thinkingBudget = thinkingBudget,
                     autoExecutionPolicy = currentAutoExecPolicy,
                     media = mediaItems,
-                    hubUrl = hubUrl
+                    hubUrl = hubUrl,
+                    deliveryStrategy = deliveryStrategy,
+                    clientMessageId = clientMessageId,
+                    cloud = conv.isCloud
                 )
 
                 if (sendRes.isFailure) {
@@ -1939,7 +2093,8 @@ class AgyChatBackend(
                             cascadeId = conv.id,
                             modelEnum = modelEnum,
                             workspaceUri = workspaceUri,
-                            hubUrl = hubUrl
+                            hubUrl = hubUrl,
+                            cloudProjectId = conv.cloudProjectId
                         )
                         if (restartRes.isSuccess) {
                             knownDaemonCascadeIds.add(conv.id)
@@ -1950,88 +2105,38 @@ class AgyChatBackend(
                                 thinkingBudget = thinkingBudget,
                                 autoExecutionPolicy = currentAutoExecPolicy,
                                 media = mediaItems,
-                                hubUrl = hubUrl
+                                hubUrl = hubUrl,
+                                deliveryStrategy = deliveryStrategy,
+                                clientMessageId = clientMessageId,
+                                cloud = conv.isCloud
                             )
                         }
                     }
                 }
 
-                val initialErr = sendRes.exceptionOrNull()?.message ?: ""
-                val isQuotaExhausted = initialErr.contains("quota", ignoreCase = true) ||
-                        initialErr.contains("credit", ignoreCase = true) ||
-                        initialErr.contains("limit", ignoreCase = true) ||
-                        initialErr.contains("429") ||
-                        initialErr.contains("resource_exhausted", ignoreCase = true)
-
-                val isNetworkIssue = initialErr.contains("connect", ignoreCase = true) ||
-                        initialErr.contains("abort", ignoreCase = true) ||
-                        initialErr.contains("no such host", ignoreCase = true) ||
-                        initialErr.contains("unreachable", ignoreCase = true) ||
-                        initialErr.contains("timeout", ignoreCase = true)
-
-                // 1. Quota / Rate limit defense: If model hit limits, Smart Manager automatically switches model!
-                if (sendRes.isFailure && isQuotaExhausted) {
-                    val fallbackModel = _enabledModels.value.find {
-                        it.family == ModelFamily.GEMINI || it.id.contains("flash", ignoreCase = true)
-                    }?.id ?: "MODEL_GEMINI_3_8_FLASH_HIGH"
-                    Log.i("ChatViewModel", "Model limit reached for $modelEnum. Smart Manager auto-switched to: $fallbackModel")
-                    withContext(Dispatchers.Main) {
-                        android.widget.Toast.makeText(
-                            application,
-                            "Limit reached for $modelEnum. Smart Manager switched to Gemini Flash.",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                    sendRes = agyHubClient.sendUserPrompt(
-                        cascadeId = conv.id,
-                        text = userPrompt,
-                        modelEnum = fallbackModel,
-                        thinkingBudget = 0,
-                        autoExecutionPolicy = currentAutoExecPolicy,
-                        media = mediaItems,
-                        hubUrl = hubUrl
-                    )
-                } else if (sendRes.isFailure && !isNetworkIssue) {
-                    // 2. Transient error: Smart Manager automatically retries once with the same model!
-                    Log.i("ChatViewModel", "Transient error from $modelEnum: $initialErr. Smart Manager retrying with same model...")
-                    delay(350)
-                    sendRes = agyHubClient.sendUserPrompt(
-                        cascadeId = conv.id,
-                        text = userPrompt,
-                        modelEnum = modelEnum,
-                        thinkingBudget = thinkingBudget,
-                        autoExecutionPolicy = currentAutoExecPolicy,
-                        media = mediaItems,
-                        hubUrl = hubUrl
-                    )
-                }
-
                 if (sendRes.isSuccess) {
                     isPromptInFlight = false
+                } else if (queued) {
+                    failQueued(sendRes.exceptionOrNull()?.message ?: "Failed to send message")
                 } else {
-                    val err = sendRes.exceptionOrNull()?.message ?: "Failed to send message"
-                    Log.e("ChatViewModel", "sendUserPrompt final error: $err")
-                    val isOffline = isNetworkIssue || isNetworkDisconnectionError(err)
-
-                    if (isOffline) {
-                        launchNetworkRecovery(conv.id, err)
-                        return@launch
-                    }
-
+                    val rawErr = sendRes.exceptionOrNull()?.message ?: "Failed to send message"
+                    // a cloud chat: Google's limits (busy, daily VM time, chat limits) in plain words
+                    val err = if (conv.isCloud) AgyCloud.friendlyError(rawErr) else rawErr
+                    Log.e("ChatViewModel", "sendUserPrompt final error: $rawErr")
                     val formattedErr = formatStructuredErrorMessage(
                         title = when {
-                            isOffline -> "Internet Disconnected"
+                            conv.isCloud -> "Cloud agent"
                             err.contains("auth", ignoreCase = true) -> "Authentication Required"
                             err.contains("quota", ignoreCase = true) || err.contains("credit", ignoreCase = true) || err.contains("429") -> "Quota Limit Exceeded"
                             err.contains("model not found", ignoreCase = true) -> "Model Not Found"
+                            err.contains("connect", ignoreCase = true) || err.contains("network", ignoreCase = true) -> "Server Connection Error"
                             else -> "Message Delivery Error"
                         },
-                        userMessage = if (isOffline) {
-                            "Internet connection stopped working. AntiBot Smart Manager recorded your task. When internet returns, Gemini will automatically resume and work on it."
-                        } else err,
-                        shortError = if (isOffline) "Offline (Checkpoint Saved)" else err
+                        userMessage = err,
+                        shortError = err
                     )
                     withContext(Dispatchers.Main) {
+                        clearOptimisticSend()
                         _isServerOnline.value = false
                         isPromptInFlight = false
                         _isStreaming.value = false
@@ -2047,6 +2152,10 @@ class AgyChatBackend(
                 }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "sendUserPrompt exception: ${e.message}", e)
+                if (queued) {
+                    failQueued(e.message ?: "Unknown error")
+                    return@launch
+                }
                 val formattedErr = formatStructuredErrorMessage(
                     title = "Execution Failure",
                     userMessage = e.message ?: "Unknown error",
@@ -2054,6 +2163,7 @@ class AgyChatBackend(
                     fullError = e.stackTraceToString()
                 )
                 withContext(Dispatchers.Main) {
+                    clearOptimisticSend()
                     _isServerOnline.value = false
                     isPromptInFlight = false
                     _isStreaming.value = false
@@ -2164,9 +2274,6 @@ class AgyChatBackend(
     override fun stopStreaming() {
         val conv = _currentConversation.value
         streamingJob?.cancel()
-        networkRecoveryJob?.cancel()
-        networkRecoveryJob = null
-        isNetworkRecoveryActive = false
         isPromptInFlight = false
         _isStreaming.value = false
         hasStartedRunning = false
@@ -2174,6 +2281,7 @@ class AgyChatBackend(
         currentAssistantMsgId = null
         _bridgeStatusMessage.value = null
         trajectoryEngine.cancelRunning()
+        clearOptimisticSend()
 
         if (conv != null) {
             backendScope.launch {
@@ -2190,28 +2298,21 @@ class AgyChatBackend(
 
     fun applyQuotaSummary(summary: com.example.gemini.domain.model.QuotaSummaryResponse) {
         _quotaSummary.value = summary
-        val geminiGroup = summary.groups.find {
-            it.groupId == "gemini" || it.groupName.contains("gemini", ignoreCase = true)
-        }
-        val claudeGroup = summary.groups.find {
-            it.groupId == "claude_gpt" || it.groupName.contains("claude", ignoreCase = true) || it.groupName.contains("gpt", ignoreCase = true)
-        }
+        recomputeQuotas()
+    }
 
-        val updatedQuotas = _availableModels.value.map { model ->
-            val isClaude = model.family == com.example.gemini.domain.model.ModelFamily.CLAUDE
-            val group = if (isClaude) claudeGroup else geminiGroup
-            com.example.gemini.domain.model.ModelQuota(
-                modelId = model.id,
-                remainingFraction = group?.fiveHour?.remainingFraction,
-                resetTime = group?.fiveHour?.resetTime,
-                usedPercentage = group?.fiveHour?.usedPct,
-                resetCountdown = group?.fiveHour?.countdown,
-                weeklyRemainingFraction = group?.weekly?.remainingFraction,
-                weeklyUsedPercentage = group?.weekly?.usedPct,
-                weeklyResetCountdown = group?.weekly?.countdown
-            )
+    /**
+     * Each model's quota from its group (the user's choice in the model picker, else the automatic one). A group
+     * without a 5-hour limit (Argon) has none here: the pill falls back to its weekly limit, never a made-up 5h.
+     */
+    private fun recomputeQuotas() {
+        val summary = _quotaSummary.value ?: return
+        val groups = com.example.gemini.domain.model.AgyQuotaGroups.groups(summary)
+        val overrides = com.example.gemini.domain.model.ModelGroupPrefs.overrides(com.example.gemini.domain.model.QuotaAgent.AGY).value
+        val pill = com.example.gemini.domain.model.ModelGroupPrefs.pillWindow(com.example.gemini.domain.model.QuotaAgent.AGY).value
+        _quotas.value = _availableModels.value.mapNotNull { model ->
+            com.example.gemini.domain.model.AgyQuotaGroups.groupOf(model, groups, overrides)?.toModelQuota(model.id, pill)
         }
-        _quotas.value = updatedQuotas
     }
 
     fun refreshQuotas(force: Boolean = true, showToastFeedback: Boolean = false) {
@@ -2289,14 +2390,12 @@ class AgyChatBackend(
                 if (showToastFeedback) {
                     withContext(Dispatchers.Main) {
                         if (failureError != null) {
-                            val msg = if (failureError.contains("Connect", ignoreCase = true) || failureError.contains("failed to connect", ignoreCase = true) || failureError.contains("not running", ignoreCase = true)) {
-                                "Antigravity Hub is starting or offline"
-                            } else if (failureError.contains("CSRF", ignoreCase = true)) {
-                                "Antigravity Hub initializing..."
+                            val msg = if (failureError.contains("Connect", ignoreCase = true) || failureError.contains("failed to connect", ignoreCase = true)) {
+                                "Failed to refresh: Antigravity Hub (${AuthPreferences.currentHubUrl}) unreachable"
                             } else {
-                                "Refresh status: $failureError"
+                                "Failed to refresh: $failureError"
                             }
-                            android.widget.Toast.makeText(application, msg, android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(application, msg, android.widget.Toast.LENGTH_LONG).show()
                         } else {
                             android.widget.Toast.makeText(application, "Quotas & models refreshed", android.widget.Toast.LENGTH_SHORT).show()
                         }
@@ -2632,6 +2731,9 @@ class AgyChatBackend(
         _isStreaming.value = false
         _isLoadingConversation.value = false
         _bridgeStatusMessage.value = null
+        clearOptimisticSend()
+        _streamRun.value = null
+        _queuedMessages.value = emptyList()
     }
 
     fun dispose() {

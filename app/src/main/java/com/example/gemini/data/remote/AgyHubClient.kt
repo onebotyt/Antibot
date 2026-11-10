@@ -127,8 +127,9 @@ class AgyHubClient {
         val removedIds: Set<String>
     )
 
-    fun subscribeToSummaries(hubUrl: String = AuthPreferences.currentHubUrl): Flow<SummariesUpdate> =
-        conversationService.subscribeToSummaries(hubUrl)
+    /** [cloud]: the Antigravity cloud chats (Remote Agents) instead of the hub's own. */
+    fun subscribeToSummaries(hubUrl: String = AuthPreferences.currentHubUrl, cloud: Boolean = false): Flow<SummariesUpdate> =
+        conversationService.subscribeToSummaries(hubUrl, cloud)
 
     suspend fun getRawStepCount(cascadeId: String, hubUrl: String = AuthPreferences.currentHubUrl): Int =
         conversationService.getRawStepCount(cascadeId, hubUrl)
@@ -145,6 +146,20 @@ class AgyHubClient {
         hubUrl: String = AuthPreferences.currentHubUrl
     ): Result<Boolean> =
         conversationService.deleteCascadeTrajectory(cascadeId, hubUrl)
+
+    suspend fun updateConversationTitle(
+        cascadeId: String,
+        title: String,
+        hubUrl: String = AuthPreferences.currentHubUrl
+    ): Result<Unit> =
+        conversationService.updateConversationTitle(cascadeId, title, hubUrl)
+
+    suspend fun setConversationArchived(
+        cascadeId: String,
+        archived: Boolean,
+        hubUrl: String = AuthPreferences.currentHubUrl
+    ): Result<Unit> =
+        conversationService.setConversationArchived(cascadeId, archived, hubUrl)
 
     suspend fun getCascadeTrajectorySteps(
         cascadeId: String,
@@ -182,9 +197,10 @@ class AgyHubClient {
         cascadeId: String = UUID.randomUUID().toString(),
         modelEnum: String = "",
         workspaceUri: String = "",
-        hubUrl: String = AuthPreferences.currentHubUrl
+        hubUrl: String = AuthPreferences.currentHubUrl,
+        cloudProjectId: String? = null
     ): Result<String> =
-        chatService.startCascade(cascadeId, modelEnum, workspaceUri, hubUrl)
+        chatService.startCascade(cascadeId, modelEnum, workspaceUri, hubUrl, cloudProjectId)
 
     suspend fun sendUserPrompt(
         cascadeId: String,
@@ -193,9 +209,16 @@ class AgyHubClient {
         thinkingBudget: Int = 8192,
         autoExecutionPolicy: String = "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER",
         media: List<AgyMediaItem> = emptyList(),
-        hubUrl: String = AuthPreferences.currentHubUrl
+        hubUrl: String = AuthPreferences.currentHubUrl,
+        deliveryStrategy: exa.language_server_pb.MessageDeliveryStrategy = exa.language_server_pb.MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_WHEN_IDLE,
+        clientMessageId: String? = null,
+        rawMedia: List<exa.language_server_pb.Media> = emptyList(),
+        cloud: Boolean = false
     ): Result<Unit> =
-        chatService.sendUserPrompt(cascadeId, text, modelEnum, thinkingBudget, autoExecutionPolicy, media, hubUrl)
+        chatService.sendUserPrompt(cascadeId, text, modelEnum, thinkingBudget, autoExecutionPolicy, media, hubUrl, deliveryStrategy, clientMessageId, rawMedia, cloud)
+
+    suspend fun deleteAgentMessage(cascadeId: String, messageId: String): Result<Unit> =
+        chatService.deleteAgentMessage(cascadeId, messageId)
 
 
     fun streamAgentStateUpdates(

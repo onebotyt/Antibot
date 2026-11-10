@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Public
 import com.example.gemini.ui.components.AppToastHelper
 import com.example.gemini.ui.components.ChatToastType
@@ -1667,9 +1668,13 @@ private fun ChatHistoryItemRow(
         } else {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    imageVector = Icons.Outlined.ChatBubbleOutline,
-                    contentDescription = null,
-                    tint = if (isSelected) ClaudeTerracotta else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    imageVector = if (conv.isCloud) Icons.Outlined.Cloud else Icons.Outlined.ChatBubbleOutline,
+                    contentDescription = if (conv.isCloud) "Cloud chat" else null,
+                    tint = when {
+                        conv.isCloud -> com.example.gemini.theme.GeminiBlue.copy(alpha = if (isSelected) 1f else 0.85f)
+                        isSelected -> ClaudeTerracotta
+                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    },
                     modifier = Modifier.size(17.dp)
                 )
                 if (statusDotColor != null) {

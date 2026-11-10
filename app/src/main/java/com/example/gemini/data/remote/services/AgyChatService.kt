@@ -42,6 +42,7 @@ import exa.language_server_pb.ConversationHistoryConfig
 import exa.language_server_pb.CortexTrajectorySource
 import exa.language_server_pb.CustomAgentSpec
 import exa.language_server_pb.DefaultAgentConfig
+import exa.language_server_pb.DeleteAgentMessageRequest
 import exa.language_server_pb.HandleCascadeUserInteractionRequest
 import exa.language_server_pb.Media
 import exa.language_server_pb.MessageDeliveryStrategy
@@ -68,6 +69,9 @@ class AgyChatService {
         private const val TAG = "AgyChatService"
         val instance by lazy { AgyChatService() }
 
+        /** The tag a sent message carries in its user-input step / queued entry (same format as the hub web UI). */
+        fun clientMsgTag(clientMessageId: String) = "client_msg:$clientMessageId"
+
         private val jsonParser = Json {
             ignoreUnknownKeys = true
             isLenient = true
@@ -92,12 +96,14 @@ class AgyChatService {
         cascadeId: String = UUID.randomUUID().toString(),
         modelEnum: String = "",
         workspaceUri: String = "",
-        hubUrl: String = AuthPreferences.currentHubUrl
+        hubUrl: String = AuthPreferences.currentHubUrl,
+        /** Start it as an Antigravity cloud chat (Remote Agents) in this cloud project; null = on the hub's machine. */
+        cloudProjectId: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         val cid = cascadeId
         val resolvedModelStr = resolveModelEnum(modelEnum)
         val modelProto = toModelProto(resolvedModelStr)
-        val normalizedUri = if (workspaceUri.isNotBlank()) {
+        val normalizedUri = if (workspaceUri.isNotBlank() && cloudProjectId == null) {
             if (workspaceUri.startsWith("file://")) workspaceUri else "file://$workspaceUri"
         } else ""
 
@@ -106,7 +112,15 @@ class AgyChatService {
             source = CortexTrajectorySource.CORTEX_TRAJECTORY_SOURCE_CASCADE_CLIENT,
             requested_model = modelProto ?: Model.MODEL_UNSPECIFIED,
             workspace_uris = if (normalizedUri.isNotBlank()) listOf(normalizedUri) else emptyList(),
-            override_workspace_uris = if (normalizedUri.isNotBlank()) listOf(normalizedUri) else emptyList()
+            override_workspace_uris = if (normalizedUri.isNotBlank()) listOf(normalizedUri) else emptyList(),
+            // a cloud chat: the hub runs it in a Google VM with the project's repos (as the Antigravity app does)
+            backend = if (cloudProjectId != null) exa.language_server_pb.BackendType.BACKEND_TYPE_REMOTE_AICODE else exa.language_server_pb.BackendType.BACKEND_TYPE_UNSPECIFIED,
+            project_env_config = cloudProjectId?.let {
+                exa.language_server_pb.ProjectEnvironmentConfig(
+                    project_id = it,
+                    default_project_environment = exa.language_server_pb.DefaultProjectEnvironment()
+                )
+            }
         )
 
         AgyLanguageService.StartCascade().executeSafely(req).map { cid }
@@ -122,7 +136,15 @@ class AgyChatService {
         thinkingBudget: Int = 8192,
         autoExecutionPolicy: String = "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER",
         media: List<AgyMediaItem> = emptyList(),
-        hubUrl: String = AuthPreferences.currentHubUrl
+        hubUrl: String = AuthPreferences.currentHubUrl,
+        // NEXT_INVOCATION runs it now (idle chat, or "Send now"); WHEN_IDLE queues it after the current work
+        deliveryStrategy: MessageDeliveryStrategy = MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_WHEN_IDLE,
+        // tagged `client_msg:<id>` (as the hub web UI does), so the echoed step / queued entry can be recognised
+        clientMessageId: String? = null,
+        // media already in daemon form (a queued message sent again with "Send now")
+        rawMedia: List<Media> = emptyList(),
+        // a cloud chat (Remote Agents) ignores requested_model after its start; it switches models by plan_model
+        cloud: Boolean = false
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val resolvedModelStr = resolveModelEnum(modelEnum)
         val modelProto = toModelProto(resolvedModelStr)
@@ -154,7 +176,7 @@ class AgyChatService {
         val req = SendUserCascadeMessageRequest(
             cascade_id = cascadeId,
             items = listOf(TextOrScopeItem(text = promptText)),
-            media = mediaItems,
+            media = mediaItems + rawMedia,
             cascade_config = CascadeConfig(
                 planner_config = CascadePlannerConfig(
                     tool_config = CascadeToolConfig(
@@ -166,6 +188,7 @@ class AgyChatService {
                         notify_user = NotifyUserConfig()
                     ),
                     requested_model = if (modelProto != null) ModelOrAlias(model = modelProto) else null,
+                    plan_model = if (cloud && modelProto != null) modelProto else Model.MODEL_UNSPECIFIED,
                     use_ai_credits = false,
                     supports_latex_rendering = true
                 ),
@@ -180,7 +203,9 @@ class AgyChatService {
                     )
                 )
             ),
-            delivery_strategy = MessageDeliveryStrategy.MESSAGE_DELIVERY_STRATEGY_WHEN_IDLE
+            delivery_strategy = deliveryStrategy,
+            tags = if (clientMessageId.isNullOrBlank()) emptyList() else listOf(clientMsgTag(clientMessageId)),
+            client_message_id = clientMessageId.orEmpty()
         )
 
         AgyLanguageService.SendUserCascadeMessage().executeSafely(req).map { }
@@ -215,6 +240,16 @@ class AgyChatService {
     /**
      * Cancels / aborts running generation or commands via typed AgyLanguageService
      */
+    /** Removes a queued (pending) message from a conversation's queue (the hub web UI's "Delete"). */
+    suspend fun deleteAgentMessage(
+        cascadeId: String,
+        messageId: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        AgyLanguageService.DeleteAgentMessage().executeSafely(
+            DeleteAgentMessageRequest(message_id = messageId, recipient = cascadeId)
+        ).map { }
+    }
+
     suspend fun cancelCascadeInvocation(
         cascadeId: String,
         hubUrl: String = AuthPreferences.currentHubUrl

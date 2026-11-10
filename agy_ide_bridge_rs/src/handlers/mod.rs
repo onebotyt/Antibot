@@ -13,5 +13,6 @@ pub mod lsp;
 pub mod models;
 pub mod network;
 pub mod projects;
+pub mod cloud;
 
 

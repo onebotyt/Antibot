@@ -97,6 +97,7 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     BACKUPS("Backups & Restore", "Backup rootfs environment and AGY chat histories"),
     DATA_PROTECTION("Data Loss Protection", "Uninstall shield & App Info clear data protection"),
     COMMANDS("Commands & Permissions", "Auto-run policy, sandbox mode, and tool approvals"),
+    AGY_CLOUD("Cloud agents", "Antigravity chats on a Google cloud machine (Remote Agents)"),
     AGENTS("Agents", "Configure active intelligence engine"),
     DIAGNOSTICS("Diagnostics & Performance", "Live network connections, active streams & thread HUD"),
     UTILITIES("Utilities", "Handy device tools"),
@@ -454,6 +455,12 @@ fun SettingsDialog(
                         onSaveServerUrls = onSaveServerUrls
                     )
 
+                    SettingsSection.AGY_CLOUD -> Column(
+                        Modifier.fillMaxSize().padding(16.dp)
+                    ) {
+                        com.example.gemini.ui.cloud.AgyCloudSettingsCard()
+                    }
+
                     SettingsSection.WEBVIEW_EXTENSIONS -> WebViewExtensionsScreen(onChanged = onRefreshMcpServers)
 
                     SettingsSection.SLASH_COMMANDS -> CustomSlashCommandsScreen()
@@ -739,6 +746,16 @@ private fun MainSettingsMenu(
                 badgeText = serverBadge,
                 badgeStyle = serverBadgeStyle,
                 onClick = { onNavigate(SettingsSection.SERVERS) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            val cloudOn by com.example.gemini.data.agent.agy.AgyCloud.enabled.collectAsState()
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Cloud,
+                title = "Cloud agents",
+                subtitle = "Google VM Remote Agents & Web Preview",
+                badgeText = if (cloudOn) "On" else "Off",
+                badgeStyle = if (cloudOn) SettingsBadgeStyle.GREEN else null,
+                onClick = { onNavigate(SettingsSection.AGY_CLOUD) }
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             SettingsGroupItemRow(

@@ -21,6 +21,7 @@ class AntiGemApplication : Application() {
         // Reconnects adb when Wireless debugging turns back on (it gets a new port every time)
         AdbConnectManager.init(this)
         com.example.gemini.data.ssh.SshSessionFactory.init(this)
+        com.example.gemini.data.agent.agy.AgyCloud.init(this)
     }
 
     private fun isOfficialRelease(): Boolean = runCatching {

@@ -11,8 +11,11 @@ import com.example.gemini.domain.model.TokenUsage
 import com.example.gemini.domain.model.ToolCall
 import com.example.gemini.domain.model.ToolType
 import com.example.gemini.domain.model.TurnBlock
+import exa.language_server_pb.AgentMessage
 import exa.language_server_pb.AgentStateUpdate
 import exa.language_server_pb.CascadeRunStatus
+import exa.language_server_pb.MessageDeliveryStrategy
+import exa.language_server_pb.PendingAgentMessagesUpdate
 import exa.language_server_pb.CortexErrorDetails
 import exa.language_server_pb.CortexStepErrorMessage
 import exa.language_server_pb.CortexStepStatus
@@ -35,6 +38,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * 2. Active turn steps (sparse stepIndex map, O(1) cumulative replacement).
  */
 class TrajectoryEngine {
+
+    companion object {
+        const val CLIENT_MSG_TAG_PREFIX = "client_msg:"
+    }
+
+    /** Model enum name → display name for the usage pill under a reply (set by the AGY backend from its model list). */
+    var modelDisplayName: (String) -> String = { it }
 
     private val _turns = MutableStateFlow<List<ChatTurn>>(emptyList())
     val turns: StateFlow<List<ChatTurn>> = _turns.asStateFlow()
@@ -62,6 +72,49 @@ class TrajectoryEngine {
     private var activeTurnStartStep: Int = 0
     private var pendingUserTurn: ChatTurn.User? = null
 
+    /** Last frame's `fully_idle`: nothing (model, subagents, background work) is running in the conversation. */
+    var fullyIdle: Boolean = true
+        private set
+    /** The trajectory's step count as the daemon last reported it. */
+    var totalStepsLength: Int = 0
+        private set
+
+    // the daemon's message queue (`pending_agent_messages`), merged from indexed deltas like the hub web UI does
+    private var pendingAgentMessages: List<AgentMessage> = emptyList()
+    // `client_msg:<id>` tags seen on user-input steps: a sent message has reached the trajectory
+    private val seenClientTags = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** One message waiting in the daemon's queue. */
+    data class QueuedEntry(
+        val id: String,
+        val text: String,
+        val media: List<exa.language_server_pb.Media>,
+        val deliveryStrategy: MessageDeliveryStrategy,
+        val tags: List<String>
+    )
+
+    /** The visible messages in the daemon's queue, oldest first. */
+    fun queuedMessages(): List<QueuedEntry> = pendingAgentMessages.mapNotNull { m ->
+        if (m.id.isBlank() || m.hide_from_user) return@mapNotNull null
+        val step = runCatching { Step.ADAPTER.decode(m.step_payload) }.getOrNull()
+        val input = step?.user_input ?: return@mapNotNull null
+        val text = input.items.mapNotNull { it.text.takeIf { t -> t.isNotBlank() } }.joinToString("\n").ifBlank { input.query }
+        // a queued voice-call request: what was said, not the call's prompt
+        val shown = VoiceTurn.displayText(text, input.tags)
+        QueuedEntry(m.id, shown, if (shown != text) input.media.filterNot { it.mime_type.startsWith("audio/") } else input.media, m.delivery_strategy, input.tags)
+    }
+
+    /** A message sent with this `client_msg:` tag reached the trajectory (as a user-input step). */
+    fun hasSeenClientTag(tag: String): Boolean = seenClientTags.contains(tag)
+
+    private fun applyPendingMessagesUpdate(u: PendingAgentMessagesUpdate) {
+        val len = u.total_length
+        val next = arrayOfNulls<AgentMessage>(len)
+        pendingAgentMessages.forEachIndexed { i, m -> if (i < len) next[i] = m }
+        u.indices.forEachIndexed { k, idx -> if (idx in 0 until len && k < u.pending_agent_messages.size) next[idx] = u.pending_agent_messages[k] }
+        pendingAgentMessages = next.map { it ?: AgentMessage() }
+    }
+
     /**
      * Resets state when switching conversations.
      */
@@ -79,6 +132,10 @@ class TrajectoryEngine {
         trajectoryId = ""
         isRunning = false
         isWaitingInteraction = false
+        fullyIdle = true
+        totalStepsLength = 0
+        pendingAgentMessages = emptyList()
+        seenClientTags.clear()
         activeTurnStartStep = 0
         userRespondedStepIndices.clear()
         completedTurns.clear()
@@ -160,17 +217,26 @@ class TrajectoryEngine {
         val executorMeta = update.main_trajectory_update?.executor_metadatas_update?.executor_metadatas?.lastOrNull()
         val liveTerminationReason = executorMeta?.termination_reason
         val executionError = executorMeta?.execution_error
-        val isTerminated = liveTerminationReason != null &&
-                liveTerminationReason != ExecutorTerminationReason.EXECUTOR_TERMINATION_REASON_UNSPECIFIED
 
-        val daemonRunning = (status == CascadeRunStatus.CASCADE_RUN_STATUS_RUNNING) && !isTerminated
-        val daemonIdle = status == CascadeRunStatus.CASCADE_RUN_STATUS_IDLE || update.fully_idle || isTerminated
+        // Hub rule (main.js `kg`): a conversation is running iff its own `status` is RUNNING.
+        // `executorLoopStatus` is not used by the hub for the running indicator, and a mid-run rehydration snapshot
+        // only carries historical `executor_metadatas` (e.g. terminationReason=NO_TOOL_CALL from the previous turn)
+        // while the current executor is still running and absent from the snapshot.
+        val daemonRunning = status == CascadeRunStatus.CASCADE_RUN_STATUS_RUNNING
+        val daemonIdle = status == CascadeRunStatus.CASCADE_RUN_STATUS_IDLE || update.fully_idle
+        fullyIdle = update.fully_idle
+
+        update.pending_agent_messages_update?.let { applyPendingMessagesUpdate(it) }
 
         val stepsUpdate = update.main_trajectory_update?.steps_update
 
         val effectiveSteps = stepsUpdate?.steps ?: emptyList()
-        val effectiveIndices = stepsUpdate?.indices ?: effectiveSteps.indices.toList()
+        val effectiveIndices = stepsUpdate?.indices?.takeIf { it.isNotEmpty() } ?: effectiveSteps.indices.toList()
         val totalLength = stepsUpdate?.total_length ?: effectiveSteps.size
+        if (stepsUpdate != null) totalStepsLength = totalLength
+        for (s in effectiveSteps) {
+            s.user_input?.tags?.forEach { if (it.startsWith(CLIENT_MSG_TAG_PREFIX)) seenClientTags.add(it) }
+        }
 
         Log.d("CHAT_OPEN_DEBUG", "⚙️ [TrajectoryEngine.ingestAgentStateUpdate] convId=$conversationId, trajId=$trajectoryId, status=$status, termination=$liveTerminationReason, stepsCount=${effectiveSteps.size}")
 
@@ -183,9 +249,9 @@ class TrajectoryEngine {
             }
         }
 
-        val frameLastStepError = update.main_trajectory_update?.last_step_error
+        val frameLastStepError = update.main_trajectory_update?.last_step_error.realError()
 
-        val terminationErrorMsg = when (liveTerminationReason) {
+        val terminationErrorMsg = if (daemonRunning) null else when (liveTerminationReason) {
             ExecutorTerminationReason.EXECUTOR_TERMINATION_REASON_ERROR -> {
                 executionError?.takeIf { it.isNotBlank() } ?: "Execution encountered an error"
             }
@@ -220,7 +286,7 @@ class TrajectoryEngine {
 
         if (effectiveError != null && isTargetInActiveTurn) {
             val existingStep = activeStepsMap[targetIdx]
-            if (existingStep != null && (existingStep.error_message != null || existingStep.error != null)) {
+            if (existingStep != null && (existingStep.error_message?.error.realError() != null || existingStep.error.realError() != null)) {
                 val curErr = existingStep.error_message?.error ?: existingStep.error
                 val baseErr = curErr ?: effectiveError
                 val enrichedErr = baseErr.copy(
@@ -234,7 +300,7 @@ class TrajectoryEngine {
                     error_message = CortexStepErrorMessage(error = enrichedErr, should_show_user = true),
                     error = enrichedErr
                 )
-            } else if (activeStepsMap.none { (_, s) -> s.error_message != null || s.error != null || s.type == CortexStepType.CORTEX_STEP_TYPE_ERROR_MESSAGE }) {
+            } else if (activeStepsMap.none { (_, s) -> s.error_message?.error.realError() != null || s.error.realError() != null || s.type == CortexStepType.CORTEX_STEP_TYPE_ERROR_MESSAGE }) {
                 val newErrorStep = Step(
                     type = CortexStepType.CORTEX_STEP_TYPE_ERROR_MESSAGE,
                     status = CortexStepStatus.CORTEX_STEP_STATUS_DONE,
@@ -318,6 +384,7 @@ class TrajectoryEngine {
         val savedPending = pendingUserTurn
         completedTurns.clear()
         activeStepsMap.clear()
+        activeTurnStartStep = 0
         pendingUserTurn = null
 
         var currentTurnBlocks = mutableListOf<TurnBlock>()
@@ -340,9 +407,7 @@ class TrajectoryEngine {
                     currentTurnSteps = mutableListOf()
                 }
 
-                val userText = extractUserText(step.user_input)
-                val attachments = extractUserAttachments(step.user_input, stepIndex)
-                completedTurns.add(ChatTurn.User(stepIndex = stepIndex, text = userText, attachments = attachments, createdAt = parseTimestampToMillis(step.metadata?.created_at)?.takeIf { it > 0 }))
+                completedTurns.add(userTurnOf(step, stepIndex))
                 lastUserStepArrayIndex = i
                 activeTurnStartStep = stepIndex + 1
             } else {
@@ -389,9 +454,7 @@ class TrajectoryEngine {
                 finalizeActiveTurn()
                 pendingUserTurn = null
 
-                val userText = extractUserText(step.user_input)
-                val attachments = extractUserAttachments(step.user_input, stepIndex)
-                val userTurn = ChatTurn.User(stepIndex = stepIndex, text = userText, attachments = attachments, createdAt = parseTimestampToMillis(step.metadata?.created_at)?.takeIf { it > 0 })
+                val userTurn = userTurnOf(step, stepIndex)
                 val existingIdx = completedTurns.indexOfFirst { it is ChatTurn.User && it.stepIndex == stepIndex }
                 if (existingIdx >= 0) {
                     completedTurns[existingIdx] = userTurn
@@ -409,7 +472,30 @@ class TrajectoryEngine {
 
     /** The model that generated a turn: the last step that names one (the enum name, as in AiModel.id). */
     private fun turnModel(steps: Iterable<Step>): String? =
-        steps.mapNotNull { it.metadata?.generator_model?.name?.takeUnless { n -> n.contains("UNSPECIFIED") } }.lastOrNull()
+        steps.mapNotNull { stepModel(it) }.lastOrNull()
+
+    /**
+     * The model that wrote a step (the enum name, as in AiModel.id). Cloud chats (Remote Agents) always report
+     * MODEL_GOOGLE_GEMINI_INTERNAL_BYOM; the real model is in `model_info` ("gemini-4-argon-medium"), mapped back to
+     * the listed model, else shown as a readable name ("Gemini 4 Argon (Medium)").
+     */
+    private fun stepModel(step: Step): String? {
+        val meta = step.metadata ?: return null
+        val gen = meta.generator_model.name.takeUnless { it.contains("UNSPECIFIED") } ?: return null
+        if (gen != "MODEL_GOOGLE_GEMINI_INTERNAL_BYOM") return gen
+        val cloudName = meta.model_info?.display_name?.takeIf { it.isNotBlank() } ?: meta.model_info?.model_name?.takeIf { it.isNotBlank() }
+            ?: return null
+        return com.example.gemini.data.remote.services.AgyModelService.modelEnumForCloudName(cloudName) ?: readableModelName(cloudName)
+    }
+
+    /** "gemini-3.8-flash-high" → "Gemini 3.8 Flash (High)". */
+    private fun readableModelName(slug: String): String {
+        val parts = slug.split('-').filter { it.isNotBlank() }
+        val levels = setOf("low", "medium", "high", "minimal", "max", "xhigh")
+        val level = parts.lastOrNull()?.takeIf { it.lowercase() in levels }
+        val words = (if (level != null) parts.dropLast(1) else parts).joinToString(" ") { w -> w.replaceFirstChar { it.uppercaseChar() } }
+        return if (level != null) "$words (${level.replaceFirstChar { it.uppercaseChar() }})" else words
+    }
 
     private fun parseTimestampToMillis(ts: Timestamp?): Long? {
         if (ts == null) return null
@@ -600,7 +686,10 @@ class TrajectoryEngine {
                             content = turn.text,
                             attachments = turn.attachments,
                             stepIndex = turn.stepIndex,
-                            createdAt = turn.createdAt ?: System.currentTimeMillis()
+                            createdAt = turn.createdAt ?: System.currentTimeMillis(),
+                            rawContent = turn.rawText,
+                            viaVoice = turn.viaVoice,
+                            voiceLine = turn.voiceLine
                         )
                     )
                 }
@@ -705,7 +794,7 @@ class TrajectoryEngine {
                             thoughtDurationMs = maxDuration,
                             toolCalls = toolCalls,
                             isStreaming = turn.isStreaming,
-                            tokenUsage = turn.tokenUsage,
+                            tokenUsage = turn.tokenUsage?.let { u -> turn.modelId?.let { u.copy(model = modelDisplayName(it)) } ?: u },
                             modelId = turn.modelId
                         )
                     )
@@ -767,11 +856,10 @@ class TrajectoryEngine {
             return
         }
 
-        val stepError = step.error_message?.error ?: step.error
+        val stepError = step.error_message?.error.realError() ?: step.error.realError()
         val isErrorType = step.type == CortexStepType.CORTEX_STEP_TYPE_ERROR_MESSAGE ||
                 step.status == CortexStepStatus.CORTEX_STEP_STATUS_ERROR ||
-                step.error_message != null ||
-                step.error != null
+                stepError != null
 
         if (isErrorType) {
             val userMsg = stepError?.user_error_message?.takeIf { it.isNotBlank() } ?: "Agent Execution Error"
@@ -1179,6 +1267,31 @@ class TrajectoryEngine {
         )
     }
 
+    /**
+     * The chat turn of a user-input step. A request sent by a voice call shows what was said (and the voice's line),
+     * without the call's prompt scaffolding or the speech clips; the full prompt stays in [ChatTurn.User.rawText].
+     */
+    private fun userTurnOf(step: Step, stepIndex: Int): ChatTurn.User {
+        val userText = extractUserText(step.user_input)
+        val tags = step.user_input?.tags.orEmpty()
+        val createdAt = parseTimestampToMillis(step.metadata?.created_at)?.takeIf { it > 0 }
+        val voice = VoiceTurn.parse(userText, tags)
+        // files sent by path are listed in the message's hidden text: shown as cards (the text keeps the list, hidden
+        // on screen, so editing the message brings the files back)
+        val attachments = extractUserAttachments(step.user_input, stepIndex) +
+            com.example.gemini.data.files.AttachedFiles.extract(userText, "att_$stepIndex").second
+        if (voice == null) return ChatTurn.User(stepIndex = stepIndex, text = userText, attachments = attachments, createdAt = createdAt)
+        return ChatTurn.User(
+            stepIndex = stepIndex,
+            text = voice.spoken.ifBlank { "Voice request" },
+            attachments = attachments.filterNot { it.isAudio },
+            createdAt = createdAt,
+            viaVoice = true,
+            voiceLine = voice.voiceLine,
+            rawText = userText
+        )
+    }
+
     private fun extractUserText(userInput: CortexStepUserInput?): String {
         if (userInput == null) return ""
         val direct = userInput.user_response.takeIf { it.isNotBlank() }
@@ -1278,4 +1391,13 @@ class TrajectoryEngine {
         }
         return if (firstLine.isNotBlank() && firstLine.length <= 40) firstLine else "System Notification"
     }
+}
+
+/**
+ * The error, if it says anything. Cloud chats (Antigravity Remote Agents) send an empty `last_step_error` (and may send
+ * empty step errors) with every frame; taken as an error, every reply showed "Agent Execution Error" while it ran.
+ */
+internal fun CortexErrorDetails?.realError(): CortexErrorDetails? = this?.takeIf {
+    it.user_error_message.isNotBlank() || it.short_error.isNotBlank() || it.full_error.isNotBlank() ||
+        it.model_error_message.isNotBlank() || it.details.isNotBlank() || it.error_code != 0 || it.structured_error_parts.isNotEmpty()
 }
