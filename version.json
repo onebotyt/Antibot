@@ -3,7 +3,7 @@
   "version_name": "2.4.92",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83c\udf99\ufe0f Voice Calls for Local Models: Extended full conversational voice call support to Local Models with on-device speech recognition, natural human cadence TTS, and pulsing visualizer orb.",
+    "\ud83c\udf99\ufe0f Voice Calls for Local Models: Full conversational voice call support for Local Models with on-device speech recognition, natural human cadence TTS, and pulsing visualizer orb.",
     "\u26a1 Resilient Voice Mode Fallback: Automatically falls back to conversational voice mode when the Antigravity Hub lacks /voice/ws WebSocket or during network interruptions instead of failing.",
     "\u2728 Clean Welcome Interface: Removed the segmented Local/Antigravity pill switcher from the home screen, keeping the welcome view focused and clutter-free."
   ],
