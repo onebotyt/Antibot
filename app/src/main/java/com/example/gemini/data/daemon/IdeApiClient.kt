@@ -623,7 +623,6 @@ object IdeApiClient {
         } catch (e: Exception) {
             Log.w(TAG, "saveMcpConfig via /api/mcp/config failed: ${e.message}")
         }
-        // Fallback to relative file save via IDE daemon
         try {
             val savedPrimary = saveFile("~/.gemini/config/mcp_config.json", content)
             val savedLegacy = saveFile("~/.gemini/antigravity/mcp_config.json", content)
@@ -632,5 +631,84 @@ object IdeApiClient {
             Log.w(TAG, "saveMcpConfig file fallback failed: ${e.message}")
         }
         false
+    }
+
+    suspend fun backupChats(outputPath: String? = null): JSONObject? = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                if (outputPath != null) put("output", outputPath)
+            }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/api/backup/chats")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    return@withContext JSONObject(response.body?.string().orEmpty())
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error backing up chats", e)
+        }
+        null
+    }
+
+    suspend fun restoreChats(filePath: String, targetDir: String? = null): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("file", filePath)
+                if (targetDir != null) put("targetDir", targetDir)
+            }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/api/restore/chats")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            client.newCall(request).execute().use { response ->
+                return@withContext response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring chats", e)
+            false
+        }
+    }
+
+    suspend fun backupProjects(outputPath: String? = null, paths: List<String>? = null): JSONObject? = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                if (outputPath != null) put("output", outputPath)
+                if (paths != null) put("paths", org.json.JSONArray(paths))
+            }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/api/backup/projects")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    return@withContext JSONObject(response.body?.string().orEmpty())
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error backing up projects", e)
+        }
+        null
+    }
+
+    suspend fun restoreProjects(filePath: String, targetDir: String? = null): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("file", filePath)
+                if (targetDir != null) put("targetDir", targetDir)
+            }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/api/restore/projects")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            client.newCall(request).execute().use { response ->
+                return@withContext response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring projects", e)
+            false
+        }
     }
 }
