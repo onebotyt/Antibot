@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
