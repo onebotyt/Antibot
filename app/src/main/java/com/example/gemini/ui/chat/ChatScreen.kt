@@ -179,6 +179,8 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val artifacts by viewModel.artifacts.collectAsState()
     val selectedModelId by viewModel.selectedModelId.collectAsState()
+    val isAutoModel = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
+    val isLocalChat = !isAutoModel && (effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId))
     val availableModels by viewModel.availableModels.collectAsState()
     val enabledModels by viewModel.enabledModels.collectAsState()
     val enabledModelIds by viewModel.enabledModelIds.collectAsState()
@@ -935,8 +937,6 @@ fun ChatScreen(
     val waitingForUser = lastToolCalls.any { it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE" }
     val showWorkingRow = workingAnimationEnabled && (isRunningOrStreaming || holdingTail) && !waitingForUser && !footerShown
 
-    val isAutoModel = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
-    val isLocalChat = !isAutoModel && (currentConv?.agent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId))
     val currentModel = when {
         isAutoModel -> AiModel(
             id = com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
