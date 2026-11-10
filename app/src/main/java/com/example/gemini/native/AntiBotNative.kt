@@ -160,6 +160,39 @@ object AntiBotNative {
     @JvmStatic
     external fun evaluateThermalThrottleNative(tempCelsius: Float, totalCores: Int): String
 
+    @JvmStatic
+    external fun inspectGgufHeaderNative(filePath: String): String
+
+    @JvmStatic
+    external fun validateModelRuntimeNative(modelPath: String, contextLength: Int): String
+
+    data class GgufMetadata(
+        val magic: String,
+        val version: Int,
+        val tensorCount: Long,
+        val kvCount: Long,
+        val architecture: String,
+        val contextLength: Int,
+        val embeddingLength: Int,
+        val blockCount: Int,
+        val headCount: Int,
+        val headCountKv: Int,
+        val generalName: String,
+        val fileSizeBytes: Long,
+        val estimatedModelSizeMb: Long
+    )
+
+    data class ModelRuntimeValidation(
+        val feasible: Boolean,
+        val estimatedRamMb: Long,
+        val availableRamMb: Long,
+        val modelWeightsMb: Long,
+        val kvCacheMb: Long,
+        val recommendedContext: Int,
+        val recommendedThreads: Int,
+        val warning: String?
+    )
+
     data class CpuCoreInfo(
         val coreId: Int,
         val curFreqKhz: Long,
@@ -1569,7 +1602,76 @@ object AntiBotNative {
             fallback
         }
     }
+
+    /**
+     * Inspects a GGUF model binary header and extracts architectural dimensions and quantization metadata.
+     */
+    fun inspectGgufHeader(filePath: String): GgufMetadata? {
+        if (!isLoaded || filePath.isBlank()) return null
+        return try {
+            val resJson = inspectGgufHeaderNative(filePath)
+            val o = JSONObject(resJson)
+            if (o.has("error")) {
+                Log.w(TAG, "inspectGgufHeader error: ${o.getString("error")}")
+                return null
+            }
+            GgufMetadata(
+                magic = o.optString("magic", "GGUF"),
+                version = o.optInt("version", 3),
+                tensorCount = o.optLong("tensor_count", 0L),
+                kvCount = o.optLong("kv_count", 0L),
+                architecture = o.optString("architecture", "llama"),
+                contextLength = o.optInt("context_length", 4096),
+                embeddingLength = o.optInt("embedding_length", 4096),
+                blockCount = o.optInt("block_count", 32),
+                headCount = o.optInt("head_count", 32),
+                headCountKv = o.optInt("head_count_kv", 32),
+                generalName = o.optString("general_name", "model"),
+                fileSizeBytes = o.optLong("file_size_bytes", 0L),
+                estimatedModelSizeMb = o.optLong("estimated_model_size_mb", 0L)
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "inspectGgufHeader exception: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Validates offline LLM memory requirements against device available RAM.
+     */
+    fun validateModelRuntime(modelPath: String, contextLength: Int = 2048): ModelRuntimeValidation {
+        val fallback = ModelRuntimeValidation(
+            feasible = false,
+            estimatedRamMb = 0L,
+            availableRamMb = 0L,
+            modelWeightsMb = 0L,
+            kvCacheMb = 0L,
+            recommendedContext = contextLength,
+            recommendedThreads = 2,
+            warning = "Native layer not available"
+        )
+        if (!isLoaded || modelPath.isBlank()) return fallback
+
+        return try {
+            val resJson = validateModelRuntimeNative(modelPath, contextLength)
+            val o = JSONObject(resJson)
+            ModelRuntimeValidation(
+                feasible = o.optBoolean("feasible", false),
+                estimatedRamMb = o.optLong("estimated_ram_mb", 0L),
+                availableRamMb = o.optLong("available_ram_mb", 0L),
+                modelWeightsMb = o.optLong("model_weights_mb", 0L),
+                kvCacheMb = o.optLong("kv_cache_mb", 0L),
+                recommendedContext = o.optInt("recommended_context", contextLength),
+                recommendedThreads = o.optInt("recommended_threads", 4),
+                warning = if (o.isNull("warning")) null else o.optString("warning", null)
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "validateModelRuntime error: ${e.message}")
+            fallback
+        }
+    }
 }
+
 
 
 

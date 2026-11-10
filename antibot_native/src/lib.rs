@@ -16,6 +16,7 @@ pub mod hw_telemetry;
 pub mod mcp_rpc;
 pub mod markdown;
 pub mod mmap_log;
+pub mod model_runtime;
 pub mod net_traffic;
 pub mod syntax;
 pub mod vector_rag;
@@ -39,7 +40,7 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_getNativeVer
     env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let output = env.new_string("1.0.78-rust-hw-telemetry").unwrap();
+    let output = env.new_string("2.0.0-rust-native-production").unwrap();
     output.into_raw()
 }
 
@@ -966,6 +967,64 @@ pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_evaluateTher
     let output = env.new_string(json_str).unwrap();
     output.into_raw()
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_inspectGgufHeaderNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    file_path: JString<'local>,
+) -> jstring {
+    let path_str: String = match env.get_string(&file_path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let res = model_runtime::inspect_gguf_file(std::path::Path::new(&path_str));
+    let json_str = match res {
+        Ok(meta) => serde_json::to_string(&meta).unwrap_or_else(|_| "{}".to_string()),
+        Err(e) => serde_json::json!({ "error": e }).to_string(),
+    };
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_example_gemini_native_AntiBotNative_validateModelRuntimeNative<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    model_path: JString<'local>,
+    context_length: jint,
+) -> jstring {
+    let path_str: String = match env.get_string(&model_path) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(),
+    };
+
+    let meta = match model_runtime::inspect_gguf_file(std::path::Path::new(&path_str)) {
+        Ok(m) => m,
+        Err(e) => {
+            let err_json = serde_json::json!({ "feasible": false, "warning": e }).to_string();
+            let output = env.new_string(err_json).unwrap();
+            return output.into_raw();
+        }
+    };
+
+    let telem = hw_telemetry::collect_hardware_telemetry(None);
+    let avail_ram = telem.memory.available_mb;
+    let online_cores = telem.online_cores_count;
+
+    let validation = model_runtime::validate_model_runtime(
+        &meta,
+        context_length.max(0) as usize,
+        avail_ram,
+        online_cores,
+    );
+
+    let json_str = serde_json::to_string(&validation).unwrap_or_else(|_| "{}".to_string());
+    let output = env.new_string(json_str).unwrap();
+    output.into_raw()
+}
+
 
 
 

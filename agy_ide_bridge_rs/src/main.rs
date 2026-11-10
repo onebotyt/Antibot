@@ -318,6 +318,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/hw/telemetry", get(handlers::hardware::hw_telemetry_handler))
         .route("/api/hw/thermal/evaluate", post(handlers::hardware::hw_thermal_eval_handler))
         .route("/api/hw/cpu", get(handlers::hardware::hw_cpu_handler))
+        // Offline Model Runtime & GGUF Inspector
+        .route("/api/models/gguf/inspect", post(handlers::models::models_gguf_inspect_handler))
+        .route("/api/models/runtime/validate", post(handlers::models::models_runtime_validate_handler))
         // Conversations & Export / Restore
         .route("/api/conversations", get(handlers::conversations::conversations_list_handler))
         .route("/api/conversations/search", get(handlers::conversations::search_conversations_handler))

@@ -1,12 +1,13 @@
 {
-  "version_code": 198,
-  "version_name": "1.0.78",
+  "version_code": 200,
+  "version_name": "2.0.0",
   "min_supported_version_code": 1,
   "changelog": [
-    "\ud83c\udf21\ufe0f Phase 19 Upgrade: Native Hardware Telemetry, CPU Topology & Thermal Governor in Rust.",
-    "\u26a1 Real-Time CPU & RAM Telemetry: Direct zero-allocation parsing of CPU frequencies per core, online topology, and Linux /proc/meminfo memory stats.",
-    "\ud83d\udee1\ufe0f Adaptive Thermal Throttling Governor: Dynamic calculation of throttle multipliers (1.0 to 0.1), token pacing delays, and thread pool scaling to protect mobile devices from thermal runaway.",
-    "\ud83d\udd2c Thermal Multi-Zone Diagnostics: Multi-sensor evaluation across CPU thermal zones and battery temperature."
+    "🚀 Antibot 2.0.0 GRAND FINALE: 100% Complete 20-Phase Native Rust Upgrade!",
+    "🧠 Phase 20: Native Offline Model Runtime Bridge & GGUF Binary Inspector in pure Rust.",
+    "🔬 GGUF Metadata Engine: Zero-overhead binary header parsing (architecture, layers, KV heads, context window, quantization type).",
+    "🛡️ Hardware Feasibility Validator: Real-time KV cache and model memory requirements calculated against available device RAM to prevent out-of-memory crashes.",
+    "⚡ Full Native Rust Stack: High-speed diffing, Ripper search, AST lexer, Audio DSP, Vector RAG, BM25 FTS5, DAG consensus, and thermal governor."
   ],
-  "is_critical": false
+  "is_critical": true
 }
