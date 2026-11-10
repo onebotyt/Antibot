@@ -3,9 +3,9 @@
   "version_name": "2.4.94",
   "min_supported_version_code": 1,
   "changelog": [
-    "🎙️ Live Voice Interaction in Personal Assistant Mode: Start hands-free, continuous spoken calls with your personal assistant featuring on-device speech recognition, neural voice synthesis, audio visualizer, barge-in interruption, and live captions directly from the assistant orb and panel.",
-    "✨ Customizable Personal Assistant: Renamed settings to 'Personal Assistant' with custom assistant name personalization (e.g. Jarvis, Friday, Nova, AntiBot), dynamically reflected in prompts, wake words, and UI.",
-    "🌐 Universal Live Voice Call Screen: Live voice calls are now globally accessible across all tabs, IDE, terminal, browser, and personal assistant modes."
+    "\ud83c\udf99\ufe0f Live Voice Interaction in Personal Assistant Mode: Start hands-free, continuous spoken calls with your personal assistant featuring on-device speech recognition, neural voice synthesis, audio visualizer, barge-in interruption, and live captions directly from the assistant orb and panel.",
+    "\u2728 Customizable Personal Assistant: Renamed settings to 'Personal Assistant' with custom assistant name personalization (e.g. Jarvis, Friday, Nova, AntiBot), dynamically reflected in prompts, wake words, and UI.",
+    "\ud83c\udf10 Universal Live Voice Call Screen: Live voice calls are now globally accessible across all tabs, IDE, terminal, browser, and personal assistant modes."
   ],
   "is_critical": false
 }
