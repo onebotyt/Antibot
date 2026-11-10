@@ -128,6 +128,7 @@ fun ChatHistoryDrawer(
     accountsButton: (@Composable () -> Unit)? = null,
     /** Antigravity runs: its hub start-up and first sync drive the list's loading states. */
     agyEnabled: Boolean = true,
+    enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -736,19 +737,38 @@ fun ChatHistoryDrawer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Row 2: Filter Chips [All] [Local (0 Tokens)] [Antigravity] (Image 4 - Always Visible)
+            // Row 2: Filter Chips [All] [Antigravity] [Local] [Claude] [OpenCode] [Codex]
+            val filterOptions = buildList {
+                add(null to "All")
+                val activeAgents = if (enabledAgents.isNotEmpty()) enabledAgents else setOf(
+                    com.example.gemini.domain.model.AgentKind.AGY,
+                    com.example.gemini.domain.model.AgentKind.LOCAL
+                )
+                if (com.example.gemini.domain.model.AgentKind.AGY in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.AGY to "Antigravity")
+                }
+                if (com.example.gemini.domain.model.AgentKind.LOCAL in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.LOCAL to "Local (0 Tokens)")
+                }
+                if (com.example.gemini.domain.model.AgentKind.CLAUDE in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.CLAUDE to "Claude Code")
+                }
+                if (com.example.gemini.domain.model.AgentKind.OPENCODE in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.OPENCODE to "OpenCode")
+                }
+                if (com.example.gemini.domain.model.AgentKind.CODEX in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.CODEX to "Codex")
+                }
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                listOf<Pair<com.example.gemini.domain.model.AgentKind?, String>>(
-                    null to "All",
-                    com.example.gemini.domain.model.AgentKind.LOCAL to "Local (0 Tokens)",
-                    com.example.gemini.domain.model.AgentKind.AGY to "Antigravity"
-                ).forEach { (agent, label) ->
+                filterOptions.forEach { (agent, label) ->
                     val selected = agentFilter == agent
                     Surface(
                         onClick = { agentFilter = agent },

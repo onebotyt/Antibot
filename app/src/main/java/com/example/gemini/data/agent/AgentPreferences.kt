@@ -47,16 +47,34 @@ class AgentPreferences(context: Context) {
 
         private fun default(agent: AgentKind) = agent == AgentKind.AGY || agent == AgentKind.LOCAL
 
-        private fun read(prefs: android.content.SharedPreferences): Set<AgentKind> =
-            setOf(AgentKind.AGY, AgentKind.LOCAL)
+        private fun read(prefs: android.content.SharedPreferences): Set<AgentKind> {
+            val chosen = prefs.getBoolean(KEY_CHOSEN, false)
+            if (!chosen) {
+                return AgentKind.entries.filter { default(it) }.toSet()
+            }
+            val set = AgentKind.entries.filter { prefs.getBoolean(key(it), default(it)) }.toSet()
+            return if (set.isEmpty()) setOf(AgentKind.AGY) else set
+        }
 
         /** The first-launch agent choice was made, read synchronously (the server does not start before it). */
-        fun hasChosenSync(context: Context): Boolean = true
+        fun hasChosenSync(context: Context): Boolean {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            return prefs.getBoolean(KEY_CHOSEN, false)
+        }
 
         /** Enabled agents, read synchronously (bridge launch). */
-        fun enabledSync(context: Context): Set<AgentKind> = setOf(AgentKind.AGY, AgentKind.LOCAL)
+        fun enabledSync(context: Context): Set<AgentKind> {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            return read(prefs)
+        }
 
         /** Bridge flags for launcher. */
-        fun bridgeFlags(context: Context): String = ""
+        fun bridgeFlags(context: Context): String {
+            val enabled = enabledSync(context)
+            val flags = StringBuilder()
+            if (AgentKind.AGY !in enabled) flags.append(" --no-hub")
+            if (AgentKind.CLAUDE !in enabled) flags.append(" --no-claude")
+            return flags.toString()
+        }
     }
 }

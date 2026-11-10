@@ -1228,6 +1228,7 @@ fun ChatScreen(
                     scope.launch { drawerState.close() }
                 },
                 agyEnabled = com.example.gemini.domain.model.AgentKind.AGY in enabledAgents,
+                enabledAgents = enabledAgents,
                 accountsButton = {
                     com.example.gemini.ui.agents.AccountsButton(
                         agy = agyEntry,
@@ -1430,6 +1431,13 @@ fun ChatScreen(
                         }
                     },
                     actions = {
+                        com.example.gemini.ui.components.AgentTopBarDropdown(
+                            selected = effectiveAgent,
+                            onSelect = pickAgent,
+                            agents = enabledAgents,
+                            statusColors = agentEntries.associate { it.agent to it.color }
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
                         com.example.gemini.ui.agents.AgentStatusIndicator(
                             entries = agentEntries,
                             onOpenServerLogs = { showLocalServerOutputDialog = true },
@@ -1503,15 +1511,6 @@ fun ChatScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                if (isFreshNewChat) {
-                                    com.example.gemini.ui.components.AgentPicker(
-                                        selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = pickAgent,
-                                        modifier = Modifier.padding(bottom = 20.dp),
-                                        agents = enabledAgents,
-                                        statusColors = agentEntries.associate { it.agent to it.color }
-                                    )
-                                }
                                 com.example.gemini.ui.components.ServerStoppedPromptCard(
                                     onStartServer = { com.example.gemini.data.local.LocalServerManager.startServer(context, forceRestart = true) },
                                     onSwitchToLocal = {
@@ -1525,33 +1524,7 @@ fun ChatScreen(
                             }
                         }
                     } else if (isAgyChat && isServerInitializing && messages.isEmpty()) {
-                        if (isFreshNewChat && enabledAgents.filter { it != com.example.gemini.domain.model.AgentKind.LOCAL }.size > 1) {
-                            BoxWithConstraints(
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                val minHeight = maxHeight
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .verticalScroll(emptyScrollState)
-                                        .heightIn(min = minHeight)
-                                        .padding(horizontal = 24.dp, vertical = 24.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    com.example.gemini.ui.components.AgentPicker(
-                                        selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = pickAgent,
-                                        modifier = Modifier.padding(bottom = 20.dp),
-                                        agents = enabledAgents,
-                                        statusColors = agentEntries.associate { it.agent to it.color }
-                                    )
-                                    com.example.gemini.ui.components.EngineWarmingUpView()
-                                }
-                            }
-                        } else {
-                            com.example.gemini.ui.components.EngineWarmingUpView()
-                        }
+                        com.example.gemini.ui.components.EngineWarmingUpView()
                     } else if (!conversationError.isNullOrBlank() && messages.isEmpty() && (isExistingConversation || currentConv != null)) {
                         Column(
                             modifier = Modifier
@@ -1620,16 +1593,6 @@ fun ChatScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                if (isFreshNewChat) {
-                                    com.example.gemini.ui.components.AgentPicker(
-                                        selected = currentConv?.agent ?: newChatAgent,
-                                        onSelect = pickAgent,
-                                        modifier = Modifier.padding(bottom = 20.dp),
-                                        agents = enabledAgents,
-                                        statusColors = agentEntries.associate { it.agent to it.color }
-                                    )
-                                }
-
                                 if (!isNetworkConnected) {
                                     com.example.gemini.ui.components.NewChatOfflinePromptCard(
                                         modifier = Modifier.padding(bottom = 20.dp)

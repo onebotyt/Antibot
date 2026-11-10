@@ -442,7 +442,7 @@ object RemoteServerManager {
         val p = plan(context)
         val tz = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000
         val enabledAgents = com.example.gemini.data.agent.AgentPreferences.enabledSync(context)
-        val claudeEnabled = false
+        val claudeEnabled = com.example.gemini.domain.model.AgentKind.CLAUDE in enabledAgents
         val agyEnabled = com.example.gemini.domain.model.AgentKind.AGY in enabledAgents
         val core = buildString {
             append(q(bin)).append(" -f --token ").append(AuthPreferences.currentSecurityToken)
