@@ -1,10 +1,10 @@
 {
-  "version_code": 219,
-  "version_name": "2.4.99",
+  "version_code": 218,
+  "version_name": "2.4.98",
   "min_supported_version_code": 1,
   "changelog": [
-    "🦀 Rust ContextCompactor: Chat history compaction, summarization prompt construction, anchor rule loading (AGENTS.md, .gemini/rules, CLAUDE.md), and rollover seed prompts are now ported to the Rust bridge daemon (POST /api/conversations/compact and POST /api/conversations/rollover-seed). Kotlin delegates seamlessly with local fallback.",
-    "🦀 Rust SmartModelRouter: AI model routing is now handled by the Rust bridge daemon via POST /api/models/route — 8-step priority chain (manual → offline → shell → security → coding → fast-QA → fallback → local), with Kotlin routeViaBridge() falling back gracefully when daemon unavailable."
+    "\ud83e\udd80 Rust ContextCompactor: Chat history compaction, summarization prompt construction, anchor rule loading (AGENTS.md, .gemini/rules, CLAUDE.md), and rollover seed prompts are now ported to the Rust bridge daemon (POST /api/conversations/compact and POST /api/conversations/rollover-seed). Kotlin delegates seamlessly with local fallback.",
+    "\ud83e\udd80 Rust SmartModelRouter: AI model routing is now handled by the Rust bridge daemon via POST /api/models/route \u2014 8-step priority chain (manual \u2192 offline \u2192 shell \u2192 security \u2192 coding \u2192 fast-QA \u2192 fallback \u2192 local), with Kotlin routeViaBridge() falling back gracefully when daemon unavailable."
   ],
   "is_critical": false
 }
