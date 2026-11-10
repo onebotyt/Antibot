@@ -1,13 +1,13 @@
 {
-  "version_code": 200,
-  "version_name": "2.0.0",
+  "version_code": 199,
+  "version_name": "2.0.79",
   "min_supported_version_code": 1,
   "changelog": [
-    "🚀 Antibot 2.0.0 GRAND FINALE: 100% Complete 20-Phase Native Rust Upgrade!",
-    "🧠 Phase 20: Native Offline Model Runtime Bridge & GGUF Binary Inspector in pure Rust.",
-    "🔬 GGUF Metadata Engine: Zero-overhead binary header parsing (architecture, layers, KV heads, context window, quantization type).",
-    "🛡️ Hardware Feasibility Validator: Real-time KV cache and model memory requirements calculated against available device RAM to prevent out-of-memory crashes.",
-    "⚡ Full Native Rust Stack: High-speed diffing, Ripper search, AST lexer, Audio DSP, Vector RAG, BM25 FTS5, DAG consensus, and thermal governor."
+    "\ud83d\ude80 Antibot 2.0.0 GRAND FINALE: 100% Complete 20-Phase Native Rust Upgrade!",
+    "\ud83e\udde0 Phase 20: Native Offline Model Runtime Bridge & GGUF Binary Inspector in pure Rust.",
+    "\ud83d\udd2c GGUF Metadata Engine: Zero-overhead binary header parsing (architecture, layers, KV heads, context window, quantization type).",
+    "\ud83d\udee1\ufe0f Hardware Feasibility Validator: Real-time KV cache and model memory requirements calculated against available device RAM to prevent out-of-memory crashes.",
+    "\u26a1 Full Native Rust Stack: High-speed diffing, Ripper search, AST lexer, Audio DSP, Vector RAG, BM25 FTS5, DAG consensus, and thermal governor."
   ],
   "is_critical": true
 }
