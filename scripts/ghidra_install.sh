@@ -5,7 +5,12 @@
 # =============================================================================
 set -euo pipefail
 
-TOOLS_DIR="${1:-/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu/root/tools/ghidra}"
+if [ -d "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs" ]; then
+    DEFAULT_TOOLS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root/tools/ghidra"
+else
+    DEFAULT_TOOLS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu/root/tools/ghidra"
+fi
+TOOLS_DIR="${1:-$DEFAULT_TOOLS_DIR}"
 
 echo "=== Installing NSA Ghidra headless analyzer environment ==="
 mkdir -p "${TOOLS_DIR}/support"

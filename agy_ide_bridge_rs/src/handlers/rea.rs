@@ -33,11 +33,19 @@ pub struct ReaRunResponse {
     pub stderr: String,
 }
 
+fn resolve_ubuntu_dir(termux_root: &str) -> String {
+    let candidates = [
+        format!("{}/usr/var/lib/proot-distro/containers/ubuntu/rootfs", termux_root),
+        format!("{}/usr/var/lib/proot-distro/installed-rootfs/ubuntu", termux_root),
+    ];
+    candidates.iter().find(|p| Path::new(p).exists()).cloned().unwrap_or_else(|| candidates[0].clone())
+}
+
 pub async fn rea_status_handler() -> Json<ReaStatus> {
     let mut components = HashMap::new();
 
     let termux_root = "/data/data/com.termux/files";
-    let ubuntu_dir = format!("{}/usr/var/lib/proot-distro/installed-rootfs/ubuntu", termux_root);
+    let ubuntu_dir = resolve_ubuntu_dir(termux_root);
     let container_installed = Path::new(&ubuntu_dir).exists();
     components.insert("container".to_string(), container_installed);
 
@@ -180,7 +188,7 @@ pub async fn rea_ghidra_decompile_handler(
     Json(payload): Json<GhidraDecompileRequest>,
 ) -> Json<GhidraDecompileResponse> {
     let termux_root = "/data/data/com.termux/files";
-    let ubuntu_dir = format!("{}/usr/var/lib/proot-distro/installed-rootfs/ubuntu", termux_root);
+    let ubuntu_dir = resolve_ubuntu_dir(termux_root);
     let headless_path = format!("{}/root/tools/ghidra/support/analyzeHeadless", ubuntu_dir);
     let is_installed = Path::new(&headless_path).exists()
         || Path::new(&format!("{}/usr/local/bin/ghidra-decompiler", ubuntu_dir)).exists()

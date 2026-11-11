@@ -700,8 +700,13 @@ internal fun ReaServerDialog(
                             }
                         }
                         Hint(
-                            if (mode == ReaManager.Mode.ON_DEMAND) "On demand, allowing more groups costs nothing up front. \"Decompiler session\" needs Ghidra, IDA, Hopper or Kuna, which are not installed."
-                            else "Directly, each group adds its size (tokens shown on the chip) to every request."
+                            if (mode == ReaManager.Mode.ON_DEMAND) {
+                                if (Component.GHIDRA in state.installed) {
+                                    "On demand, allowing more groups costs nothing up front. NSA Ghidra decompiler engine is installed and active for decompiler sessions."
+                                } else {
+                                    "On demand, allowing more groups costs nothing up front. \"Decompiler session\" needs Ghidra (can be installed in Step 2 above), IDA, Hopper or Kuna."
+                                }
+                            } else "Directly, each group adds its size (tokens shown on the chip) to every request."
                         )
                         val missing = initialGroups.orEmpty().filter { id -> state.groups.none { it.id == id } }
                         if (missing.isNotEmpty()) Text("Removed groups still named here: ${missing.joinToString()}. Saving drops them.", fontSize = 11.5.sp, color = Amber)
