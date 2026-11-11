@@ -1,6 +1,6 @@
 {
-  "version_code": 231,
-  "version_name": "2.4.111",
+  "version_code": 232,
+  "version_name": "2.4.112",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83e\udde0 Agentic Awesome Skills (2,955+ Skills & 30 Bundles): Full native integration of the entire Agentic Awesome Skills library across all AIs and CLIs. Features an interactive Skills Hub dialog with live search, category/risk filter chips, and 1-tap installation into projects (.agents/skills) or globally. Added agentic_skills_mcp local bridge MCP server, in-chat AI skill commands ('search skills', 'install skill', 'install bundle', 'list skills'), and 1-tap presets in General MCP, Codex, OpenCode, and Claude Code settings.",
