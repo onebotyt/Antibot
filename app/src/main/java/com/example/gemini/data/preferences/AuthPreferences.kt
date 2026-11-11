@@ -84,6 +84,7 @@ class AuthPreferences(private val context: Context) {
         val LLM_MANAGER_FAST_QA_MODEL = stringPreferencesKey("llm_manager_fast_qa_model")
         val LLM_MANAGER_SHELL_MODEL = stringPreferencesKey("llm_manager_shell_model")
         val LLM_MANAGER_FALLBACK_MODEL = stringPreferencesKey("llm_manager_fallback_model")
+        val LLM_MANAGER_PREFERRED_CLI = stringPreferencesKey("llm_manager_preferred_cli")
 
         const val DEFAULT_BRIDGE_BINARY_PATH = "~/../usr/bin/agy_ide_bridge"
         const val DEFAULT_UBUNTU_BRIDGE_BINARY_PATH = "/antigem/bin/agy_ide_bridge"
@@ -800,12 +801,14 @@ class AuthPreferences(private val context: Context) {
     val llmManagerFastQaModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_FAST_QA_MODEL] ?: "gemini" }
     val llmManagerShellModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_SHELL_MODEL] ?: "local-qwen-coder-0.5b" }
     val llmManagerFallbackModel: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_FALLBACK_MODEL] ?: "gemini" }
+    val llmManagerPreferredCli: Flow<String> = context.dataStore.data.map { it[LLM_MANAGER_PREFERRED_CLI] ?: "auto" }
 
     fun getLlmManagerArchitectureModelSync(): String = syncPrefs.getString("llm_manager_architecture_model", "claude") ?: "claude"
     fun getLlmManagerCodingModelSync(): String = syncPrefs.getString("llm_manager_coding_model", "claude") ?: "claude"
     fun getLlmManagerFastQaModelSync(): String = syncPrefs.getString("llm_manager_fast_qa_model", "gemini") ?: "gemini"
     fun getLlmManagerShellModelSync(): String = syncPrefs.getString("llm_manager_shell_model", "local-qwen-coder-0.5b") ?: "local-qwen-coder-0.5b"
     fun getLlmManagerFallbackModelSync(): String = syncPrefs.getString("llm_manager_fallback_model", "gemini") ?: "gemini"
+    fun getLlmManagerPreferredCliSync(): String = syncPrefs.getString("llm_manager_preferred_cli", "auto") ?: "auto"
 
     suspend fun setLlmManagerArchitectureModel(modelId: String) {
         syncPrefs.edit().putString("llm_manager_architecture_model", modelId).apply()
@@ -830,6 +833,11 @@ class AuthPreferences(private val context: Context) {
     suspend fun setLlmManagerFallbackModel(modelId: String) {
         syncPrefs.edit().putString("llm_manager_fallback_model", modelId).apply()
         context.dataStore.edit { it[LLM_MANAGER_FALLBACK_MODEL] = modelId }
+    }
+
+    suspend fun setLlmManagerPreferredCli(cli: String) {
+        syncPrefs.edit().putString("llm_manager_preferred_cli", cli).apply()
+        context.dataStore.edit { it[LLM_MANAGER_PREFERRED_CLI] = cli }
     }
 
     suspend fun setCommandAutoExecutionPolicy(policy: String) {

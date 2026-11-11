@@ -78,6 +78,35 @@ object LocalIntelligenceEngine {
         null
     }
 
+    fun classifyLocalIntent(prompt: String): LocalIntentClassification {
+        val trimmed = prompt.trim()
+        val lower = trimmed.lowercase(Locale.ROOT)
+        return when {
+            isDirectCommand(trimmed, lower) -> {
+                val cmd = when {
+                    trimmed.startsWith("$") || trimmed.startsWith("!") -> trimmed.drop(1).trim()
+                    lower.startsWith("run ") -> trimmed.drop(4).trim()
+                    lower.startsWith("exec ") -> trimmed.drop(5).trim()
+                    lower.startsWith("execute ") -> trimmed.drop(8).trim()
+                    lower.startsWith("bash ") -> trimmed.drop(5).trim()
+                    lower.startsWith("sh ") -> trimmed.drop(3).trim()
+                    else -> trimmed
+                }
+                LocalIntentClassification("DIRECT_COMMAND", cmd, null)
+            }
+            isDevServerRequest(lower) -> LocalIntentClassification("DEV_SERVER", null, null)
+            isInbuiltBrowserSearchRequest(lower) -> LocalIntentClassification("INBUILT_BROWSER_SEARCH", null, null)
+            isDevTeamFullstackRequest(lower) -> LocalIntentClassification("DEV_TEAM_FULLSTACK", null, null)
+            isWebOrFileGenerationRequest(lower) -> LocalIntentClassification("WEB_OR_FILE_GENERATION", null, null)
+            isGreetingOrIdentity(lower) -> LocalIntentClassification("GREETING_OR_IDENTITY", null, null)
+            lower.contains("security audit") || lower.contains("owasp") || lower.contains("vulnerability") || lower.contains("pentest") || lower.contains("penetration test") || lower.contains("sql injection") || lower.contains("xss") || lower.contains("csrf") || lower.contains("hardening") -> LocalIntentClassification("SECURITY_AUDIT", null, null)
+            lower.contains("architecture") || lower.contains("architect") || lower.contains("design pattern") || lower.contains("system design") || lower.contains("plan") || lower.contains("step by step") -> LocalIntentClassification("ARCHITECTURE", null, null)
+            lower.contains("refactor") || lower.contains("traceback") || lower.contains("stack trace") || lower.contains("nullpointerexception") || lower.contains("deadlock") || lower.contains("memory leak") || lower.contains("compile error") || lower.contains("syntax error") || lower.contains("function") || lower.contains("class") || trimmed.length > 500 || prompt.count { it == '\n' } > 10 -> LocalIntentClassification("CODE_CREATION", null, null)
+            else -> LocalIntentClassification("GENERAL_CONVERSATION", null, null)
+        }
+    }
+
+
     suspend fun generateResponse(
         prompt: String,
         messages: List<ChatMessage>,

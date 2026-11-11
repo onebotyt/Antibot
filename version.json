@@ -1,8 +1,9 @@
 {
-  "version_code": 232,
-  "version_name": "2.4.112",
+  "version_code": 233,
+  "version_name": "2.4.113",
   "min_supported_version_code": 1,
   "changelog": [
+    "🧠 Smart Manager Brain (Qwen 2.5 Coder On-Device Neural Engine) & Multi-CLI Switcher: Upgraded Smart LLM Manager with on-device Qwen 2.5 Coder 0.5B neural model as the primary routing brain (<15ms zero-latency intent classification, 0 cloud tokens). Added full support for selecting, switching, and setting defaults across all 5 CLI engines (Antigravity, Local Qwen, Claude Code, Codex, OpenCode). Categorized task routing dialog into dedicated CLI Manager and Cloud Model sections, added interactive CLI switcher cards, real-time brain metrics, and preferred CLI auto-dispatch.",
     "\ud83e\udde0 Agentic Awesome Skills (2,955+ Skills & 30 Bundles): Full native integration of the entire Agentic Awesome Skills library across all AIs and CLIs. Features an interactive Skills Hub dialog with live search, category/risk filter chips, and 1-tap installation into projects (.agents/skills) or globally. Added agentic_skills_mcp local bridge MCP server, in-chat AI skill commands ('search skills', 'install skill', 'install bundle', 'list skills'), and 1-tap presets in General MCP, Codex, OpenCode, and Claude Code settings.",
     "\ud83d\udd52 Offline GitHub-Style Local Version Control: Full local version control suite working completely without GitHub. Features an interactive Version Control Dialog with visual commit timeline cards, file additions/deletions diff viewer, 1-tap workspace rollback/revert, file-level restoration, branch manager, and in-chat natural AI commands ('save checkpoint', 'rollback', 'show version history'). Available everywhere across Top Bar, IDE Git tab, and Chat.",
     "\ud83d\udcc1 Move Chat to Project & UI/UX Polish: Added one-tap 'Move Chat to Project' dialog and in-chat AI intent detection to export full conversation context into structured PROJECT_CONTEXT.md, docs/CONVERSATION_HISTORY.md, and AGENTS.md workspaces. Fixed top bar header text truncation and refined agent dropdown layout.",

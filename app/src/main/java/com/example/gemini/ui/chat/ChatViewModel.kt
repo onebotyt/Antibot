@@ -435,7 +435,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             codingModel = authPrefs.getLlmManagerCodingModelSync(),
             fastQaModel = authPrefs.getLlmManagerFastQaModelSync(),
             shellModel = authPrefs.getLlmManagerShellModelSync(),
-            fallbackModel = authPrefs.getLlmManagerFallbackModelSync()
+            fallbackModel = authPrefs.getLlmManagerFallbackModelSync(),
+            preferredCli = authPrefs.getLlmManagerPreferredCliSync()
         )
         // Synchronous fallback (used in non-suspend contexts)
         return com.example.gemini.domain.model.SmartModelRouter.route(
@@ -456,7 +457,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             codingModel = authPrefs.getLlmManagerCodingModelSync(),
             fastQaModel = authPrefs.getLlmManagerFastQaModelSync(),
             shellModel = authPrefs.getLlmManagerShellModelSync(),
-            fallbackModel = authPrefs.getLlmManagerFallbackModelSync()
+            fallbackModel = authPrefs.getLlmManagerFallbackModelSync(),
+            preferredCli = authPrefs.getLlmManagerPreferredCliSync()
         )
         return com.example.gemini.domain.model.SmartModelRouter.routeViaBridge(
             prompt = draftText,

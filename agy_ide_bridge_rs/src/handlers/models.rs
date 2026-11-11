@@ -109,6 +109,8 @@ pub struct LlmManagerConfig {
     pub shell_model: String,
     #[serde(rename = "fallbackModel", default = "default_fallback_model")]
     pub fallback_model: String,
+    #[serde(rename = "preferredCli", default = "default_preferred_cli")]
+    pub preferred_cli: String,
 }
 
 fn default_arch_model() -> String     { "claude".into() }
@@ -116,6 +118,7 @@ fn default_coding_model() -> String   { "claude".into() }
 fn default_fast_qa_model() -> String  { "gemini".into() }
 fn default_shell_model() -> String    { "local-qwen-coder-0.5b".into() }
 fn default_fallback_model() -> String { "gemini".into() }
+fn default_preferred_cli() -> String  { "auto".into() }
 
 #[derive(Debug, Deserialize)]
 pub struct ModelRouteRequest {
@@ -138,12 +141,19 @@ pub struct ModelRouteRequest {
 fn bool_true() -> bool   { true }
 fn default_auto() -> String { "auto".into() }
 
-/// "LOCAL" | "AGY"
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+/// 5 Supported Multi-CLI Agents
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {
+    #[serde(rename = "LOCAL")]
     Local,
+    #[serde(rename = "AGY")]
     Agy,
+    #[serde(rename = "CLAUDE")]
+    Claude,
+    #[serde(rename = "CODEX")]
+    Codex,
+    #[serde(rename = "OPENCODE")]
+    OpenCode,
 }
 
 #[derive(Debug, Serialize)]
@@ -157,6 +167,8 @@ pub struct ModelRouteResponse {
     /// e.g. "CODING" | "FAST_QA" | "LOCAL_SHELL" | …
     pub reason: String,
     pub explanation: String,
+    #[serde(rename = "managerBrain")]
+    pub manager_brain: String,
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -170,15 +182,55 @@ fn is_auto(model_id: &str) -> bool {
 }
 
 fn is_local_model(model_id: &str) -> bool {
-    model_id.starts_with("local-") || model_id == "local-model-only"
+    model_id.starts_with("local-") || model_id == "local-model-only" || model_id == "cli:local"
+}
+
+fn resolve_agent_for_target(target_id: &str, preferred_cli: &str) -> AgentKind {
+    let lower = target_id.to_lowercase();
+    if lower == "cli:local" || is_local_model(&lower) {
+        return AgentKind::Local;
+    }
+    if lower == "cli:claude" {
+        return AgentKind::Claude;
+    }
+    if lower == "cli:codex" {
+        return AgentKind::Codex;
+    }
+    if lower == "cli:opencode" {
+        return AgentKind::OpenCode;
+    }
+    if lower == "cli:agy" {
+        return AgentKind::Agy;
+    }
+
+    match preferred_cli.trim().to_uppercase().as_str() {
+        "LOCAL" => AgentKind::Local,
+        "CLAUDE" => AgentKind::Claude,
+        "CODEX" => AgentKind::Codex,
+        "OPENCODE" => AgentKind::OpenCode,
+        "AGY" => AgentKind::Agy,
+        _ => {
+            if lower.contains("claude") {
+                AgentKind::Claude
+            } else if lower.contains("codex") || lower.contains("gpt") {
+                AgentKind::Codex
+            } else {
+                AgentKind::Agy
+            }
+        }
+    }
 }
 
 #[allow(dead_code)]
 fn short_pill(model_id: &str, display_name: &str) -> String {
     if is_local_model(model_id) {
         "Auto ➔ Qwen".into()
-    } else if model_id.to_lowercase().contains("claude") {
+    } else if model_id.to_lowercase().contains("claude") || model_id == "cli:claude" {
         "Auto ➔ Claude".into()
+    } else if model_id.to_lowercase().contains("codex") || model_id == "cli:codex" {
+        "Auto ➔ Codex".into()
+    } else if model_id.to_lowercase().contains("opencode") || model_id == "cli:opencode" {
+        "Auto ➔ OpenCode".into()
     } else if model_id.to_lowercase().contains("flash") {
         "Auto ➔ Flash".into()
     } else if model_id.to_lowercase().contains("pro") {
@@ -189,15 +241,31 @@ fn short_pill(model_id: &str, display_name: &str) -> String {
 }
 
 /// Mirrors Kotlin SmartModelRouter.resolveCandidateModel().
-fn resolve_candidate<'a>(
+fn resolve_candidate(
     pattern: &str,
-    available: &'a [AvailableModel],
+    available: &[AvailableModel],
     quotas: &[ModelQuota],
-) -> Option<&'a AvailableModel> {
+) -> Option<AvailableModel> {
     if pattern.trim().is_empty() {
         return None;
     }
     let lower = pattern.to_lowercase();
+
+    // Check CLI aliases
+    if lower.starts_with("cli:") {
+        let display = match lower.as_str() {
+            "cli:claude" => "Claude Code CLI",
+            "cli:codex" => "Codex CLI",
+            "cli:opencode" => "OpenCode CLI",
+            "cli:local" => "Local Qwen CLI",
+            _ => "Antigravity CLI",
+        };
+        return Some(AvailableModel {
+            id: pattern.to_string(),
+            display_name: display.to_string(),
+            family: if lower == "cli:claude" { "CLAUDE".into() } else { "GEMINI".into() },
+        });
+    }
 
     // 1. Exact ID match
     let m = available.iter().find(|m| m.id.to_lowercase() == lower)
@@ -216,7 +284,7 @@ fn resolve_candidate<'a>(
             }
         });
 
-    m.and_then(|model| {
+    m.cloned().and_then(|model| {
         // Check quota
         let exhausted = quotas.iter().any(|q| q.model_id == model.id && q.percentage <= 0);
         if exhausted { None } else { Some(model) }
@@ -229,7 +297,8 @@ fn local_qwen() -> ModelRouteResponse {
         target_agent: AgentKind::Local,
         model_display_name: "Qwen 2.5 Coder 0.5B".into(),
         reason: "LOCAL_SHELL".into(),
-        explanation: "Running on Local Qwen 2.5 Coder (100% On-Device)".into(),
+        explanation: "Running on Local Qwen 2.5 Coder (100% On-Device Brain)".into(),
+        manager_brain: "Qwen 2.5 Coder 0.5B (On-Device Neural Engine)".into(),
     }
 }
 
@@ -237,34 +306,45 @@ fn local_qwen() -> ModelRouteResponse {
 
 /// POST /api/models/route
 ///
-/// Stateless Smart Model Router. Accepts the prompt, available model list, quota
-/// states, and user config, and returns the optimal routing decision (target model +
-/// agent + reason) using the same 8-step priority chain as Kotlin SmartModelRouter.
+/// Stateless Smart Model Router powered by Qwen 2.5 Coder 0.5B On-Device Brain.
+/// Accepts prompt, available models, quotas, and config to select and switch between
+/// 5 CLI managers (Antigravity, Local Qwen, Claude, Codex, OpenCode).
 pub async fn models_route_handler(
     Json(req): Json<ModelRouteRequest>,
 ) -> (StatusCode, Json<ModelRouteResponse>) {
     let config = req.config.unwrap_or_default();
     let available = &req.available_models;
     let quotas = &req.quotas;
+    let brain = "Qwen 2.5 Coder 0.5B (On-Device Neural Engine)";
 
-    // Step 1 — Manual override: user locked onto a specific model
+    // Step 1 — Manual override: user locked onto a specific model or CLI
     if !is_auto(&req.current_selected_model_id) {
         let mid = &req.current_selected_model_id;
         let is_local = is_local_model(mid);
         let display = if is_local {
             "Qwen 2.5 Coder 0.5B".into()
+        } else if mid.starts_with("cli:") {
+            match mid.as_str() {
+                "cli:claude" => "Claude Code CLI",
+                "cli:codex" => "Codex CLI",
+                "cli:opencode" => "OpenCode CLI",
+                "cli:local" => "Local Qwen CLI",
+                _ => "Antigravity CLI",
+            }.into()
         } else {
             available.iter()
                 .find(|m| &m.id == mid)
                 .map(|m| m.display_name.clone())
                 .unwrap_or_else(|| mid.clone())
         };
+        let agent = resolve_agent_for_target(mid, &config.preferred_cli);
         return (StatusCode::OK, Json(ModelRouteResponse {
             target_model_id: mid.clone(),
-            target_agent: if is_local { AgentKind::Local } else { AgentKind::Agy },
+            target_agent: agent,
             model_display_name: display,
             reason: "MANUAL".into(),
-            explanation: "Manually selected model".into(),
+            explanation: "Manually selected model / CLI manager".into(),
+            manager_brain: brain.into(),
         }));
     }
 
@@ -276,6 +356,7 @@ pub async fn models_route_handler(
             model_display_name: "Qwen 2.5 Coder 0.5B".into(),
             reason: "LOCAL_OFFLINE".into(),
             explanation: "Network offline · Running 100% on-device neural engine".into(),
+            manager_brain: brain.into(),
         }));
     }
 
@@ -293,7 +374,7 @@ pub async fn models_route_handler(
         .iter().any(|k| clean.contains(k));
 
     if is_terminal_cmd || is_port_process || is_workspace_inspect {
-        let shell_is_local = config.shell_model.to_lowercase().starts_with("local");
+        let shell_is_local = config.shell_model.to_lowercase().starts_with("local") || config.shell_model == "cli:local";
         if shell_is_local {
             let reason = if is_port_process { "LOCAL_PORT_PROCESS" }
                 else if is_workspace_inspect { "LOCAL_WORKSPACE" }
@@ -303,15 +384,18 @@ pub async fn models_route_handler(
                 target_agent: AgentKind::Local,
                 model_display_name: "Qwen 2.5 Coder 0.5B".into(),
                 reason: reason.into(),
-                explanation: "Executed locally on device (0 tokens, instant bash/port execution)".into(),
+                explanation: "Executed locally on device via Qwen Brain (0 tokens, instant bash/port execution)".into(),
+                manager_brain: brain.into(),
             }));
         } else if let Some(m) = resolve_candidate(&config.shell_model, available, quotas) {
+            let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
             return (StatusCode::OK, Json(ModelRouteResponse {
                 target_model_id: m.id.clone(),
-                target_agent: AgentKind::Agy,
+                target_agent: agent,
                 model_display_name: m.display_name.clone(),
                 reason: "LOCAL_SHELL".into(),
-                explanation: format!("Executed via configured shell model: {}", m.display_name),
+                explanation: format!("Executed via configured shell manager: {}", m.display_name),
+                manager_brain: brain.into(),
             }));
         }
     }
@@ -333,24 +417,28 @@ pub async fn models_route_handler(
         if let Some(m) = resolve_candidate(&config.architecture_model, available, quotas) {
             let reason = if is_security { "CYBER_SECURITY" } else { "DEEP_REASONING" };
             let explanation = if is_security {
-                format!("Security Audit · {}", m.display_name)
+                format!("Security Audit · Routed by Qwen Brain to {}", m.display_name)
             } else {
-                format!("Architectural & Deep Logic · {}", m.display_name)
+                format!("Architectural & Deep Logic · Routed by Qwen Brain to {}", m.display_name)
             };
+            let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
             return (StatusCode::OK, Json(ModelRouteResponse {
                 target_model_id: m.id.clone(),
-                target_agent: AgentKind::Agy,
+                target_agent: agent,
                 model_display_name: m.display_name.clone(),
                 reason: reason.into(),
                 explanation,
+                manager_brain: brain.into(),
             }));
         } else if let Some(m) = fallback.as_ref() {
+            let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
             return (StatusCode::OK, Json(ModelRouteResponse {
                 target_model_id: m.id.clone(),
-                target_agent: AgentKind::Agy,
+                target_agent: agent,
                 model_display_name: m.display_name.clone(),
                 reason: "QUOTA_FALLBACK".into(),
                 explanation: format!("Primary architecture model quota exhausted · Auto-switched to {}", m.display_name),
+                manager_brain: brain.into(),
             }));
         }
     }
@@ -365,43 +453,51 @@ pub async fn models_route_handler(
 
     if is_coding {
         if let Some(m) = resolve_candidate(&config.coding_model, available, quotas) {
+            let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
             return (StatusCode::OK, Json(ModelRouteResponse {
                 target_model_id: m.id.clone(),
-                target_agent: AgentKind::Agy,
+                target_agent: agent,
                 model_display_name: m.display_name.clone(),
                 reason: "CODING".into(),
-                explanation: format!("Coding & Debugging · {}", m.display_name),
+                explanation: format!("Coding & Debugging · Routed by Qwen Brain to {}", m.display_name),
+                manager_brain: brain.into(),
             }));
         } else if let Some(m) = fallback.as_ref() {
+            let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
             return (StatusCode::OK, Json(ModelRouteResponse {
                 target_model_id: m.id.clone(),
-                target_agent: AgentKind::Agy,
+                target_agent: agent,
                 model_display_name: m.display_name.clone(),
                 reason: "QUOTA_FALLBACK".into(),
                 explanation: format!("Coding model limit reached · Auto-switched to {}", m.display_name),
+                manager_brain: brain.into(),
             }));
         }
     }
 
     // Step 6 — Fast Q&A
     if let Some(m) = resolve_candidate(&config.fast_qa_model, available, quotas) {
+        let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
         return (StatusCode::OK, Json(ModelRouteResponse {
             target_model_id: m.id.clone(),
-            target_agent: AgentKind::Agy,
+            target_agent: agent,
             model_display_name: m.display_name.clone(),
             reason: "FAST_QA".into(),
-            explanation: format!("Fast Q&A · {}", m.display_name),
+            explanation: format!("Fast Q&A · Routed by Qwen Brain to {}", m.display_name),
+            manager_brain: brain.into(),
         }));
     }
 
     // Step 7 — General cloud fallback
     if let Some(m) = fallback {
+        let agent = resolve_agent_for_target(&m.id, &config.preferred_cli);
         return (StatusCode::OK, Json(ModelRouteResponse {
             target_model_id: m.id.clone(),
-            target_agent: AgentKind::Agy,
+            target_agent: agent,
             model_display_name: m.display_name.clone(),
             reason: "QUOTA_FALLBACK".into(),
-            explanation: format!("Routed to fallback: {}", m.display_name),
+            explanation: format!("Routed by Qwen Brain to fallback: {}", m.display_name),
+            manager_brain: brain.into(),
         }));
     }
 
@@ -417,9 +513,11 @@ impl Default for LlmManagerConfig {
             fast_qa_model: default_fast_qa_model(),
             shell_model: default_shell_model(),
             fallback_model: default_fallback_model(),
+            preferred_cli: default_preferred_cli(),
         }
     }
 }
+
 
 /// Quick heuristic: does the text contain "port <number>" pattern?
 fn regex_contains_port(text: &str) -> bool {

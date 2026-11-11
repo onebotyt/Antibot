@@ -2652,6 +2652,7 @@ fun ChatScreen(
             isApplyingAgents = isApplyingAgents,
             onApplyAgents = { viewModel.applyAgents(it) },
             onOpenProject = { onNavigateToIde() },
+            onSwitchAgent = { pickAgent(it) },
             onDismiss = {
                 showSettingsDialog = false
                 claudeSettingsPage = null
