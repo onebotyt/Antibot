@@ -289,10 +289,12 @@ object AgenticSkillsMcp {
 
             "install_skill" -> {
                 val id = args.optString("id", "")
-                val targetStr = args.optString("target", "project")
+                val targetStr = args.optString("target", "universal")
                 val projectPath = args.optString("project_path").takeIf { it.isNotBlank() }
 
                 val target = when (targetStr.lowercase()) {
+                    "universal", "all" -> SkillInstallTarget.UNIVERSAL
+                    "local", "qwen" -> SkillInstallTarget.LOCAL
                     "gemini" -> SkillInstallTarget.GEMINI
                     "codex" -> SkillInstallTarget.CODEX
                     "claude" -> SkillInstallTarget.CLAUDE
@@ -310,24 +312,35 @@ object AgenticSkillsMcp {
             }
 
             "list_installed_skills" -> {
-                val targetStr = args.optString("target", "project")
+                val targetStr = args.optString("target", "all")
                 val projectPath = args.optString("project_path").takeIf { it.isNotBlank() }
 
-                val targetDir = when (targetStr.lowercase()) {
-                    "gemini" -> File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                    "codex" -> File("/data/user/0/com.termux/files/home/.codex/skills")
-                    "claude" -> File("/data/user/0/com.termux/files/home/.claude/skills")
-                    "opencode" -> File("/data/user/0/com.termux/files/home/.opencode/skills")
-                    else -> if (!projectPath.isNullOrBlank()) File(projectPath, ".agents/skills") else File(".")
-                }
+                if (targetStr.lowercase() in listOf("all", "universal")) {
+                    val installed = AgenticSkillsRepository.listAllInstalled(projectPath)
+                    makeContentResponse(JSONObject().apply {
+                        put("target", "universal")
+                        put("pool", "Unified Universal Pool (All CLIs & Local Model)")
+                        put("count", installed.size)
+                        put("skills", JSONArray(installed))
+                    }.toString(2))
+                } else {
+                    val targetDir = when (targetStr.lowercase()) {
+                        "local", "qwen" -> File("/data/user/0/com.termux/files/home/.antibot/skills")
+                        "gemini" -> File("/data/user/0/com.termux/files/home/.gemini/config/skills")
+                        "codex" -> File("/data/user/0/com.termux/files/home/.codex/skills")
+                        "claude" -> File("/data/user/0/com.termux/files/home/.claude/skills")
+                        "opencode" -> File("/data/user/0/com.termux/files/home/.opencode/skills")
+                        else -> if (!projectPath.isNullOrBlank()) File(projectPath, ".agents/skills") else File(".")
+                    }
 
-                val installed = AgenticSkillsRepository.listInstalled(targetDir)
-                makeContentResponse(JSONObject().apply {
-                    put("target", targetStr)
-                    put("path", targetDir.absolutePath)
-                    put("count", installed.size)
-                    put("skills", JSONArray(installed))
-                }.toString(2))
+                    val installed = AgenticSkillsRepository.listInstalled(targetDir)
+                    makeContentResponse(JSONObject().apply {
+                        put("target", targetStr)
+                        put("path", targetDir.absolutePath)
+                        put("count", installed.size)
+                        put("skills", JSONArray(installed))
+                    }.toString(2))
+                }
             }
 
             "list_bundles" -> {
@@ -350,10 +363,12 @@ object AgenticSkillsMcp {
 
             "install_bundle" -> {
                 val bundleName = args.optString("bundle_name", "")
-                val targetStr = args.optString("target", "project")
+                val targetStr = args.optString("target", "universal")
                 val projectPath = args.optString("project_path").takeIf { it.isNotBlank() }
 
                 val target = when (targetStr.lowercase()) {
+                    "universal", "all" -> SkillInstallTarget.UNIVERSAL
+                    "local", "qwen" -> SkillInstallTarget.LOCAL
                     "gemini" -> SkillInstallTarget.GEMINI
                     "codex" -> SkillInstallTarget.CODEX
                     "claude" -> SkillInstallTarget.CLAUDE

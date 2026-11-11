@@ -174,7 +174,36 @@ object AgenticSkillsRepository {
             return@withContext SkillActionResult(false, "Skill '$id' not found in catalog.", error = "Skill not found")
         }
 
+        if (target == SkillInstallTarget.UNIVERSAL) {
+            val targets = mutableListOf<File>()
+            if (!projectPath.isNullOrBlank()) {
+                targets.add(File(projectPath, ".agents/skills/$id"))
+            }
+            targets.add(File("/data/user/0/com.termux/files/home/.antibot/skills/$id"))
+            targets.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills/$id"))
+            targets.add(File("/data/user/0/com.termux/files/home/.claude/skills/$id"))
+            targets.add(File("/data/user/0/com.termux/files/home/.codex/skills/$id"))
+            targets.add(File("/data/user/0/com.termux/files/home/.opencode/skills/$id"))
+
+            try {
+                for (t in targets) {
+                    t.parentFile?.mkdirs()
+                    srcSkillDir.copyRecursively(t, overwrite = true)
+                }
+                return@withContext SkillActionResult(
+                    success = true,
+                    message = "🌟 Skill '$id' installed universally across Local Model, Antigravity, Claude, Codex, OpenCode & Project!",
+                    installedPath = targets.first().absolutePath
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to universally copy skill $id", e)
+                return@withContext SkillActionResult(false, "Failed to universally install skill '$id': ${e.message}", error = e.localizedMessage)
+            }
+        }
+
         val targetDir = when (target) {
+            SkillInstallTarget.UNIVERSAL -> error("Handled above")
+            SkillInstallTarget.LOCAL -> File("/data/user/0/com.termux/files/home/.antibot/skills/$id")
             SkillInstallTarget.PROJECT -> {
                 if (projectPath.isNullOrBlank()) {
                     return@withContext SkillActionResult(false, "No active project specified for project install.", error = "Missing project")
@@ -271,6 +300,69 @@ object AgenticSkillsRepository {
         return@withContext targetDir.listFiles()?.filter {
             it.isDirectory && File(it, "SKILL.md").exists()
         }?.map { it.name }?.sorted() ?: emptyList()
+    }
+
+    fun getAllSkillSearchDirs(projectPath: String? = null): List<File> {
+        val list = mutableListOf<File>()
+        if (!projectPath.isNullOrBlank()) {
+            list.add(File(projectPath, ".agents/skills"))
+        }
+        list.add(File("/data/user/0/com.termux/files/home/.antibot/skills"))
+        list.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
+        list.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
+        list.add(File("/data/user/0/com.termux/files/home/.codex/skills"))
+        list.add(File("/data/user/0/com.termux/files/home/.opencode/skills"))
+        return list
+    }
+
+    suspend fun listAllInstalled(projectPath: String? = null): List<String> = withContext(Dispatchers.IO) {
+        val all = mutableSetOf<String>()
+        for (d in getAllSkillSearchDirs(projectPath)) {
+            if (d.exists() && d.isDirectory) {
+                d.listFiles()?.filter { it.isDirectory && File(it, "SKILL.md").exists() }?.forEach {
+                    all.add(it.name)
+                }
+            }
+        }
+        return@withContext all.sorted()
+    }
+
+    suspend fun isSkillInstalled(skillId: String, projectPath: String? = null): Boolean = withContext(Dispatchers.IO) {
+        for (d in getAllSkillSearchDirs(projectPath)) {
+            if (File(d, "$skillId/SKILL.md").exists()) return@withContext true
+        }
+        return@withContext false
+    }
+
+    suspend fun getInstalledSkillLocations(skillId: String, projectPath: String? = null): List<String> = withContext(Dispatchers.IO) {
+        val locs = mutableListOf<String>()
+        if (!projectPath.isNullOrBlank() && File(projectPath, ".agents/skills/$skillId/SKILL.md").exists()) {
+            locs.add("Project")
+        }
+        if (File("/data/user/0/com.termux/files/home/.antibot/skills/$skillId/SKILL.md").exists()) {
+            locs.add("Local Model")
+        }
+        if (File("/data/user/0/com.termux/files/home/.gemini/config/skills/$skillId/SKILL.md").exists()) {
+            locs.add("Antigravity")
+        }
+        if (File("/data/user/0/com.termux/files/home/.claude/skills/$skillId/SKILL.md").exists()) {
+            locs.add("Claude Code")
+        }
+        if (File("/data/user/0/com.termux/files/home/.codex/skills/$skillId/SKILL.md").exists()) {
+            locs.add("Codex")
+        }
+        if (File("/data/user/0/com.termux/files/home/.opencode/skills/$skillId/SKILL.md").exists()) {
+            locs.add("OpenCode")
+        }
+        return@withContext locs
+    }
+
+    suspend fun findInstalledSkillDir(skillId: String, projectPath: String? = null): File? = withContext(Dispatchers.IO) {
+        for (d in getAllSkillSearchDirs(projectPath)) {
+            val sDir = File(d, skillId)
+            if (File(sDir, "SKILL.md").exists()) return@withContext sDir
+        }
+        return@withContext null
     }
 
     fun getLocalHeadSha(baseDir: File?): String {
@@ -423,6 +515,7 @@ object AgenticSkillsRepository {
             if (!projectPath.isNullOrBlank()) {
                 targetDirs.add(File(projectPath, ".agents/skills"))
             }
+            targetDirs.add(File("/data/user/0/com.termux/files/home/.antibot/skills"))
             targetDirs.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
             targetDirs.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
             targetDirs.add(File("/data/user/0/com.termux/files/home/.codex/skills"))
@@ -487,6 +580,7 @@ object AgenticSkillsRepository {
         if (!projectPath.isNullOrBlank()) {
             targetDirs.add(File(projectPath, ".agents/skills"))
         }
+        targetDirs.add(File("/data/user/0/com.termux/files/home/.antibot/skills"))
         targetDirs.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
         targetDirs.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
         targetDirs.add(File("/data/user/0/com.termux/files/home/.codex/skills"))

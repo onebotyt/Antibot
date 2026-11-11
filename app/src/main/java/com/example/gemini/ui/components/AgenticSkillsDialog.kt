@@ -78,12 +78,7 @@ fun AgenticSkillsDialog(
         isSearching = true
         searchResults = AgenticSkillsRepository.searchSkills("", limit = 40, context = context)
         bundles = AgenticSkillsRepository.listBundles()
-        val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
-            File(activeProject.path, ".agents/skills")
-        } else {
-            File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-        }
-        installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+        installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
         isSearching = false
 
         // Background check for skills updates from repository
@@ -273,12 +268,7 @@ fun AgenticSkillsDialog(
                                             Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
                                             updateStatus = AgenticSkillsRepository.checkForUpdates()
                                             searchResults = AgenticSkillsRepository.searchSkills(searchQuery, limit = 50, context = context)
-                                            val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
-                                                File(activeProject.path, ".agents/skills")
-                                            } else {
-                                                File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                                            }
-                                            installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                                            installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
                                         } else {
                                             Toast.makeText(context, "Update failed: ${res.error ?: res.message}", Toast.LENGTH_LONG).show()
                                         }
@@ -335,13 +325,8 @@ fun AgenticSkillsDialog(
                         selected = selectedTab == 2,
                         onClick = {
                             selectedTab = 2
-                            val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
-                                File(activeProject.path, ".agents/skills")
-                            } else {
-                                File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                            }
                             scope.launch {
-                                installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                                installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
                             }
                         },
                         text = {
@@ -392,12 +377,7 @@ fun AgenticSkillsDialog(
                                 val res = AgenticSkillsRepository.updateAllInstalledSkills(activeProject?.path)
                                 isUpdatingInstalled = false
                                 Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
-                                val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
-                                    File(activeProject.path, ".agents/skills")
-                                } else {
-                                    File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                                }
-                                installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                                installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
                             }
                         },
                         isUpdating = isUpdatingInstalled
@@ -433,12 +413,7 @@ fun AgenticSkillsDialog(
                 scope.launch {
                     val res = AgenticSkillsRepository.installSkill(meta.id, target, activeProject?.path)
                     Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
-                    val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
-                        File(activeProject.path, ".agents/skills")
-                    } else {
-                        File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                    }
-                    installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                    installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
                 }
             }
         )
@@ -456,12 +431,7 @@ fun AgenticSkillsDialog(
                 scope.launch {
                     val res = AgenticSkillsRepository.installBundle(bundle.name, target, activeProject?.path)
                     Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
-                    val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
-                        File(activeProject.path, ".agents/skills")
-                    } else {
-                        File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                    }
-                    installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                    installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
                 }
             }
         )
@@ -816,9 +786,9 @@ private fun InstalledTabContent(
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
         val locationStr = if (activeProject != null && activeProject.path.isNotBlank()) {
-            "Active Project (${activeProject.name}/.agents/skills)"
+            "Unified Pool • ${activeProject.name} + Global (Local Model & All CLIs)"
         } else {
-            "Global Antigravity (~/.gemini/config/skills)"
+            "Unified Universal Pool (Local Model, Antigravity & All Installed CLIs)"
         }
 
         Surface(
@@ -1020,9 +990,12 @@ private fun TargetPickerModal(
                 )
 
                 SkillInstallTarget.values().forEach { target ->
+                    val isUniversal = target == SkillInstallTarget.UNIVERSAL
                     val isProject = target == SkillInstallTarget.PROJECT
                     val enabled = !isProject || (activeProject != null && activeProject.path.isNotBlank())
                     val subtitle = when (target) {
+                        SkillInstallTarget.UNIVERSAL -> "One-time install: Local Model, Antigravity, Claude, Codex, OpenCode & Project"
+                        SkillInstallTarget.LOCAL -> "~/.antibot/skills (Local Model & Antibot Engine)"
                         SkillInstallTarget.PROJECT -> if (enabled) "${activeProject?.name}/.agents/skills" else "No active project open"
                         SkillInstallTarget.GEMINI -> "~/.gemini/config/skills"
                         SkillInstallTarget.CODEX -> "~/.codex/skills"
@@ -1033,25 +1006,48 @@ private fun TargetPickerModal(
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onTargetSelected(target) },
                         shape = RoundedCornerShape(10.dp),
-                        color = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        color = when {
+                            !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                            isUniversal -> SkillPurple.copy(alpha = 0.15f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (isUniversal) SkillPurple.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = target.displayName,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
-                                )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = target.displayName,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                                    )
+                                    if (isUniversal) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = SkillPurple
+                                        ) {
+                                            Text(
+                                                "RECOMMENDED",
+                                                color = Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
                                     text = subtitle,
                                     fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = if (isUniversal || target == SkillInstallTarget.LOCAL) FontFamily.Default else FontFamily.Monospace,
                                     color = if (enabled) SkillPurple else MaterialTheme.colorScheme.outline
                                 )
                             }

@@ -73,6 +73,16 @@ enum class LocalCodingDomain(
         placeholderPrompt = "Ask Qwen 2.5 Coder (Offline Neural LLM)...",
         iconEmoji = "🧠",
         sizeText = "350MB Q4_K_M"
+    ),
+    QWEN_CODER_1B(
+        modelId = "local-qwen-coder-1.5b",
+        displayName = "Qwen 2.5 Coder 1.5B",
+        shortName = "Qwen 1.5B (1B Model)",
+        tag = "1B Neural LLM",
+        description = "High-accuracy 1.5B parameter neural code model for deep on-device multi-file synthesis & complex logic (Optional Download)",
+        placeholderPrompt = "Ask Qwen 2.5 Coder 1.5B (Offline Neural LLM)...",
+        iconEmoji = "🧠",
+        sizeText = "986MB Q4_K_M"
     );
 
     companion object {

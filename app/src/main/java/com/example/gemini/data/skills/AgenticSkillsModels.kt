@@ -26,12 +26,14 @@ data class SkillBundle(
     val skillCount: Int = skills.size
 )
 
-enum class SkillInstallTarget(val displayName: String) {
-    PROJECT("Active Project (.agents/skills)"),
-    GEMINI("Antigravity & Gemini CLI (~/.gemini/config/skills)"),
-    CODEX("Codex CLI (~/.codex/skills)"),
-    CLAUDE("Claude Code (~/.claude/skills)"),
-    OPENCODE("OpenCode (~/.opencode/skills)")
+enum class SkillInstallTarget(val displayName: String, val subtitle: String = "") {
+    UNIVERSAL("🌟 Universal (All Models & CLIs)", "Installs once across Local Model, Antigravity, Claude, Codex, OpenCode & Project"),
+    LOCAL("🧠 Local Model & Neural Engine", "~/.antibot/skills"),
+    PROJECT("Active Project (.agents/skills)", "Workspace-scoped (.agents/skills)"),
+    GEMINI("Antigravity & Gemini CLI", "~/.gemini/config/skills"),
+    CODEX("Codex CLI", "~/.codex/skills"),
+    CLAUDE("Claude Code", "~/.claude/skills"),
+    OPENCODE("OpenCode", "~/.opencode/skills")
 }
 
 data class SkillActionResult(

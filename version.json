@@ -1,8 +1,9 @@
 {
-  "version_code": 235,
-  "version_name": "2.4.115",
+  "version_code": 236,
+  "version_name": "2.4.116",
   "min_supported_version_code": 1,
   "changelog": [
+    "\ud83e\udde0 1-Click Installable 1B Local Model & Universal Multi-Engine Skills: Added 1-click on-demand download for Qwen 2.5 Coder 1.5B (1B model, ~986MB GGUF) with live download progress tracking, cancel/delete storage controls, and zero cloud tokens. Added '🌟 Universal (All Models & CLIs)' and '🧠 Local Model' targets in Skills Hub: any installed skill is immediately accessible across Local AI, Antigravity, Claude Code, Codex, and OpenCode without needing duplicate installs.",
     "\ud83d\udd04 Skills Library Updates & Claude 3.5 Sonnet Fix: Corrected model reference from Claude 3.7 to Claude 3.5 Sonnet across all Smart Manager CLI and Model selectors. Added live Skills Update detection and sync with remote repository (https://github.com/sickn33/agentic-awesome-skills.git): automatic HEAD check, Update Available banner with 1-tap update, header sync button with badge, Re-sync All Installed Skills action in Installed tab, and in-chat natural commands ('update skills', 'check skills update').",
     "\ud83e\udde0 Smart Manager Brain (Qwen 2.5 Coder On-Device Neural Engine) & Multi-CLI Switcher: Upgraded Smart LLM Manager with on-device Qwen 2.5 Coder 0.5B neural model as the primary routing brain (<15ms zero-latency intent classification, 0 cloud tokens). Added full support for selecting, switching, and setting defaults across all 5 CLI engines (Antigravity, Local Qwen, Claude Code, Codex, OpenCode). Categorized task routing dialog into dedicated CLI Manager and Cloud Model sections, added interactive CLI switcher cards, real-time brain metrics, and preferred CLI auto-dispatch.",
     "\ud83e\udde0 Agentic Awesome Skills (2,955+ Skills & 30 Bundles): Full native integration of the entire Agentic Awesome Skills library across all AIs and CLIs. Features an interactive Skills Hub dialog with live search, category/risk filter chips, and 1-tap installation into projects (.agents/skills) or globally. Added agentic_skills_mcp local bridge MCP server, in-chat AI skill commands ('search skills', 'install skill', 'install bundle', 'list skills'), and 1-tap presets in General MCP, Codex, OpenCode, and Claude Code settings.",

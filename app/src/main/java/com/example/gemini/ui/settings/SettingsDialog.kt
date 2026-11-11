@@ -1557,6 +1557,7 @@ private fun LlmManagerSubScreen(
             id == "cli:local" -> "🧠 Local Qwen CLI (On-Device)"
             id == "claude" -> "Claude (Sonnet / Opus)"
             id == "gemini" -> "Gemini 3.8 Flash"
+            id == "local-qwen-coder-1.5b" -> "Local Qwen 2.5 Coder 1.5B (1B Model)"
             id.startsWith("local") -> "Local Qwen 2.5 Coder 0.5B (0 Tokens)"
             else -> availableModels.find { it.id == id }?.displayName ?: id
         }
@@ -1956,6 +1957,7 @@ private fun LlmManagerSubScreen(
             list.add("gemini" to "Gemini 3.8 Flash (High Speed & Large Context)")
             list.add("claude" to "Claude 3.5 Sonnet (Deep Reasoning)")
             list.add("local-qwen-coder-0.5b" to "Local Qwen 2.5 Coder 0.5B (0 Tokens • On-Device)")
+            list.add("local-qwen-coder-1.5b" to "Local Qwen 2.5 Coder 1.5B (0 Tokens • 1B Model)")
             availableModels.filter { !it.id.startsWith("local-") }.forEach {
                 if (it.id !in list.map { pair -> pair.first }) {
                     list.add(it.id to it.displayName)

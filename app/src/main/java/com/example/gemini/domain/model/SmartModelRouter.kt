@@ -232,9 +232,14 @@ object SmartModelRouter {
                     ?: AiModel(id = "cli:codex", displayName = "Codex CLI", family = ModelFamily.OTHER, description = "OpenAI Codex CLI Manager")
                 "opencode" -> AiModel(id = "cli:opencode", displayName = "OpenCode CLI", family = ModelFamily.OTHER, description = "OpenCode Multi-Model CLI Manager")
                 "local", "qwen" -> AiModel(id = LocalCodingDomain.QWEN_CODER.modelId, displayName = "Local Qwen 2.5 Coder 0.5B", family = ModelFamily.LOCAL, description = "On-Device Neural Engine")
+                "local-1.5b", "qwen-1.5b", "1b" -> AiModel(id = LocalCodingDomain.QWEN_CODER_1B.modelId, displayName = "Local Qwen 2.5 Coder 1.5B", family = ModelFamily.LOCAL, description = "On-Device 1B Neural Engine")
                 else -> availableModels.find { it.family == ModelFamily.GEMINI }
                     ?: AiModel(id = "cli:agy", displayName = "Antigravity CLI", family = ModelFamily.GEMINI, description = "Gemini Cloud Code CLI Manager")
             }
+        }
+
+        if (pattern == LocalCodingDomain.QWEN_CODER_1B.modelId) {
+            return AiModel(id = LocalCodingDomain.QWEN_CODER_1B.modelId, displayName = "Local Qwen 2.5 Coder 1.5B", family = ModelFamily.LOCAL, description = "On-Device 1B Neural Engine")
         }
 
         // 1. Exact ID match

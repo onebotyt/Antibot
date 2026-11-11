@@ -250,11 +250,11 @@ object LocalIntelligenceEngine {
                 is com.example.gemini.domain.project.ChatSkillIntent.InstallSkill -> {
                     val res = com.example.gemini.data.skills.AgenticSkillsRepository.installSkill(
                         skillIntent.skillId,
-                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT,
+                        com.example.gemini.data.skills.SkillInstallTarget.UNIVERSAL,
                         projectDir.absolutePath
                     )
                     if (res.success) {
-                        Pair("⚡ **Agentic Skill Installed!** Installed `${skillIntent.skillId}` to `${projectDir.name}/.agents/skills/${skillIntent.skillId}`.", "Installed skill")
+                        Pair("🌟 **Skill Installed Universally!** `${skillIntent.skillId}` is now accessible by Local Model, Antigravity, Claude Code, Codex, and OpenCode without installing separately.", "Installed skill")
                     } else {
                         Pair("⚠️ **Could not install skill**: ${res.message}", "Install failed")
                     }
@@ -262,18 +262,19 @@ object LocalIntelligenceEngine {
                 is com.example.gemini.domain.project.ChatSkillIntent.InstallBundle -> {
                     val res = com.example.gemini.data.skills.AgenticSkillsRepository.installBundle(
                         skillIntent.bundleName,
-                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT,
+                        com.example.gemini.data.skills.SkillInstallTarget.UNIVERSAL,
                         projectDir.absolutePath
                     )
-                    Pair(if (res.success) "📦 **Skill Bundle Installed!** ${res.message}" else "⚠️ ${res.message}", "Bundle install")
+                    Pair(if (res.success) "🌟 **Universal Skill Bundle Installed!** ${res.message}" else "⚠️ ${res.message}", "Bundle install")
                 }
                 is com.example.gemini.domain.project.ChatSkillIntent.ListInstalledSkills -> {
-                    val skillsDir = java.io.File(projectDir, ".agents/skills")
-                    val installed = com.example.gemini.data.skills.AgenticSkillsRepository.listInstalled(skillsDir)
+                    val installed = com.example.gemini.data.skills.AgenticSkillsRepository.listAllInstalled(projectDir.absolutePath)
                     if (installed.isEmpty()) {
-                        Pair("📁 **No skills installed in `${projectDir.name}` yet.** Ask me to `search skills <topic>` or `install bundle essentials`!", "No skills installed")
+                        Pair("📁 **No skills installed yet.** Ask me to `search skills <topic>` or `install bundle essentials`!", "No skills installed")
                     } else {
-                        val md = "📋 **Installed Skills in `${projectDir.name}` (${installed.size})**\n\n" + installed.joinToString("\n") { "  - `💡 $it`" }
+                        val md = "📋 **Installed Skills (${installed.size} Total · Available Across All Models & CLIs)**\n\n" +
+                                "*All installed skills can be used by Local Model, Antigravity, Claude, Codex, and OpenCode without separate installations.*\n\n" +
+                                installed.joinToString("\n") { "  - `💡 $it`" }
                         Pair(md, "Listed installed skills")
                     }
                 }
@@ -417,7 +418,11 @@ object LocalIntelligenceEngine {
                 if (securityResult != null) return@withContext securityResult
             }
             LocalCodingDomain.QWEN_CODER -> {
-                val qwenResult = handleQwenCoderTask(trimmed, lower, projectDir, context, startTime)
+                val qwenResult = handleQwenCoderTask(trimmed, lower, projectDir, context, startTime, is1B = false)
+                if (qwenResult != null) return@withContext qwenResult
+            }
+            LocalCodingDomain.QWEN_CODER_1B -> {
+                val qwenResult = handleQwenCoderTask(trimmed, lower, projectDir, context, startTime, is1B = true)
                 if (qwenResult != null) return@withContext qwenResult
             }
             LocalCodingDomain.FULLSTACK -> {
@@ -1093,6 +1098,20 @@ object LocalIntelligenceEngine {
             - Offline algorithmic reasoning and code synthesis.
             - Contextual code completion and debugging.
             - Works anywhere, even completely disconnected from the internet.
+            """.trimIndent()
+
+            com.example.gemini.domain.model.LocalCodingDomain.QWEN_CODER_1B -> """
+            ### 🧠 Hello! I'm Qwen 2.5 Coder 1.5B (1B-Class High-Capacity LLM)
+            **High-Accuracy On-Device Neural Code Model (1.5B Parameters • 100% Offline)**
+            
+            Trained deeply on enterprise codebases, algorithms, and complex systems architecture. Generates multi-file fullstack applications with zero cloud tokens.
+            
+            ---
+            
+            ### 🚀 What I Can Do:
+            - Fullstack multi-file project synthesis (Frontend HTML/React + Backend REST API + Database).
+            - High-accuracy algorithm design, security audits, and deep debugging.
+            - 100% on-device neural reasoning without network latency.
             """.trimIndent()
 
             com.example.gemini.domain.model.LocalCodingDomain.FULLSTACK -> """
@@ -2150,6 +2169,7 @@ object LocalIntelligenceEngine {
 
         val modelHeader = when (domain) {
             LocalCodingDomain.QWEN_CODER -> "🧠 Qwen 2.5 Coder 0.5B (On-Device Neural Code Engine)"
+            LocalCodingDomain.QWEN_CODER_1B -> "🧠 Qwen 2.5 Coder 1.5B (On-Device 1B Neural Code Engine)"
             LocalCodingDomain.FRONTEND -> "🎨 AntiBot Frontend & UI/UX Expert"
             else -> "⚡ AntiBot Code Synthesis Engine"
         }
@@ -2316,11 +2336,20 @@ object LocalIntelligenceEngine {
         """.trimIndent()
     }
 
-    private suspend fun handleQwenCoderTask(trimmed: String, lower: String, projectDir: File, context: Context, startTime: Long): LocalEngineResult {
+    private suspend fun handleQwenCoderTask(
+        trimmed: String,
+        lower: String,
+        projectDir: File,
+        context: Context,
+        startTime: Long,
+        is1B: Boolean = false
+    ): LocalEngineResult {
+        val targetDomain = if (is1B) LocalCodingDomain.QWEN_CODER_1B else LocalCodingDomain.QWEN_CODER
+
         // 1. File-first web & project generation with live preview
         if (isCodeCreationRequest(lower) || isWebOrFileGenerationRequest(lower)) {
             return handleFileFirstCodeGeneration(
-                LocalCodingDomain.QWEN_CODER,
+                targetDomain,
                 trimmed,
                 lower,
                 projectDir,
@@ -2347,12 +2376,14 @@ object LocalIntelligenceEngine {
         if (securityResult != null) return securityResult
 
         // 6. GGUF on-device weights if available
-        val modelFile = File(LocalEnvironmentManager.getHomeDir(context), ".antibot/models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf")
-        if (modelFile.exists() && modelFile.length() > 100_000_000L) {
+        val spec = if (is1B) LocalModelManager.QWEN_15B else LocalModelManager.QWEN_05B
+        val modelFile = LocalModelManager.getModelFile(context, spec)
+        if (modelFile.exists() && modelFile.length() > 50_000_000L) {
+            val label = if (is1B) "Qwen 2.5 Coder 1.5B (1B Model)" else "Qwen 2.5 Coder 0.5B"
             return LocalEngineResult(
-                thoughtText = "Qwen 2.5 Coder 0.5B neural model active on-device (~350MB). Formulating quantized inference execution.",
+                thoughtText = "$label neural model active on-device. Formulating quantized inference execution.",
                 content = """
-                ### 🧠 Qwen 2.5 Coder 0.5B (Active On-Device)
+                ### 🧠 $label (Active On-Device)
                 
                 The quantized neural weights are loaded and active:
                 `${modelFile.absolutePath}` (${formatBytes(modelFile.length())})
@@ -2370,12 +2401,15 @@ object LocalIntelligenceEngine {
         val debugRes = handleDebuggingAndErrors(trimmed, lower, startTime)
         if (debugRes != null) return debugRes
 
+        val modelHeader = if (is1B) "Qwen 2.5 Coder 1.5B (On-Device 1B Neural Code Engine)" else "Qwen 2.5 Coder 0.5B (On-Device Neural Code Engine)"
+        val paramTag = if (is1B) "**1.5B Parameters (1B Model) · 0 Cloud Tokens · High Accuracy**" else "**0.5B Parameters · 0 Cloud Tokens · Sub-500MB Footprint**"
+
         return LocalEngineResult(
-            thoughtText = "Qwen 2.5 Coder 0.5B model ready for fullstack code synthesis.",
+            thoughtText = "$modelHeader ready for fullstack code synthesis.",
             content = """
-            ### 🧠 Qwen 2.5 Coder 0.5B (On-Device Neural Code Engine)
+            ### 🧠 $modelHeader
             
-            **100% On-Device · 0 Cloud Tokens · Sub-500MB Footprint**
+            $paramTag
             
             I write code, design frontend UI/UX, architect backend APIs, and audit cybersecurity directly on your phone:
             - **🎨 Frontend UI/UX:** Responsive HTML5/Tailwind/React/Compose components with instant Inbuilt Browser live preview.

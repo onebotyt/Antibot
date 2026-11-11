@@ -769,25 +769,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 is com.example.gemini.domain.project.ChatSkillIntent.InstallSkill -> {
-                    val target = if (!activeProjPath.isNullOrBlank()) {
-                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT
-                    } else {
-                        com.example.gemini.data.skills.SkillInstallTarget.GEMINI
-                    }
+                    val target = com.example.gemini.data.skills.SkillInstallTarget.UNIVERSAL
                     val res = com.example.gemini.data.skills.AgenticSkillsRepository.installSkill(intent.skillId, target, activeProjPath)
                     if (res.success) {
-                        val targetLoc = if (target == com.example.gemini.data.skills.SkillInstallTarget.PROJECT) {
-                            "Active Project (`${java.io.File(activeProjPath!!).name}/.agents/skills/${intent.skillId}`)"
-                        } else {
-                            "Global Antigravity (`~/.gemini/config/skills/${intent.skillId}`)"
-                        }
                         val md = """
-                        ⚡ **Agentic Skill Installed!**
+                        🌟 **Agentic Skill Installed Universally!**
 
                         - **Skill**: `${intent.skillId}`
-                        - **Target**: $targetLoc
+                        - **Availability**: Universal Pool (Local Model, Antigravity, Claude, Codex, OpenCode & Active Project)
 
-                        *All AI models and CLI agents can now automatically execute the `${intent.skillId}` playbook.*
+                        *All AI models and CLI agents can now use `${intent.skillId}` immediately without installing separately.*
                         """.trimIndent()
                         Pair(md, "Installed skill ${intent.skillId}")
                     } else {
@@ -796,20 +787,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 is com.example.gemini.domain.project.ChatSkillIntent.InstallBundle -> {
-                    val target = if (!activeProjPath.isNullOrBlank()) {
-                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT
-                    } else {
-                        com.example.gemini.data.skills.SkillInstallTarget.GEMINI
-                    }
+                    val target = com.example.gemini.data.skills.SkillInstallTarget.UNIVERSAL
                     val res = com.example.gemini.data.skills.AgenticSkillsRepository.installBundle(intent.bundleName, target, activeProjPath)
                     if (res.success) {
                         val md = """
-                        📦 **Skill Bundle Installed!**
+                        📦 **Universal Skill Bundle Installed!**
 
                         - **Bundle**: `${intent.bundleName}`
                         - **Result**: ${res.message}
 
-                        *All skills in this suite are ready for immediate use.*
+                        *All skills in this suite are ready for immediate use by all AI models and CLIs.*
                         """.trimIndent()
                         Pair(md, "Installed bundle ${intent.bundleName}")
                     } else {
@@ -818,22 +805,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 is com.example.gemini.domain.project.ChatSkillIntent.ListInstalledSkills -> {
-                    val targetDir = if (!activeProjPath.isNullOrBlank()) {
-                        java.io.File(activeProjPath, ".agents/skills")
-                    } else {
-                        java.io.File("/data/user/0/com.termux/files/home/.gemini/config/skills")
-                    }
-                    val installed = com.example.gemini.data.skills.AgenticSkillsRepository.listInstalled(targetDir)
+                    val installed = com.example.gemini.data.skills.AgenticSkillsRepository.listAllInstalled(activeProjPath)
                     if (installed.isEmpty()) {
-                        Pair("📁 **No skills installed in `${targetDir.name}` yet.** Ask me to `search skills <topic>` or `install bundle essentials` to get started!", "No installed skills")
+                        Pair("📁 **No skills installed yet.** Ask me to `search skills <topic>` or `install bundle essentials` to get started!", "No installed skills")
                     } else {
                         val listMd = installed.joinToString("\n") { "  - `💡 $it`" }
                         val md = """
-                        📋 **Installed Skills in `${targetDir.absolutePath}` (${installed.size})**
+                        📋 **Installed Skills (${installed.size} Total · Available to All Models & CLIs)**
 
+                        *All AI models (Local Qwen, Antigravity) and CLI agents (Claude, Codex, OpenCode) can use these skills:*
                         $listMd
-
-                        *Tap the Skills icon (🧠) in the top bar to browse 2,955+ additional skills.*
                         """.trimIndent()
                         Pair(md, "Listed installed skills")
                     }
