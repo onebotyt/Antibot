@@ -6,12 +6,24 @@ sealed class ChatSkillIntent {
     data class InstallBundle(val bundleName: String) : ChatSkillIntent()
     object ListInstalledSkills : ChatSkillIntent()
     object ListBundles : ChatSkillIntent()
+    object UpdateSkills : ChatSkillIntent()
+    object CheckSkillsUpdate : ChatSkillIntent()
 }
 
 object ChatSkillParser {
     fun parseIntent(prompt: String): ChatSkillIntent? {
         val trimmed = prompt.trim()
         val lower = trimmed.lowercase()
+
+        // 0. Update / Upgrade skills
+        if (lower in listOf("update skills", "upgrade skills", "sync skills", "update skill repo", "pull skills", "update all skills")) {
+            return ChatSkillIntent.UpdateSkills
+        }
+
+        // 0.5. Check skills update
+        if (lower in listOf("check skills update", "check skill updates", "check for skill updates", "skills update check")) {
+            return ChatSkillIntent.CheckSkillsUpdate
+        }
 
         // 1. List installed skills
         if (lower in listOf("list skills", "list installed skills", "show installed skills", "show my skills", "what skills are installed", "skills list")) {

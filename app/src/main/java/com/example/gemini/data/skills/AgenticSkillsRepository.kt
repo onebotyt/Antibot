@@ -10,6 +10,9 @@ import org.tukaani.xz.XZInputStream
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import com.example.gemini.data.daemon.GitApiClient
 
 object AgenticSkillsRepository {
     private const val TAG = "AgenticSkillsRepo"
@@ -269,4 +272,243 @@ object AgenticSkillsRepository {
             it.isDirectory && File(it, "SKILL.md").exists()
         }?.map { it.name }?.sorted() ?: emptyList()
     }
+
+    fun getLocalHeadSha(baseDir: File?): String {
+        if (baseDir == null) return ""
+        try {
+            val headFile = File(baseDir, ".git/HEAD")
+            if (!headFile.exists()) return ""
+            val headContent = headFile.readText(Charsets.UTF_8).trim()
+            if (headContent.startsWith("ref:")) {
+                val refPath = headContent.removePrefix("ref:").trim()
+                val refFile = File(baseDir, ".git/$refPath")
+                if (refFile.exists()) {
+                    return refFile.readText(Charsets.UTF_8).trim()
+                }
+                val packedRefs = File(baseDir, ".git/packed-refs")
+                if (packedRefs.exists()) {
+                    val line = packedRefs.readLines().find { it.endsWith(refPath) }
+                    if (line != null) {
+                        return line.split(" ").firstOrNull()?.trim().orEmpty()
+                    }
+                }
+            } else {
+                return headContent
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read local HEAD SHA", e)
+        }
+        return ""
+    }
+
+    suspend fun checkForUpdates(): SkillUpdateStatus = withContext(Dispatchers.IO) {
+        val bDir = getLocalBaseDir()
+        val localSha = getLocalHeadSha(bDir)
+
+        try {
+            val url = URL("https://api.github.com/repos/sickn33/agentic-awesome-skills/commits/main")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+                setRequestProperty("User-Agent", "AntiBot-Android")
+                setRequestProperty("Accept", "application/vnd.github.v3+json")
+            }
+
+            if (conn.responseCode in 200..299) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val obj = JSONObject(jsonStr)
+                val remoteSha = obj.optString("sha", "")
+                val commitObj = obj.optJSONObject("commit")
+                val msg = commitObj?.optString("message", "").orEmpty().lines().firstOrNull().orEmpty()
+                val date = commitObj?.optJSONObject("author")?.optString("date", "").orEmpty()
+
+                val hasUpdate = remoteSha.isNotBlank() && localSha.isNotBlank() && !remoteSha.startsWith(localSha) && !localSha.startsWith(remoteSha)
+
+                return@withContext SkillUpdateStatus(
+                    hasUpdate = hasUpdate,
+                    localSha = localSha.take(7),
+                    remoteSha = remoteSha.take(7),
+                    commitMessage = msg,
+                    commitDate = date
+                )
+            } else {
+                return@withContext SkillUpdateStatus(
+                    hasUpdate = false,
+                    localSha = localSha.take(7),
+                    remoteSha = "",
+                    error = "GitHub API response: ${conn.responseCode}"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking skills update", e)
+            return@withContext SkillUpdateStatus(
+                hasUpdate = false,
+                localSha = localSha.take(7),
+                remoteSha = "",
+                error = e.localizedMessage ?: "Network error"
+            )
+        }
+    }
+
+    suspend fun updateSkills(
+        projectPath: String? = null,
+        context: Context? = null,
+        onProgress: ((String) -> Unit)? = null
+    ): SkillUpdateResult = withContext(Dispatchers.IO) {
+        val bDir = getLocalBaseDir()
+        if (bDir == null) {
+            return@withContext SkillUpdateResult(
+                success = false,
+                message = "Local skills directory not found on device.",
+                error = "Repository missing"
+            )
+        }
+
+        val oldSha = getLocalHeadSha(bDir)
+        onProgress?.invoke("Pulling latest commits from GitHub repository...")
+
+        var pullSuccess = false
+        var pullOutput = ""
+        var pullError = ""
+
+        // 1. Try GitApiClient (via bridge daemon)
+        try {
+            val res = GitApiClient.pullDetailed(bDir.absolutePath)
+            if (res.success) {
+                pullSuccess = true
+                pullOutput = res.output
+            } else {
+                pullError = res.error
+            }
+        } catch (e: Exception) {
+            pullError = e.message.orEmpty()
+        }
+
+        // 2. Direct Process execution fallback if bridge daemon was unavailable
+        if (!pullSuccess) {
+            try {
+                val gitBin = listOf(
+                    "/data/data/com.termux/files/usr/bin/git",
+                    "/data/user/0/com.termux/files/usr/bin/git",
+                    "git"
+                ).find { File(it).canExecute() } ?: "git"
+
+                val pb = ProcessBuilder(gitBin, "pull", "--rebase", "origin", "main")
+                    .directory(bDir)
+                    .redirectErrorStream(true)
+                pb.environment()["PATH"] = "/data/data/com.termux/files/usr/bin:/data/user/0/com.termux/files/usr/bin:" + (System.getenv("PATH") ?: "")
+                val proc = pb.start()
+                pullOutput = proc.inputStream.bufferedReader().use { it.readText() }
+                val exitCode = proc.waitFor()
+                pullSuccess = (exitCode == 0)
+                if (!pullSuccess) {
+                    pullError = pullOutput.ifBlank { "Git process exited with code $exitCode" }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Process git pull failed", e)
+                if (pullError.isBlank()) pullError = e.localizedMessage ?: "Process execution failed"
+            }
+        }
+
+        val newSha = getLocalHeadSha(bDir)
+
+        // Clear catalog memory cache so new skills/updates are loaded
+        cachedIndex = null
+        getOrLoadIndex(context)
+
+        // 3. Re-sync installed skills in active project & global configs
+        var refreshedInstalledCount = 0
+        try {
+            val targetDirs = mutableListOf<File>()
+            if (!projectPath.isNullOrBlank()) {
+                targetDirs.add(File(projectPath, ".agents/skills"))
+            }
+            targetDirs.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
+            targetDirs.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
+            targetDirs.add(File("/data/user/0/com.termux/files/home/.codex/skills"))
+            targetDirs.add(File("/data/user/0/com.termux/files/home/.opencode/skills"))
+
+            val srcSkills = File(bDir, "skills")
+            if (srcSkills.exists()) {
+                for (tDir in targetDirs) {
+                    if (tDir.exists() && tDir.isDirectory) {
+                        tDir.listFiles()?.filter { it.isDirectory }?.forEach { installedDir ->
+                            val srcDir = File(srcSkills, installedDir.name)
+                            if (srcDir.exists() && srcDir.isDirectory) {
+                                srcDir.copyRecursively(installedDir, overwrite = true)
+                                refreshedInstalledCount++
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error re-syncing installed skills after update", e)
+        }
+
+        if (pullSuccess || (newSha.isNotBlank() && oldSha.isNotBlank() && newSha != oldSha)) {
+            val msg = if (refreshedInstalledCount > 0) {
+                "Skills updated to ${newSha.take(7)}! Refreshed $refreshedInstalledCount installed skills."
+            } else {
+                "Skills updated to latest version (${newSha.take(7)})!"
+            }
+            return@withContext SkillUpdateResult(
+                success = true,
+                message = msg,
+                oldSha = oldSha.take(7),
+                newSha = newSha.take(7),
+                updatedSkillsCount = refreshedInstalledCount
+            )
+        } else if (pullOutput.contains("Already up to date", ignoreCase = true) || (newSha == oldSha && newSha.isNotBlank())) {
+            return@withContext SkillUpdateResult(
+                success = true,
+                message = "Skills library is already up to date (${newSha.take(7)})! Refreshed $refreshedInstalledCount installed skills.",
+                oldSha = oldSha.take(7),
+                newSha = newSha.take(7),
+                updatedSkillsCount = refreshedInstalledCount
+            )
+        } else {
+            return@withContext SkillUpdateResult(
+                success = false,
+                message = "Failed to pull skills update: $pullError",
+                oldSha = oldSha.take(7),
+                newSha = newSha.take(7),
+                error = pullError
+            )
+        }
+    }
+
+    suspend fun updateAllInstalledSkills(projectPath: String? = null): SkillActionResult = withContext(Dispatchers.IO) {
+        val bDir = getLocalBaseDir() ?: return@withContext SkillActionResult(false, "Skills catalog missing")
+        val srcSkills = File(bDir, "skills")
+        if (!srcSkills.exists()) return@withContext SkillActionResult(false, "Skills source folder missing")
+
+        val targetDirs = mutableListOf<File>()
+        if (!projectPath.isNullOrBlank()) {
+            targetDirs.add(File(projectPath, ".agents/skills"))
+        }
+        targetDirs.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
+        targetDirs.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
+        targetDirs.add(File("/data/user/0/com.termux/files/home/.codex/skills"))
+        targetDirs.add(File("/data/user/0/com.termux/files/home/.opencode/skills"))
+
+        var updatedCount = 0
+        for (tDir in targetDirs) {
+            if (tDir.exists() && tDir.isDirectory) {
+                tDir.listFiles()?.filter { it.isDirectory }?.forEach { installedDir ->
+                    val srcDir = File(srcSkills, installedDir.name)
+                    if (srcDir.exists() && srcDir.isDirectory) {
+                        srcDir.copyRecursively(installedDir, overwrite = true)
+                        updatedCount++
+                    }
+                }
+            }
+        }
+
+        return@withContext SkillActionResult(
+            success = true,
+            message = "Successfully synchronized $updatedCount installed skills with the latest library!"
+        )
+    }
 }
+

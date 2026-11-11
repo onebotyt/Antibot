@@ -1551,7 +1551,7 @@ private fun LlmManagerSubScreen(
         return when {
             id == "auto" -> "Auto Dynamic"
             id == "cli:agy" -> "⚡ Antigravity CLI (Gemini Pro/Flash)"
-            id == "cli:claude" -> "🟣 Claude Code CLI (Claude 3.7)"
+            id == "cli:claude" -> "🟣 Claude Code CLI (Claude 3.5 Sonnet)"
             id == "cli:codex" -> "🟢 Codex CLI (OpenAI Code)"
             id == "cli:opencode" -> "🔷 OpenCode CLI (Multi-Provider)"
             id == "cli:local" -> "🧠 Local Qwen CLI (On-Device)"
@@ -1740,7 +1740,7 @@ private fun LlmManagerSubScreen(
         val cliEngines = listOf(
             Triple(AgentKind.AGY, "Antigravity CLI", "Google Cloud Code Gemini backend · Multimodal · Fast code tools"),
             Triple(AgentKind.LOCAL, "Local Qwen CLI", "On-Device Qwen 2.5 Coder 0.5B · 100% offline · 0 cloud tokens consumed"),
-            Triple(AgentKind.CLAUDE, "Claude Code CLI", "Anthropic Claude 3.7 Sonnet · Deep reasoning & architectural design"),
+            Triple(AgentKind.CLAUDE, "Claude Code CLI", "Anthropic Claude 3.5 Sonnet · Deep reasoning & architectural design"),
             Triple(AgentKind.CODEX, "Codex CLI", "OpenAI Codex CLI engine · Advanced script & test generation"),
             Triple(AgentKind.OPENCODE, "OpenCode CLI", "Multi-Provider CLI backend · Flexible local/remote models")
         )
@@ -1945,7 +1945,7 @@ private fun LlmManagerSubScreen(
 
         val cliCandidates = listOf(
             "cli:agy" to "⚡ Antigravity CLI (Gemini Cloud Code)",
-            "cli:claude" to "🟣 Claude Code CLI (Anthropic Claude 3.7)",
+            "cli:claude" to "🟣 Claude Code CLI (Anthropic Claude 3.5 Sonnet)",
             "cli:codex" to "🟢 Codex CLI (OpenAI Code Execution)",
             "cli:opencode" to "🔷 OpenCode CLI (Multi-Provider Assistant)",
             "cli:local" to "🧠 Local Qwen CLI (On-Device Neural Engine)"
@@ -1954,7 +1954,7 @@ private fun LlmManagerSubScreen(
         val modelCandidates = remember(availableModels) {
             val list = mutableListOf<Pair<String, String>>()
             list.add("gemini" to "Gemini 3.8 Flash (High Speed & Large Context)")
-            list.add("claude" to "Claude 3.7 Sonnet (Deep Reasoning)")
+            list.add("claude" to "Claude 3.5 Sonnet (Deep Reasoning)")
             list.add("local-qwen-coder-0.5b" to "Local Qwen 2.5 Coder 0.5B (0 Tokens • On-Device)")
             availableModels.filter { !it.id.startsWith("local-") }.forEach {
                 if (it.id !in list.map { pair -> pair.first }) {

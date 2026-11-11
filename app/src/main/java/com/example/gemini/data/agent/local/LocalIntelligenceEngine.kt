@@ -285,6 +285,43 @@ object LocalIntelligenceEngine {
                     val md = "📦 **Agentic Awesome Skills Bundles (${bundles.size} Total)**\n\n| Bundle | Skills | Description |\n| :--- | :--- | :--- |\n$rows"
                     Pair(md, "Listed bundles")
                 }
+                is com.example.gemini.domain.project.ChatSkillIntent.CheckSkillsUpdate -> {
+                    val status = com.example.gemini.data.skills.AgenticSkillsRepository.checkForUpdates()
+                    val md = if (status.hasUpdate) {
+                        """
+                        🚀 **Skills Update Available!**
+
+                        - **Current Local Commit**: `${status.localSha}`
+                        - **Latest Remote Commit**: `${status.remoteSha}`
+                        - **Update Message**: *${status.commitMessage}*
+
+                        *Type `update skills` to download latest skills and synchronize installed playbooks.*
+                        """.trimIndent()
+                    } else if (status.error != null) {
+                        "⚠️ **Could not check for skill updates**: ${status.error}"
+                    } else {
+                        "✅ **Agentic Skills library is fully up to date!** (Commit: `${status.localSha}`)"
+                    }
+                    Pair(md, "Checked skills update")
+                }
+                is com.example.gemini.domain.project.ChatSkillIntent.UpdateSkills -> {
+                    val res = com.example.gemini.data.skills.AgenticSkillsRepository.updateSkills(
+                        projectPath = projectDir.absolutePath,
+                        context = context
+                    )
+                    val md = if (res.success) {
+                        """
+                        ✅ **Agentic Skills Updated Successfully!**
+
+                        - **Version**: `${res.newSha}`
+                        - **Installed Skills Refreshed**: `${res.updatedSkillsCount}`
+                        - **Status**: ${res.message}
+                        """.trimIndent()
+                    } else {
+                        "⚠️ **Failed to update skills**: ${res.error ?: res.message}"
+                    }
+                    Pair(md, "Updated skills")
+                }
             }
             return@withContext LocalEngineResult(
                 thoughtText = thought,

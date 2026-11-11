@@ -855,6 +855,44 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     """.trimIndent()
                     Pair(md, "Listed skill bundles")
                 }
+
+                is com.example.gemini.domain.project.ChatSkillIntent.CheckSkillsUpdate -> {
+                    val status = com.example.gemini.data.skills.AgenticSkillsRepository.checkForUpdates()
+                    val md = if (status.hasUpdate) {
+                        """
+                        🚀 **Agentic Skills Update Available!**
+
+                        - **Current Local Commit**: `${status.localSha}`
+                        - **Latest Remote Commit**: `${status.remoteSha}`
+                        - **Update Message**: *${status.commitMessage}*
+
+                        *Type `update skills` to download latest skills and update all installed playbooks.*
+                        """.trimIndent()
+                    } else if (status.error != null) {
+                        "⚠️ **Could not check for skill updates**: ${status.error}"
+                    } else {
+                        "✅ **Agentic Skills library is fully up to date!** (Commit: `${status.localSha}`)"
+                    }
+                    Pair(md, "Checked skills update")
+                }
+
+                is com.example.gemini.domain.project.ChatSkillIntent.UpdateSkills -> {
+                    val res = com.example.gemini.data.skills.AgenticSkillsRepository.updateSkills(
+                        projectPath = activeProjPath
+                    )
+                    val md = if (res.success) {
+                        """
+                        ✅ **Agentic Skills Updated Successfully!**
+
+                        - **Version**: `${res.newSha}`
+                        - **Installed Skills Refreshed**: `${res.updatedSkillsCount}`
+                        - **Status**: ${res.message}
+                        """.trimIndent()
+                    } else {
+                        "⚠️ **Failed to update skills**: ${res.error ?: res.message}"
+                    }
+                    Pair(md, "Updated skills")
+                }
             }
 
             val assistantMsg = ChatMessage(

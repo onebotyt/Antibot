@@ -40,3 +40,21 @@ data class SkillActionResult(
     val installedPath: String? = null,
     val error: String? = null
 )
+
+data class SkillUpdateStatus(
+    val hasUpdate: Boolean,
+    val localSha: String,
+    val remoteSha: String,
+    val commitMessage: String = "",
+    val commitDate: String = "",
+    val error: String? = null
+)
+
+data class SkillUpdateResult(
+    val success: Boolean,
+    val message: String,
+    val oldSha: String = "",
+    val newSha: String = "",
+    val updatedSkillsCount: Int = 0,
+    val error: String? = null
+)

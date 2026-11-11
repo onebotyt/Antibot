@@ -68,6 +68,11 @@ fun AgenticSkillsDialog(
     var showTargetPickerForSkill by remember { mutableStateOf<SkillMeta?>(null) }
     var showTargetPickerForBundle by remember { mutableStateOf<SkillBundle?>(null) }
 
+    var updateStatus by remember { mutableStateOf<SkillUpdateStatus?>(null) }
+    var isCheckingUpdates by remember { mutableStateOf(false) }
+    var isUpdatingSkills by remember { mutableStateOf(false) }
+    var isUpdatingInstalled by remember { mutableStateOf(false) }
+
     // Load initial data
     LaunchedEffect(Unit) {
         isSearching = true
@@ -80,6 +85,11 @@ fun AgenticSkillsDialog(
         }
         installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
         isSearching = false
+
+        // Background check for skills updates from repository
+        isCheckingUpdates = true
+        updateStatus = AgenticSkillsRepository.checkForUpdates()
+        isCheckingUpdates = false
     }
 
     // Trigger search when query or filters change
@@ -160,8 +170,137 @@ fun AgenticSkillsDialog(
                             )
                         }
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdates = true
+                                    val status = AgenticSkillsRepository.checkForUpdates()
+                                    updateStatus = status
+                                    isCheckingUpdates = false
+                                    if (status.hasUpdate) {
+                                        Toast.makeText(context, "Update available from skills repo!", Toast.LENGTH_SHORT).show()
+                                    } else if (status.error != null) {
+                                        Toast.makeText(context, "Update check: ${status.error}", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Skills library is up to date", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdates && !isUpdatingSkills
+                        ) {
+                            if (isCheckingUpdates) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = SkillPurple
+                                )
+                            } else {
+                                BadgedBox(
+                                    badge = {
+                                        if (updateStatus?.hasUpdate == true) {
+                                            Badge(containerColor = SkillAmber) {
+                                                Text("1", fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sync,
+                                        contentDescription = "Check for Skills updates",
+                                        tint = if (updateStatus?.hasUpdate == true) SkillAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+                }
+
+                // Update Banner (shown when GitHub repo has newer commits)
+                AnimatedVisibility(visible = updateStatus?.hasUpdate == true) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = SkillAmber.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, SkillAmber.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = SkillAmber, modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text(
+                                        text = "Skills Library Update Available",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    val commitMsg = updateStatus?.commitMessage?.take(50)?.let { if (it.length >= 50) "$it..." else it }
+                                    Text(
+                                        text = commitMsg ?: "New skills & playbooks ready to pull from GitHub",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        isUpdatingSkills = true
+                                        val res = AgenticSkillsRepository.updateSkills(
+                                            projectPath = activeProject?.path,
+                                            context = context
+                                        )
+                                        isUpdatingSkills = false
+                                        if (res.success) {
+                                            Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                            updateStatus = AgenticSkillsRepository.checkForUpdates()
+                                            searchResults = AgenticSkillsRepository.searchSkills(searchQuery, limit = 50, context = context)
+                                            val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
+                                                File(activeProject.path, ".agents/skills")
+                                            } else {
+                                                File("/data/user/0/com.termux/files/home/.gemini/config/skills")
+                                            }
+                                            installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                                        } else {
+                                            Toast.makeText(context, "Update failed: ${res.error ?: res.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                                enabled = !isUpdatingSkills,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SkillAmber),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                if (isUpdatingSkills) {
+                                    CircularProgressIndicator(modifier = Modifier.size(13.dp), strokeWidth = 2.dp, color = Color.Black)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Updating...", fontSize = 11.sp, color = Color.Black)
+                                } else {
+                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.Black)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Update Now", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -246,7 +385,22 @@ fun AgenticSkillsDialog(
                             scope.launch {
                                 selectedSkillDetail = AgenticSkillsRepository.getSkillDetail(skillId, context)
                             }
-                        }
+                        },
+                        onUpdateAll = {
+                            scope.launch {
+                                isUpdatingInstalled = true
+                                val res = AgenticSkillsRepository.updateAllInstalledSkills(activeProject?.path)
+                                isUpdatingInstalled = false
+                                Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                val targetDir = if (activeProject != null && activeProject.path.isNotBlank()) {
+                                    File(activeProject.path, ".agents/skills")
+                                } else {
+                                    File("/data/user/0/com.termux/files/home/.gemini/config/skills")
+                                }
+                                installedSkills = AgenticSkillsRepository.listInstalled(targetDir)
+                            }
+                        },
+                        isUpdating = isUpdatingInstalled
                     )
                 }
             }
@@ -656,7 +810,9 @@ private fun BundlesTabContent(
 private fun InstalledTabContent(
     installed: List<String>,
     activeProject: ProjectItem?,
-    onInspect: (String) -> Unit
+    onInspect: (String) -> Unit,
+    onUpdateAll: () -> Unit,
+    isUpdating: Boolean
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
         val locationStr = if (activeProject != null && activeProject.path.isNotBlank()) {
@@ -673,12 +829,38 @@ private fun InstalledTabContent(
             Row(
                 modifier = Modifier.fillMaxWidth().padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Outlined.Folder, contentDescription = null, tint = SkillPurple, modifier = Modifier.size(20.dp))
-                Column {
-                    Text("Target Directory", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(locationStr, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SkillPurple)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Outlined.Folder, contentDescription = null, tint = SkillPurple, modifier = Modifier.size(20.dp))
+                    Column {
+                        Text("Target Directory", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(locationStr, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SkillPurple)
+                    }
+                }
+                if (installed.isNotEmpty()) {
+                    Button(
+                        onClick = onUpdateAll,
+                        enabled = !isUpdating,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SkillPurple)
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(modifier = Modifier.size(13.dp), strokeWidth = 2.dp, color = Color.White)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Updating...", fontSize = 11.sp)
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Re-sync All", fontSize = 11.sp)
+                        }
+                    }
                 }
             }
         }
