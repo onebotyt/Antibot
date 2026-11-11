@@ -94,7 +94,8 @@ enum class ArtifactViewMode {
 fun ClaudeArtifactViewerDialog(
     artifact: ClaudeArtifactItem,
     onDismiss: () -> Unit,
-    initialMode: ArtifactViewMode = if (artifact.isWebHtml) ArtifactViewMode.PREVIEW else ArtifactViewMode.CODE
+    initialMode: ArtifactViewMode = if (artifact.isWebHtml) ArtifactViewMode.PREVIEW else ArtifactViewMode.CODE,
+    onOpenInBrowser: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var viewMode by remember { mutableStateOf(initialMode) }
@@ -224,8 +225,12 @@ fun ClaudeArtifactViewerDialog(
                     // Inbuilt Browser quick button
                     IconButton(
                         onClick = {
-                            BrowserSessionManager.instance.openUrl(cleanUrl, newTab = true)
-                            Toast.makeText(context, "Opened in Inbuilt Browser tab", Toast.LENGTH_SHORT).show()
+                            if (onOpenInBrowser != null) {
+                                onOpenInBrowser(cleanUrl)
+                            } else {
+                                BrowserSessionManager.instance.openUrl(cleanUrl, newTab = true)
+                                Toast.makeText(context, "Opened in Inbuilt Browser tab", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -299,8 +304,12 @@ fun ClaudeArtifactViewerDialog(
                                 },
                                 onClick = {
                                     showMenu = false
-                                    BrowserSessionManager.instance.openUrl(cleanUrl, newTab = true)
-                                    Toast.makeText(context, "Opened in Inbuilt Browser", Toast.LENGTH_SHORT).show()
+                                    if (onOpenInBrowser != null) {
+                                        onOpenInBrowser(cleanUrl)
+                                    } else {
+                                        BrowserSessionManager.instance.openUrl(cleanUrl, newTab = true)
+                                        Toast.makeText(context, "Opened in Inbuilt Browser", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             )
 

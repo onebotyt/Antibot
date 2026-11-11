@@ -2358,22 +2358,6 @@ fun ChatScreen(
                     )
                 }
 
-                // 1-Click Web Live Preview Banner (when conversation contains an HTML file or dev server preview target)
-                val latestWebPreviewUrl = remember(messages) {
-                    WebPreviewHelper.findLatestWebPreviewTarget(messages, context)
-                }
-
-                if (latestWebPreviewUrl != null && !(isAgyChat && currentConv?.isCloud == true)) {
-                    WebPreviewBanner(
-                        targetUrl = latestWebPreviewUrl,
-                        onPreview = { activeWebPreviewUrl = latestWebPreviewUrl },
-                        onOpenInBrowser = {
-                            com.example.gemini.ui.browser.BrowserSessionManager.instance.openUrl(latestWebPreviewUrl, newTab = true)
-                            onNavigateToBrowser()
-                        }
-                    )
-                }
-
                 // Chat Input Bar with Bottom Model & Thinking Selector Pills
                 ChatInputBar(
                     isOnline = if (isLocalChat) true
@@ -3408,7 +3392,12 @@ fun ChatScreen(
     activeArtifactViewer?.let { artifact ->
         ClaudeArtifactViewerDialog(
             artifact = artifact,
-            onDismiss = { activeArtifactViewer = null }
+            onDismiss = { activeArtifactViewer = null },
+            onOpenInBrowser = { url ->
+                activeArtifactViewer = null
+                com.example.gemini.ui.browser.BrowserSessionManager.instance.openUrl(url, newTab = true)
+                onNavigateToBrowser()
+            }
         )
     }
     if (showCloudRunCommand) {

@@ -265,6 +265,9 @@ fun MessageBubble(
 
                 // Token Telemetry and Action Icons (Copy, Retry, Raw Payload, Artifacts, Web Preview)
                 if (!message.isStreaming && message.content.isNotEmpty()) {
+                    val hasArtifacts = remember(message) {
+                        com.example.gemini.ui.chat.ClaudeWorkSummaryParser.parse(message).second.isNotEmpty()
+                    }
                     val previewTarget = remember(message.content) {
                         WebPreviewHelper.extractWebPreviewTarget(message.content, context)
                     }
@@ -274,7 +277,7 @@ fun MessageBubble(
                             .fillMaxWidth()
                             .padding(top = 6.dp)
                     ) {
-                        if (previewTarget != null) {
+                        if (previewTarget != null && !hasArtifacts) {
                             WebPreviewCard(
                                 targetUrl = previewTarget,
                                 onClick = { onOpenWebPreview?.invoke(previewTarget) }
@@ -611,6 +614,9 @@ fun AssistantMessageFooter(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val hasArtifacts = remember(message) {
+        com.example.gemini.ui.chat.ClaudeWorkSummaryParser.parse(message).second.isNotEmpty()
+    }
     val previewTarget = remember(message.content) {
         WebPreviewHelper.extractWebPreviewTarget(message.content, context)
     }
@@ -620,7 +626,7 @@ fun AssistantMessageFooter(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp)
     ) {
-        if (previewTarget != null) {
+        if (previewTarget != null && !hasArtifacts) {
             WebPreviewCard(
                 targetUrl = previewTarget,
                 onClick = { onOpenWebPreview?.invoke(previewTarget) }

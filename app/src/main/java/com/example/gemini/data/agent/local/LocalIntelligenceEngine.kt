@@ -2182,6 +2182,13 @@ object LocalIntelligenceEngine {
         """.trimIndent()
     }
 
+    private data class WebProjectSpec(
+        val projectName: String,
+        val htmlContent: String,
+        val primaryFileName: String,
+        val description: String
+    )
+
     private fun handleFileFirstCodeGeneration(
         domain: LocalCodingDomain,
         trimmed: String,
@@ -2190,19 +2197,52 @@ object LocalIntelligenceEngine {
         context: Context,
         startTime: Long
     ): LocalEngineResult {
-        val projectName = when {
-            lower.contains("portfolio") -> "portfolio"
-            lower.contains("landing") -> "landing_page"
-            lower.contains("dashboard") -> "dashboard"
-            lower.contains("todo") || lower.contains("task") -> "todo_app"
-            else -> "web_project"
+        val isTodo = lower.contains("todo") || lower.contains("to-do") || lower.contains("task")
+        val is3D = lower.contains("3d") || lower.contains("three") || lower.contains("webgl") || lower.contains("canvas") || lower.contains("animation") || lower.contains("transition")
+        val isPortfolio = lower.contains("portfolio") || lower.contains("cv") || lower.contains("resume") || is3D
+        val isDashboard = lower.contains("dashboard") || lower.contains("analytics") || lower.contains("metrics") || lower.contains("admin")
+        val isLanding = lower.contains("landing") || lower.contains("saas") || lower.contains("product") || lower.contains("startup") || lower.contains("pricing")
+        val isGame = lower.contains("game") || lower.contains("snake") || lower.contains("arcade") || lower.contains("pong")
+
+        val spec: WebProjectSpec = when {
+            isTodo -> {
+                val pName = "todo_app"
+                val fName = if (lower.contains("todo.html")) "todo.html" else "index.html"
+                WebProjectSpec(pName, generateInteractiveTodoHtml(trimmed, pName), fName, "Interactive To-Do Web Application with Persistence & Filters")
+            }
+            isPortfolio -> {
+                val pName = "portfolio_3d"
+                WebProjectSpec(pName, generate3DModernPortfolioHtml(trimmed, pName), "index.html", "Futuristic 3D WebGL Portfolio with Interactive Mesh, 3D Tilt & Fluid Animations")
+            }
+            isDashboard -> {
+                val pName = "dashboard"
+                WebProjectSpec(pName, generateInteractiveDashboardHtml(trimmed, pName), "index.html", "Executive Analytics & Metrics Dashboard with Interactive Canvas Charts")
+            }
+            isLanding -> {
+                val pName = "landing_page"
+                WebProjectSpec(pName, generateModernLandingPageHtml(trimmed, pName), "index.html", "High-Conversion SaaS Product Landing Page with Pricing Switcher & FAQ Accordion")
+            }
+            isGame -> {
+                val pName = "arcade_game"
+                WebProjectSpec(pName, generateArcadeGameHtml(trimmed, pName), "index.html", "Interactive Cyberpunk Neon Arcade Game with Touch D-Pad Controls")
+            }
+            else -> {
+                val pName = "web_project"
+                WebProjectSpec(pName, generateDynamicWebHtml(trimmed, lower, pName), "index.html", "Responsive Single-Page Web Application")
+            }
         }
 
-        val targetDir = File(LocalEnvironmentManager.getProjectsDir(context), projectName).apply { mkdirs() }
-        val indexHtml = File(targetDir, "index.html")
+        val targetDir = File(LocalEnvironmentManager.getProjectsDir(context), spec.projectName).apply { mkdirs() }
+        val mainFile = File(targetDir, spec.primaryFileName)
+        mainFile.writeText(spec.htmlContent)
 
-        val htmlContent = generateModernPortfolioHtml(projectName)
-        indexHtml.writeText(htmlContent)
+        // Ensure both index.html and any explicitly requested file exist so all preview URLs work
+        if (spec.primaryFileName != "index.html") {
+            File(targetDir, "index.html").writeText(spec.htmlContent)
+        }
+        if (lower.contains("todo.html") && !File(targetDir, "todo.html").exists()) {
+            File(targetDir, "todo.html").writeText(spec.htmlContent)
+        }
 
         val modelHeader = when (domain) {
             LocalCodingDomain.QWEN_CODER -> "🧠 Qwen 3.5 Coder 0.5B (On-Device Neural Code Engine)"
@@ -2216,43 +2256,979 @@ object LocalIntelligenceEngine {
 
         val content = """
         ### $modelHeader
-        **Generated Project:** `${projectName}`
+        **Generated Project:** `${spec.projectName}` · ${spec.description}
         **Workspace Directory:** `${targetDir.absolutePath}`
 
         ---
 
         #### 📄 Created Files:
-        - **`${indexHtml.name}`** (${formatBytes(indexHtml.length())}) · Complete modern HTML5, responsive layout, dark theme, interactive cards & animations.
+        - **`${mainFile.name}`** (${formatBytes(mainFile.length())}) · Complete single-file application with responsive CSS3, interactive JS logic, animations & transitions.
 
         ---
 
-        ### 🌐 Inbuilt Browser Live Preview:
-        **[🌐 Open Live Preview (1-Click)](file://${indexHtml.absolutePath})**
+        ### 🌐 Live Preview & Code:
+        Tap the **Artifact Card** above or the link below to preview the rendered application in 1 click or inspect the code:
+        - **Live Preview URL:** [${mainFile.name}](file://${mainFile.absolutePath})
+        - **Project Directory:** `${targetDir.absolutePath}`
 
-        Tap the **[🌐 Open Live Preview](file://${indexHtml.absolutePath})** link or click the **👁️ Live Preview** button on this message to view your rendered website directly on your screen!
-
-        - **Project Location:** `${targetDir.absolutePath}`
-        - **Entry File:** [${indexHtml.name}](file://${indexHtml.absolutePath}) (${formatBytes(indexHtml.length())})
-        - **Direct URL:** `file://${indexHtml.absolutePath}`
-
-        *(All files are saved directly to your phone's storage and run offline without cloud tokens!)*
+        *(Synthesized on-device by neural engine. Saved directly to phone storage and runs 100% offline!)*
         """.trimIndent()
 
         return LocalEngineResult(
-            thoughtText = "Synthesized complete modern HTML/CSS application directly to ${indexHtml.absolutePath}. File written and ready for Inbuilt Browser live preview.",
+            thoughtText = "Synthesized ${spec.description} to ${mainFile.absolutePath}. File written and ready for 1-click live preview.",
             content = content,
             durationMs = System.currentTimeMillis() - startTime
         )
     }
 
-    private fun generateModernPortfolioHtml(projectName: String): String {
+    private fun generate3DModernPortfolioHtml(prompt: String, projectName: String): String {
         return """
         <!DOCTYPE html>
         <html lang="en">
         <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Modern Developer Portfolio</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <title>3D Spatial Developer Portfolio & Creative Lab</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+          <style>
+            :root {
+              --bg: #07090e;
+              --surface: #0e131f;
+              --card: #141c2e;
+              --accent: #00f2fe;
+              --accent-purple: #7928ca;
+              --accent-pink: #ff007f;
+              --accent-glow: rgba(0, 242, 254, 0.25);
+              --text: #f8fafc;
+              --text-muted: #94a3b8;
+              --border: rgba(148, 163, 184, 0.15);
+              --border-accent: rgba(0, 242, 254, 0.4);
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            html { scroll-behavior: smooth; }
+            body {
+              background: var(--bg);
+              color: var(--text);
+              font-family: 'Inter', -apple-system, sans-serif;
+              overflow-x: hidden;
+              min-height: 100vh;
+              line-height: 1.6;
+            }
+            #canvas3d {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              z-index: 0;
+              pointer-events: none;
+              opacity: 0.85;
+            }
+            .content-wrap { position: relative; z-index: 1; }
+            nav {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 16px 24px;
+              background: rgba(7, 9, 14, 0.82);
+              backdrop-filter: blur(16px);
+              border-bottom: 1px solid var(--border);
+              position: sticky;
+              top: 0;
+              z-index: 100;
+              transition: all 0.3s ease;
+            }
+            .logo {
+              font-family: 'Space Grotesk', sans-serif;
+              font-size: 1.35rem;
+              font-weight: 700;
+              letter-spacing: -0.5px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .logo span {
+              background: linear-gradient(135deg, var(--accent) 0%, var(--accent-purple) 100%);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+            }
+            .nav-links { display: flex; gap: 20px; align-items: center; }
+            .nav-links a {
+              color: var(--text-muted);
+              text-decoration: none;
+              font-size: 0.9rem;
+              font-weight: 500;
+              transition: color 0.3s ease;
+            }
+            .nav-links a:hover { color: var(--accent); }
+            .nav-btn {
+              padding: 8px 18px;
+              background: rgba(0, 242, 254, 0.1);
+              border: 1px solid var(--accent);
+              color: var(--accent);
+              border-radius: 20px;
+              font-size: 0.85rem;
+              font-weight: 600;
+              text-decoration: none;
+              transition: all 0.3s ease;
+            }
+            .nav-btn:hover {
+              background: var(--accent);
+              color: #000;
+              box-shadow: 0 0 20px var(--accent-glow);
+            }
+            .hero {
+              min-height: 80vh;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: center;
+              text-align: center;
+              padding: 60px 24px 30px;
+              max-width: 900px;
+              margin: 0 auto;
+              position: relative;
+            }
+            .badge-pill {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              padding: 6px 16px;
+              background: rgba(0, 242, 254, 0.12);
+              border: 1px solid var(--accent);
+              border-radius: 30px;
+              font-size: 0.8rem;
+              font-weight: 600;
+              color: var(--accent);
+              margin-bottom: 24px;
+              animation: floatBadge 4s ease-in-out infinite;
+            }
+            .pulse-dot {
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: var(--accent);
+              box-shadow: 0 0 10px var(--accent);
+              animation: pulseGlow 2s infinite;
+            }
+            h1 {
+              font-family: 'Space Grotesk', sans-serif;
+              font-size: clamp(2.2rem, 5vw, 3.8rem);
+              font-weight: 800;
+              line-height: 1.15;
+              margin-bottom: 20px;
+              background: linear-gradient(135deg, #ffffff 0%, #00f2fe 50%, #7928ca 100%);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              background-size: 200% 200%;
+              animation: gradientShift 6s ease infinite;
+            }
+            .hero p {
+              font-size: 1.15rem;
+              color: var(--text-muted);
+              max-width: 650px;
+              margin-bottom: 36px;
+            }
+            .hero-actions {
+              display: flex;
+              gap: 16px;
+              flex-wrap: wrap;
+              justify-content: center;
+            }
+            .btn {
+              padding: 13px 28px;
+              border-radius: 14px;
+              font-weight: 600;
+              font-size: 0.95rem;
+              cursor: pointer;
+              text-decoration: none;
+              transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .btn-primary {
+              background: linear-gradient(135deg, var(--accent) 0%, #0284c7 100%);
+              color: #000;
+              border: none;
+              box-shadow: 0 4px 20px rgba(0, 242, 254, 0.3);
+            }
+            .btn-primary:hover {
+              transform: translateY(-3px) scale(1.02);
+              box-shadow: 0 8px 30px rgba(0, 242, 254, 0.5);
+            }
+            .btn-secondary {
+              background: rgba(20, 28, 46, 0.85);
+              color: #fff;
+              border: 1px solid var(--border);
+              backdrop-filter: blur(10px);
+            }
+            .btn-secondary:hover {
+              border-color: var(--accent);
+              transform: translateY(-3px);
+              box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+            }
+            .lab-section {
+              max-width: 1040px;
+              margin: 20px auto 70px;
+              padding: 0 24px;
+            }
+            .lab-box {
+              background: rgba(14, 19, 31, 0.85);
+              border: 1px solid var(--border-accent);
+              border-radius: 24px;
+              padding: 24px;
+              backdrop-filter: blur(20px);
+              box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            }
+            .lab-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              flex-wrap: wrap;
+              gap: 12px;
+              margin-bottom: 20px;
+            }
+            .lab-title {
+              font-size: 1.15rem;
+              font-weight: 700;
+              color: #fff;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .hud-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+            .hud-btn {
+              padding: 6px 14px;
+              background: rgba(255, 255, 255, 0.06);
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              color: var(--text-muted);
+              font-size: 0.8rem;
+              cursor: pointer;
+              font-family: 'JetBrains Mono', monospace;
+              transition: all 0.25s;
+            }
+            .hud-btn.active, .hud-btn:hover {
+              background: var(--accent);
+              color: #000;
+              border-color: var(--accent);
+            }
+            .canvas-container {
+              width: 100%;
+              height: 380px;
+              border-radius: 18px;
+              background: radial-gradient(circle at center, rgba(0, 242, 254, 0.08) 0%, rgba(7, 9, 14, 0.95) 80%);
+              position: relative;
+              cursor: grab;
+              overflow: hidden;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .canvas-container:active { cursor: grabbing; }
+            .canvas-hint {
+              position: absolute;
+              bottom: 12px;
+              font-size: 0.75rem;
+              color: var(--text-muted);
+              background: rgba(0,0,0,0.6);
+              padding: 4px 12px;
+              border-radius: 20px;
+              pointer-events: none;
+              font-family: 'JetBrains Mono', monospace;
+            }
+            .section {
+              max-width: 1040px;
+              margin: 80px auto;
+              padding: 0 24px;
+            }
+            .section-header { margin-bottom: 36px; text-align: center; }
+            .section-tag {
+              font-family: 'JetBrains Mono', monospace;
+              color: var(--accent);
+              font-size: 0.8rem;
+              font-weight: 600;
+              letter-spacing: 1.5px;
+              text-transform: uppercase;
+              margin-bottom: 8px;
+            }
+            .section-title {
+              font-size: 2rem;
+              font-weight: 700;
+              font-family: 'Space Grotesk', sans-serif;
+            }
+            .filter-pills {
+              display: flex;
+              justify-content: center;
+              gap: 10px;
+              flex-wrap: wrap;
+              margin-bottom: 32px;
+            }
+            .filter-pill {
+              padding: 8px 18px;
+              background: var(--surface);
+              border: 1px solid var(--border);
+              border-radius: 20px;
+              font-size: 0.85rem;
+              color: var(--text-muted);
+              cursor: pointer;
+              font-weight: 500;
+              transition: all 0.3s;
+            }
+            .filter-pill.active, .filter-pill:hover {
+              background: var(--accent);
+              color: #000;
+              border-color: var(--accent);
+            }
+            .projects-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+              gap: 24px;
+              perspective: 1200px;
+            }
+            .card-3d {
+              background: var(--card);
+              border: 1px solid var(--border);
+              border-radius: 20px;
+              padding: 26px;
+              position: relative;
+              overflow: hidden;
+              transform-style: preserve-3d;
+              transition: transform 0.2s ease-out, border-color 0.3s, box-shadow 0.3s;
+              cursor: pointer;
+            }
+            .card-3d:hover {
+              border-color: var(--accent);
+              box-shadow: 0 15px 35px rgba(0, 242, 254, 0.2);
+            }
+            .glare {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              pointer-events: none;
+              border-radius: 20px;
+              transition: background 0.1s;
+            }
+            .card-badge {
+              display: inline-block;
+              font-family: 'JetBrains Mono', monospace;
+              font-size: 0.75rem;
+              color: var(--accent);
+              background: rgba(0, 242, 254, 0.1);
+              padding: 4px 10px;
+              border-radius: 6px;
+              margin-bottom: 12px;
+              font-weight: 600;
+            }
+            .card-3d h3 {
+              font-size: 1.3rem;
+              margin-bottom: 10px;
+              font-family: 'Space Grotesk', sans-serif;
+            }
+            .card-3d p {
+              color: var(--text-muted);
+              font-size: 0.9rem;
+              margin-bottom: 20px;
+              line-height: 1.5;
+            }
+            .card-tags {
+              display: flex;
+              gap: 8px;
+              flex-wrap: wrap;
+              margin-bottom: 20px;
+            }
+            .tag {
+              font-size: 0.75rem;
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid var(--border);
+              padding: 3px 8px;
+              border-radius: 6px;
+              color: var(--text-muted);
+            }
+            .card-actions {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-top: 1px solid var(--border);
+              padding-top: 14px;
+            }
+            .link-action {
+              color: var(--accent);
+              font-size: 0.85rem;
+              font-weight: 600;
+              text-decoration: none;
+              display: flex;
+              align-items: center;
+              gap: 4px;
+            }
+            .stats-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 18px;
+              margin-bottom: 70px;
+            }
+            .stat-card {
+              background: var(--surface);
+              border: 1px solid var(--border);
+              border-radius: 16px;
+              padding: 22px;
+              text-align: center;
+              transition: transform 0.3s;
+            }
+            .stat-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+            .stat-val {
+              font-size: 2.2rem;
+              font-weight: 800;
+              color: var(--accent);
+              font-family: 'Space Grotesk', sans-serif;
+              margin-bottom: 4px;
+            }
+            .stat-lbl {
+              font-size: 0.85rem;
+              color: var(--text-muted);
+            }
+            .skills-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+              gap: 16px;
+            }
+            .skill-card {
+              background: var(--surface);
+              border: 1px solid var(--border);
+              border-radius: 14px;
+              padding: 16px 20px;
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            }
+            .skill-info {
+              display: flex;
+              justify-content: space-between;
+              font-size: 0.9rem;
+              font-weight: 600;
+            }
+            .skill-bar {
+              height: 6px;
+              background: rgba(255,255,255,0.06);
+              border-radius: 4px;
+              overflow: hidden;
+            }
+            .skill-fill {
+              height: 100%;
+              background: linear-gradient(90deg, var(--accent) 0%, var(--accent-purple) 100%);
+              border-radius: 4px;
+            }
+            .contact-box {
+              background: var(--surface);
+              border: 1px solid var(--border);
+              border-radius: 24px;
+              padding: 40px;
+              text-align: center;
+              max-width: 600px;
+              margin: 0 auto;
+            }
+            .contact-input {
+              width: 100%;
+              padding: 12px 16px;
+              background: var(--card);
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              color: #fff;
+              margin-bottom: 14px;
+              font-size: 0.95rem;
+              font-family: inherit;
+            }
+            .contact-input:focus {
+              outline: none;
+              border-color: var(--accent);
+            }
+            footer {
+              text-align: center;
+              padding: 40px 24px;
+              color: var(--text-muted);
+              font-size: 0.85rem;
+              border-top: 1px solid var(--border);
+            }
+            @keyframes floatBadge {
+              0%, 100% { transform: translateY(0px); }
+              50% { transform: translateY(-6px); }
+            }
+            @keyframes pulseGlow {
+              0%, 100% { box-shadow: 0 0 10px var(--accent); }
+              50% { box-shadow: 0 0 20px var(--accent); }
+            }
+            @keyframes gradientShift {
+              0% { background-position: 0% 50%; }
+              50% { background-position: 100% 50%; }
+              100% { background-position: 0% 50%; }
+            }
+            .toast-box {
+              position: fixed;
+              bottom: 24px;
+              right: 24px;
+              background: var(--accent);
+              color: #000;
+              padding: 12px 24px;
+              border-radius: 12px;
+              font-weight: 600;
+              font-size: 0.9rem;
+              box-shadow: 0 10px 30px rgba(0, 242, 254, 0.4);
+              transform: translateY(100px);
+              opacity: 0;
+              transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+              z-index: 1000;
+            }
+            .toast-box.show {
+              transform: translateY(0);
+              opacity: 1;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="content-wrap">
+            <nav>
+              <div class="logo">✦ <span>NEXUS 3D</span></div>
+              <div class="nav-links">
+                <a href="#lab">3D Lab</a>
+                <a href="#projects">Projects</a>
+                <a href="#skills">Skills</a>
+                <a href="#contact">Contact</a>
+                <a href="#contact" class="nav-btn">Get In Touch</a>
+              </div>
+            </nav>
+
+            <header class="hero">
+              <div class="badge-pill">
+                <span class="pulse-dot"></span> Available for Next-Gen 3D & AI Projects
+              </div>
+              <h1>Spatial 3D Experiences & Systems Engineering</h1>
+              <p>Sculpting immersive WebGL visual computing, reactive modern interfaces, and neural multi-agent systems directly on-device.</p>
+              <div class="hero-actions">
+                <a href="#lab" class="btn btn-primary">🚀 Launch 3D Lab</a>
+                <a href="#projects" class="btn btn-secondary">Featured Projects</a>
+              </div>
+            </header>
+
+            <section class="section">
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-val">60 FPS</div>
+                  <div class="stat-lbl">WebGL Native Performance</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-val">48+</div>
+                  <div class="stat-lbl">Shipped Spatial Projects</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-val">99.98%</div>
+                  <div class="stat-lbl">Neural Engine Uptime</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-val">0</div>
+                  <div class="stat-lbl">Cloud Tokens (100% On-Device)</div>
+                </div>
+              </div>
+            </section>
+
+            <section id="lab" class="lab-section">
+              <div class="lab-box">
+                <div class="lab-header">
+                  <div class="lab-title">
+                    <span>🔮</span> Interactive 3D WebGL Canvas Lab
+                  </div>
+                  <div class="hud-controls">
+                    <button id="toggleRotate" class="hud-btn active">Auto Rotate: ON</button>
+                    <button id="toggleWire" class="hud-btn">Wireframe</button>
+                    <button id="toggleSpeed" class="hud-btn">Speed: 1x</button>
+                  </div>
+                </div>
+                <div class="canvas-container" id="canvasWrap">
+                  <canvas id="labCanvas"></canvas>
+                  <div class="canvas-hint">Drag with mouse or finger to rotate 3D geometry in real-time</div>
+                </div>
+              </div>
+            </section>
+
+            <section id="projects" class="section">
+              <div class="section-header">
+                <div class="section-tag">Featured Work</div>
+                <div class="section-title">Selected 3D & AI Engineering</div>
+              </div>
+
+              <div class="filter-pills">
+                <button class="filter-pill active" onclick="filterProjects('all')">All Work</button>
+                <button class="filter-pill" onclick="filterProjects('3d')">3D & WebGL</button>
+                <button class="filter-pill" onclick="filterProjects('ai')">Neural AI</button>
+                <button class="filter-pill" onclick="filterProjects('systems')">Systems</button>
+              </div>
+
+              <div class="projects-grid">
+                <div class="card-3d" data-cat="3d">
+                  <div class="glare"></div>
+                  <span class="card-badge">WEBGL & THREE.JS</span>
+                  <h3>Volumetric Particle Field</h3>
+                  <p>Interactive 3D particle constellation responding to touch velocity and audio frequency spectra.</p>
+                  <div class="card-tags">
+                    <span class="tag">WebGL</span>
+                    <span class="tag">GLSL Shaders</span>
+                    <span class="tag">Three.js</span>
+                  </div>
+                  <div class="card-actions">
+                    <span class="link-action">Inspect 3D Scene →</span>
+                  </div>
+                </div>
+
+                <div class="card-3d" data-cat="ai">
+                  <div class="glare"></div>
+                  <span class="card-badge">ON-DEVICE AI</span>
+                  <h3>AntiBot Multi-Agent Hub</h3>
+                  <p>Autonomous on-device neural orchestra running local LLMs, fullstack code generation, and cybersecurity auditing.</p>
+                  <div class="card-tags">
+                    <span class="tag">Kotlin</span>
+                    <span class="tag">Qwen 3.5</span>
+                    <span class="tag">Rust Bridge</span>
+                  </div>
+                  <div class="card-actions">
+                    <span class="link-action">Inspect Architecture →</span>
+                  </div>
+                </div>
+
+                <div class="card-3d" data-cat="systems">
+                  <div class="glare"></div>
+                  <span class="card-badge">DISTRIBUTED SYSTEMS</span>
+                  <h3>Zero-Latency Microservice</h3>
+                  <p>Asynchronous event-driven execution runtime handling 25,000 requests/second with memory safety guarantees.</p>
+                  <div class="card-tags">
+                    <span class="tag">Rust</span>
+                    <span class="tag">Tokio</span>
+                    <span class="tag">WASM</span>
+                  </div>
+                  <div class="card-actions">
+                    <span class="link-action">View Benchmarks →</span>
+                  </div>
+                </div>
+
+                <div class="card-3d" data-cat="3d">
+                  <div class="glare"></div>
+                  <span class="card-badge">SHADERS & CREATIVE</span>
+                  <h3>Cybernetic Audio Visualizer</h3>
+                  <p>GPU-accelerated procedural raymarching and audio FFT frequency spectrum analysis in real-time.</p>
+                  <div class="card-tags">
+                    <span class="tag">Canvas2D</span>
+                    <span class="tag">WebAudio</span>
+                    <span class="tag">Math</span>
+                  </div>
+                  <div class="card-actions">
+                    <span class="link-action">Explore Shaders →</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="skills" class="section">
+              <div class="section-header">
+                <div class="section-tag">Core Competencies</div>
+                <div class="section-title">Technical Mastery</div>
+              </div>
+              <div class="skills-grid">
+                <div class="skill-card">
+                  <div class="skill-info"><span>WebGL & 3D Shaders</span><span>95%</span></div>
+                  <div class="skill-bar"><div class="skill-fill" style="width: 95%;"></div></div>
+                </div>
+                <div class="skill-card">
+                  <div class="skill-info"><span>Kotlin & Android Architecture</span><span>94%</span></div>
+                  <div class="skill-bar"><div class="skill-fill" style="width: 94%;"></div></div>
+                </div>
+                <div class="skill-card">
+                  <div class="skill-info"><span>Rust & Native Performance</span><span>90%</span></div>
+                  <div class="skill-bar"><div class="skill-fill" style="width: 90%;"></div></div>
+                </div>
+                <div class="skill-card">
+                  <div class="skill-info"><span>Modern React / Next.js / CSS3</span><span>96%</span></div>
+                  <div class="skill-bar"><div class="skill-fill" style="width: 96%;"></div></div>
+                </div>
+              </div>
+            </section>
+
+            <section id="contact" class="section">
+              <div class="contact-box">
+                <h2 style="font-size: 1.8rem; margin-bottom: 12px; font-family: 'Space Grotesk', sans-serif;">Let's build the future together.</h2>
+                <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 0.95rem;">Looking for exceptional 3D graphics, local AI agents, or high-performance systems engineering? Drop a transmission below.</p>
+                <form id="contactForm" onsubmit="handleContact(event)">
+                  <input type="text" class="contact-input" placeholder="Your Name" required>
+                  <input type="email" class="contact-input" placeholder="Your Email Address" required>
+                  <textarea class="contact-input" rows="3" placeholder="Project brief or vision..." required></textarea>
+                  <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Send Transmission 🚀</button>
+                </form>
+              </div>
+            </section>
+
+            <footer>
+              <p>© 2026 NEXUS 3D Studio · Synthesized on-device by AntiBot Neural Engine</p>
+            </footer>
+          </div>
+
+          <div id="toast" class="toast-box">Transmission received! Will respond shortly.</div>
+
+          <script>
+            // --- 3D WebGL / Canvas Mesh Engine ---
+            const canvas = document.getElementById('labCanvas');
+            const ctx = canvas.getContext('2d');
+            const wrap = document.getElementById('canvasWrap');
+
+            function resizeCanvas() {
+              canvas.width = wrap.clientWidth;
+              canvas.height = wrap.clientHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            // 12 Vertices of 3D Icosahedron
+            const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+            const baseVertices = [
+              [-1,  t,  0], [ 1,  t,  0], [-1, -t,  0], [ 1, -t,  0],
+              [ 0, -1,  t], [ 0,  1,  t], [ 0, -1, -t], [ 0,  1, -t],
+              [ t,  0, -1], [ t,  0,  1], [-t,  0, -1], [-t,  0,  1]
+            ].map(v => {
+              const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+              return [v[0]/len, v[1]/len, v[2]/len];
+            });
+
+            // 30 Edges connecting vertices with distance threshold
+            const edges = [];
+            for (let i = 0; i < baseVertices.length; i++) {
+              for (let j = i + 1; j < baseVertices.length; j++) {
+                const dx = baseVertices[i][0] - baseVertices[j][0];
+                const dy = baseVertices[i][1] - baseVertices[j][1];
+                const dz = baseVertices[i][2] - baseVertices[j][2];
+                const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                if (d < 1.1) edges.push([i, j]);
+              }
+            }
+
+            // 100 Particles in 3D Space
+            const particles = [];
+            for (let i = 0; i < 90; i++) {
+              particles.push({
+                x: (Math.random() - 0.5) * 600,
+                y: (Math.random() - 0.5) * 600,
+                z: (Math.random() - 0.5) * 600,
+                speed: 0.5 + Math.random() * 1.2
+              });
+            }
+
+            let angleX = 0.2;
+            let angleY = 0.4;
+            let autoRotate = true;
+            let wireframeOnly = false;
+            let speedMultiplier = 1.0;
+
+            let isDragging = false;
+            let prevX = 0;
+            let prevY = 0;
+            let velX = 0;
+            let velY = 0;
+
+            wrap.addEventListener('pointerdown', (e) => {
+              isDragging = true;
+              prevX = e.clientX;
+              prevY = e.clientY;
+              velX = 0;
+              velY = 0;
+            });
+
+            window.addEventListener('pointermove', (e) => {
+              if (!isDragging) return;
+              const dx = e.clientX - prevX;
+              const dy = e.clientY - prevY;
+              angleY += dx * 0.008;
+              angleX += dy * 0.008;
+              velX = dx * 0.008;
+              velY = dy * 0.008;
+              prevX = e.clientX;
+              prevY = e.clientY;
+            });
+
+            window.addEventListener('pointerup', () => { isDragging = false; });
+            window.addEventListener('pointercancel', () => { isDragging = false; });
+
+            document.getElementById('toggleRotate').onclick = function() {
+              autoRotate = !autoRotate;
+              this.textContent = 'Auto Rotate: ' + (autoRotate ? 'ON' : 'OFF');
+              this.classList.toggle('active', autoRotate);
+            };
+
+            document.getElementById('toggleWire').onclick = function() {
+              wireframeOnly = !wireframeOnly;
+              this.textContent = wireframeOnly ? 'Hologram' : 'Wireframe';
+              this.classList.toggle('active', wireframeOnly);
+            };
+
+            document.getElementById('toggleSpeed').onclick = function() {
+              speedMultiplier = speedMultiplier === 1.0 ? 2.0 : 1.0;
+              this.textContent = 'Speed: ' + speedMultiplier + 'x';
+            };
+
+            function render() {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+              if (autoRotate && !isDragging) {
+                angleY += 0.008 * speedMultiplier;
+                angleX += 0.003 * speedMultiplier;
+              } else if (!isDragging) {
+                angleY += velX;
+                angleX += velY;
+                velX *= 0.94;
+                velY *= 0.94;
+              }
+
+              const cx = canvas.width / 2;
+              const cy = canvas.height / 2;
+              const fov = 350;
+              const radius = Math.min(canvas.width, canvas.height) * 0.28;
+
+              // Render background particles
+              ctx.fillStyle = 'rgba(0, 242, 254, 0.45)';
+              particles.forEach(p => {
+                p.z -= p.speed * speedMultiplier;
+                if (p.z < -300) p.z = 300;
+                const pscale = fov / (fov + p.z);
+                const px = cx + p.x * pscale;
+                const py = cy + p.y * pscale;
+                if (px >= 0 && px <= canvas.width && py >= 0 && py <= canvas.height) {
+                  ctx.beginPath();
+                  ctx.arc(px, py, Math.max(0.8, 2.2 * pscale), 0, Math.PI * 2);
+                  ctx.fill();
+                }
+              });
+
+              // Rotate Vertices
+              const sinX = Math.sin(angleX), cosX = Math.cos(angleX);
+              const sinY = Math.sin(angleY), cosY = Math.cos(angleY);
+
+              const rotated = baseVertices.map(v => {
+                let x = v[0] * radius;
+                let y = v[1] * radius;
+                let z = v[2] * radius;
+
+                // Rotate Y
+                let x1 = x * cosY + z * sinY;
+                let z1 = -x * sinY + z * cosY;
+
+                // Rotate X
+                let y2 = y * cosX - z1 * sinX;
+                let z2 = y * sinX + z1 * cosX;
+
+                const scale = fov / (fov + z2);
+                return {
+                  x: cx + x1 * scale,
+                  y: cy + y2 * scale,
+                  z: z2,
+                  scale: scale
+                };
+              });
+
+              // Draw Gyroscope Orbital Rings
+              ctx.lineWidth = 1.2;
+              ctx.strokeStyle = 'rgba(121, 40, 202, 0.35)';
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, radius * 1.35, radius * 0.45, angleY * 0.5, 0, Math.PI * 2);
+              ctx.stroke();
+
+              ctx.strokeStyle = 'rgba(0, 242, 254, 0.28)';
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, radius * 1.5, radius * 0.5, -angleX * 0.7, 0, Math.PI * 2);
+              ctx.stroke();
+
+              // Draw Edges
+              edges.forEach(edge => {
+                const p1 = rotated[edge[0]];
+                const p2 = rotated[edge[1]];
+                const avgZ = (p1.z + p2.z) / 2;
+                const alpha = Math.max(0.15, Math.min(0.9, 0.55 + avgZ / 250));
+
+                ctx.strokeStyle = wireframeOnly ? 'rgba(0, 242, 254, ' + alpha + ')' : 'rgba(121, 40, 202, ' + alpha + ')';
+                ctx.lineWidth = Math.max(1, 2.2 * ((p1.scale + p2.scale) / 2));
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.stroke();
+              });
+
+              // Draw Vertices
+              rotated.forEach(p => {
+                ctx.fillStyle = '#00f2fe';
+                ctx.shadowColor = '#00f2fe';
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, Math.max(2, 4.5 * p.scale), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+              });
+
+              requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+
+            // --- 3D Card Tilt Interaction ---
+            document.querySelectorAll('.card-3d').forEach(card => {
+              card.addEventListener('mousemove', (e) => {
+                const r = card.getBoundingClientRect();
+                const x = e.clientX - r.left;
+                const y = e.clientY - r.top;
+                const dx = (x - r.width / 2) / (r.width / 2);
+                const dy = (y - r.height / 2) / (r.height / 2);
+                card.style.transform = 'perspective(1000px) rotateX(' + (-dy * 12) + 'deg) rotateY(' + (dx * 12) + 'deg) scale3d(1.03, 1.03, 1.03)';
+                const glare = card.querySelector('.glare');
+                if (glare) glare.style.background = 'radial-gradient(circle at ' + x + 'px ' + y + 'px, rgba(0,242,254,0.22), transparent 70%)';
+              });
+              card.addEventListener('mouseleave', () => {
+                card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+                const glare = card.querySelector('.glare');
+                if (glare) glare.style.background = 'none';
+              });
+            });
+
+            // Project Filter
+            function filterProjects(cat) {
+              document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.remove('active'));
+              event.target.classList.add('active');
+              document.querySelectorAll('.card-3d').forEach(card => {
+                if (cat === 'all' || card.getAttribute('data-cat') === cat) {
+                  card.style.display = 'block';
+                } else {
+                  card.style.display = 'none';
+                }
+              });
+            }
+
+            // Contact Form
+            function handleContact(e) {
+              e.preventDefault();
+              const toast = document.getElementById('toast');
+              toast.classList.add('show');
+              e.target.reset();
+              setTimeout(() => toast.classList.remove('show'), 3500);
+            }
+          </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    private fun generateInteractiveTodoHtml(prompt: String, projectName: String): String {
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <title>FocusTask · Minimalist High-Performance To-Do</title>
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -2261,114 +3237,861 @@ object LocalIntelligenceEngine {
               --bg: #090d16;
               --surface: #0f172a;
               --card: #1e293b;
-              --accent: #06b6d4;
-              --accent-blue: #2563eb;
-              --accent-glow: rgba(6, 182, 212, 0.25);
+              --accent: #00f2fe;
+              --accent-purple: #7928ca;
+              --danger: #ef4444;
+              --success: #10b981;
+              --amber: #f59e0b;
               --text: #f8fafc;
               --text-muted: #94a3b8;
-              --border: #334155;
+              --border: rgba(148, 163, 184, 0.15);
             }
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-            body { background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
-            nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
-            .logo { font-size: 1.25rem; font-weight: 700; }
-            .logo span { color: var(--accent); }
-            .nav-links a { color: var(--text-muted); text-decoration: none; margin-left: 20px; font-weight: 500; font-size: 0.9rem; transition: color 0.2s; }
-            .nav-links a:hover { color: var(--accent); }
-            .hero { padding: 80px 24px 40px; text-align: center; max-width: 800px; margin: 0 auto; }
-            .status-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-glow); border: 1px solid var(--accent); color: var(--accent); font-size: 0.8rem; font-weight: 600; padding: 6px 14px; border-radius: 20px; margin-bottom: 20px; }
-            .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-            h1 { font-size: 2.8rem; font-weight: 800; line-height: 1.2; margin-bottom: 16px; background: linear-gradient(135deg, #f8fafc 0%, #06b6d4 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-            .subtitle { font-size: 1.15rem; color: var(--text-muted); margin-bottom: 32px; }
-            .cta-buttons { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
-            .btn { padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.2s; font-size: 0.95rem; }
-            .btn-primary { background: var(--accent); color: #000; border: none; }
-            .btn-primary:hover { opacity: 0.9; transform: translateY(-2px); }
-            .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-            .btn-secondary:hover { border-color: var(--accent); background: var(--card); transform: translateY(-2px); }
-            .section { max-width: 1000px; margin: 60px auto; padding: 0 24px; }
-            .section-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 24px; }
-            .skills-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 40px; }
-            .skill-pill { background: var(--surface); border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
-            .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
-            .project-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; transition: all 0.2s; }
-            .project-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 12px 32px var(--accent-glow); }
-            .project-tag { font-size: 0.75rem; color: var(--accent); font-weight: 700; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; }
-            .project-card h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 10px; }
-            .project-card p { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 16px; }
-            .contact-box { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; text-align: center; }
-            footer { text-align: center; padding: 40px 24px; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 60px; }
+            body {
+              background: var(--bg);
+              color: var(--text);
+              min-height: 100vh;
+              display: flex;
+              justify-content: center;
+              padding: 40px 16px;
+            }
+            .app-container {
+              width: 100%;
+              max-width: 620px;
+            }
+            .app-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 24px;
+            }
+            .app-title {
+              font-size: 1.6rem;
+              font-weight: 800;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .app-title span {
+              color: var(--accent);
+            }
+            .status-badge {
+              font-size: 0.8rem;
+              background: rgba(0, 242, 254, 0.1);
+              color: var(--accent);
+              border: 1px solid var(--accent);
+              padding: 4px 12px;
+              border-radius: 20px;
+              font-family: 'JetBrains Mono', monospace;
+            }
+            .input-box {
+              background: var(--surface);
+              border: 1px solid var(--border);
+              border-radius: 16px;
+              padding: 16px;
+              margin-bottom: 20px;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            }
+            .input-row {
+              display: flex;
+              gap: 10px;
+              margin-bottom: 12px;
+            }
+            .task-input {
+              flex: 1;
+              background: var(--card);
+              border: 1px solid var(--border);
+              padding: 12px 16px;
+              border-radius: 10px;
+              color: #fff;
+              font-size: 0.95rem;
+              outline: none;
+              transition: border-color 0.2s;
+            }
+            .task-input:focus { border-color: var(--accent); }
+            .add-btn {
+              background: var(--accent);
+              color: #000;
+              border: none;
+              padding: 12px 20px;
+              border-radius: 10px;
+              font-weight: 700;
+              cursor: pointer;
+              transition: transform 0.2s, opacity 0.2s;
+            }
+            .add-btn:hover { opacity: 0.9; transform: translateY(-2px); }
+            .options-row {
+              display: flex;
+              gap: 8px;
+              align-items: center;
+              flex-wrap: wrap;
+            }
+            .opt-label { font-size: 0.8rem; color: var(--text-muted); margin-right: 4px; }
+            .priority-chip {
+              padding: 4px 10px;
+              border-radius: 8px;
+              font-size: 0.75rem;
+              cursor: pointer;
+              background: var(--card);
+              border: 1px solid var(--border);
+              color: var(--text-muted);
+              font-weight: 600;
+              transition: all 0.2s;
+            }
+            .priority-chip.active-high { background: rgba(239, 68, 68, 0.2); border-color: var(--danger); color: var(--danger); }
+            .priority-chip.active-med { background: rgba(245, 158, 11, 0.2); border-color: var(--amber); color: var(--amber); }
+            .priority-chip.active-low { background: rgba(16, 185, 129, 0.2); border-color: var(--success); color: var(--success); }
+            .category-select {
+              background: var(--card);
+              color: var(--text);
+              border: 1px solid var(--border);
+              padding: 4px 8px;
+              border-radius: 8px;
+              font-size: 0.8rem;
+              outline: none;
+            }
+            .filter-bar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 16px;
+              flex-wrap: wrap;
+              gap: 10px;
+            }
+            .tab-group { display: flex; gap: 6px; }
+            .filter-tab {
+              background: none;
+              border: none;
+              color: var(--text-muted);
+              padding: 6px 12px;
+              border-radius: 8px;
+              font-size: 0.85rem;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            }
+            .filter-tab.active {
+              background: var(--card);
+              color: var(--accent);
+            }
+            .clear-btn {
+              background: none;
+              border: none;
+              color: var(--text-muted);
+              font-size: 0.8rem;
+              cursor: pointer;
+              transition: color 0.2s;
+            }
+            .clear-btn:hover { color: var(--danger); }
+            .task-list {
+              display: flex;
+              flex-direction: column;
+              gap: 10px;
+            }
+            .task-item {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              background: var(--surface);
+              border: 1px solid var(--border);
+              padding: 14px 18px;
+              border-radius: 14px;
+              transition: all 0.25s ease;
+            }
+            .task-item:hover {
+              border-color: rgba(0, 242, 254, 0.3);
+              transform: translateX(2px);
+            }
+            .task-item.completed {
+              opacity: 0.55;
+            }
+            .task-item.completed .task-title {
+              text-decoration: line-through;
+              color: var(--text-muted);
+            }
+            .check-btn {
+              width: 22px;
+              height: 22px;
+              border-radius: 50%;
+              border: 2px solid var(--accent);
+              background: none;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              transition: all 0.2s;
+            }
+            .task-item.completed .check-btn {
+              background: var(--success);
+              border-color: var(--success);
+            }
+            .check-btn::after {
+              content: '✓';
+              color: #000;
+              font-size: 13px;
+              font-weight: 900;
+              display: none;
+            }
+            .task-item.completed .check-btn::after { display: block; }
+            .task-content { flex: 1; }
+            .task-title { font-size: 0.95rem; font-weight: 500; margin-bottom: 2px; }
+            .task-meta {
+              display: flex;
+              gap: 6px;
+              align-items: center;
+            }
+            .meta-tag {
+              font-size: 0.7rem;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-family: 'JetBrains Mono', monospace;
+            }
+            .tag-high { background: rgba(239,68,68,0.2); color: var(--danger); }
+            .tag-med { background: rgba(245,158,11,0.2); color: var(--amber); }
+            .tag-low { background: rgba(16,185,129,0.2); color: var(--success); }
+            .tag-cat { background: var(--card); color: var(--text-muted); }
+            .del-btn {
+              background: none;
+              border: none;
+              color: var(--text-muted);
+              font-size: 1.1rem;
+              cursor: pointer;
+              padding: 4px 8px;
+              border-radius: 6px;
+              transition: all 0.2s;
+            }
+            .del-btn:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+            .empty-state {
+              text-align: center;
+              padding: 40px;
+              color: var(--text-muted);
+              font-size: 0.9rem;
+            }
+            .footer-info {
+              text-align: center;
+              margin-top: 30px;
+              color: var(--text-muted);
+              font-size: 0.8rem;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="app-container">
+            <div class="app-header">
+              <div class="app-title">⚡ Focus<span>Task</span></div>
+              <div class="status-badge" id="statsBadge">3 tasks left</div>
+            </div>
+
+            <div class="input-box">
+              <div class="input-row">
+                <input type="text" id="taskInput" class="task-input" placeholder="What needs to be accomplished today? (Press Enter)..." autofocus>
+                <button id="addBtn" class="add-btn">+ Add</button>
+              </div>
+              <div class="options-row">
+                <span class="opt-label">Priority:</span>
+                <span class="priority-chip" data-p="high" onclick="setPriority('high')">High</span>
+                <span class="priority-chip active-med" data-p="med" onclick="setPriority('med')">Med</span>
+                <span class="priority-chip" data-p="low" onclick="setPriority('low')">Low</span>
+                <span class="opt-label" style="margin-left: 12px;">Category:</span>
+                <select id="catSelect" class="category-select">
+                  <option value="Code">Code</option>
+                  <option value="Personal">Personal</option>
+                  <option value="Work">Work</option>
+                  <option value="Idea">Idea</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="filter-bar">
+              <div class="tab-group">
+                <button class="filter-tab active" onclick="setFilter('all')">All</button>
+                <button class="filter-tab" onclick="setFilter('active')">Active</button>
+                <button class="filter-tab" onclick="setFilter('completed')">Completed</button>
+              </div>
+              <button class="clear-btn" onclick="clearCompleted()">Clear Completed</button>
+            </div>
+
+            <div id="taskList" class="task-list"></div>
+            <div id="emptyState" class="empty-state" style="display: none;">All tasks completed! Enjoy your day. ✨</div>
+
+            <div class="footer-info">
+              Tasks saved automatically to device storage. Runs offline.
+            </div>
+          </div>
+
+          <script>
+            let currentPriority = 'med';
+            let currentFilter = 'all';
+
+            const defaultTasks = [
+              { id: 1, title: 'Review 3D WebGL animations & transitions', priority: 'high', category: 'Code', completed: false },
+              { id: 2, title: 'Test 1-click live preview in Inbuilt Browser', priority: 'med', category: 'Code', completed: false },
+              { id: 3, title: 'Verify offline neural models on Termux', priority: 'low', category: 'Work', completed: true }
+            ];
+
+            let tasks = JSON.parse(localStorage.getItem('antigravity_tasks')) || defaultTasks;
+
+            function saveTasks() {
+              localStorage.setItem('antigravity_tasks', JSON.stringify(tasks));
+              render();
+            }
+
+            function setPriority(p) {
+              currentPriority = p;
+              document.querySelectorAll('.priority-chip').forEach(el => {
+                el.className = 'priority-chip';
+                if (el.getAttribute('data-p') === p) {
+                  el.classList.add('active-' + p);
+                }
+              });
+            }
+
+            function setFilter(f) {
+              currentFilter = f;
+              document.querySelectorAll('.filter-tab').forEach(el => el.classList.remove('active'));
+              event.target.classList.add('active');
+              render();
+            }
+
+            function addTask() {
+              const input = document.getElementById('taskInput');
+              const text = input.value.trim();
+              if (!text) return;
+              const cat = document.getElementById('catSelect').value;
+              tasks.unshift({
+                id: Date.now(),
+                title: text,
+                priority: currentPriority,
+                category: cat,
+                completed: false
+              });
+              input.value = '';
+              saveTasks();
+            }
+
+            document.getElementById('addBtn').onclick = addTask;
+            document.getElementById('taskInput').onkeydown = (e) => {
+              if (e.key === 'Enter') addTask();
+            };
+
+            function toggleTask(id) {
+              const t = tasks.find(x => x.id === id);
+              if (t) {
+                t.completed = !t.completed;
+                saveTasks();
+              }
+            }
+
+            function deleteTask(id) {
+              tasks = tasks.filter(x => x.id !== id);
+              saveTasks();
+            }
+
+            function clearCompleted() {
+              tasks = tasks.filter(x => !x.completed);
+              saveTasks();
+            }
+
+            function render() {
+              const list = document.getElementById('taskList');
+              const empty = document.getElementById('emptyState');
+              const remaining = tasks.filter(t => !t.completed).length;
+              document.getElementById('statsBadge').textContent = remaining + ' tasks left';
+
+              let filtered = tasks;
+              if (currentFilter === 'active') filtered = tasks.filter(t => !t.completed);
+              else if (currentFilter === 'completed') filtered = tasks.filter(t => t.completed);
+
+              list.innerHTML = '';
+              if (filtered.length === 0) {
+                empty.style.display = 'block';
+              } else {
+                empty.style.display = 'none';
+                filtered.forEach(task => {
+                  const div = document.createElement('div');
+                  div.className = 'task-item' + (task.completed ? ' completed' : '');
+
+                  const chk = document.createElement('button');
+                  chk.className = 'check-btn';
+                  chk.onclick = () => toggleTask(task.id);
+
+                  const content = document.createElement('div');
+                  content.className = 'task-content';
+
+                  const title = document.createElement('div');
+                  title.className = 'task-title';
+                  title.textContent = task.title;
+
+                  const meta = document.createElement('div');
+                  meta.className = 'task-meta';
+
+                  const pTag = document.createElement('span');
+                  pTag.className = 'meta-tag tag-' + task.priority;
+                  pTag.textContent = task.priority.toUpperCase();
+
+                  const cTag = document.createElement('span');
+                  cTag.className = 'meta-tag tag-cat';
+                  cTag.textContent = task.category;
+
+                  meta.appendChild(pTag);
+                  meta.appendChild(cTag);
+                  content.appendChild(title);
+                  content.appendChild(meta);
+
+                  const del = document.createElement('button');
+                  del.className = 'del-btn';
+                  del.innerHTML = '✕';
+                  del.onclick = () => deleteTask(task.id);
+
+                  div.appendChild(chk);
+                  div.appendChild(content);
+                  div.appendChild(del);
+                  list.appendChild(div);
+                });
+              }
+            }
+
+            render();
+          </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    private fun generateInteractiveDashboardHtml(prompt: String, projectName: String): String {
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Executive Analytics & Metrics Dashboard</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+          <style>
+            :root {
+              --bg: #090d16;
+              --surface: #0f172a;
+              --card: #1e293b;
+              --accent: #00f2fe;
+              --accent-purple: #7928ca;
+              --success: #10b981;
+              --danger: #ef4444;
+              --text: #f8fafc;
+              --text-muted: #94a3b8;
+              --border: rgba(148, 163, 184, 0.15);
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+            body { background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+            .brand { font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+            .brand span { color: var(--accent); }
+            .status-pill { display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+            .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+            .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+            .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+            .kpi-title { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; }
+            .kpi-val { font-size: 1.8rem; font-weight: 800; color: #fff; margin-bottom: 6px; }
+            .kpi-change { font-size: 0.8rem; font-weight: 600; color: var(--success); }
+            .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 24px; margin-bottom: 24px; }
+            .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+            .chart-tabs { display: flex; gap: 6px; }
+            .chart-btn { background: var(--card); border: 1px solid var(--border); color: var(--text-muted); padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+            .chart-btn.active, .chart-btn:hover { background: var(--accent); color: #000; font-weight: 600; border-color: var(--accent); }
+            canvas { width: 100%; height: 260px; display: block; }
+            .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 20px; overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+            th { padding: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-size: 0.8rem; text-transform: uppercase; }
+            td { padding: 14px 12px; border-bottom: 1px solid var(--border); }
+            .tag-success { background: rgba(16, 185, 129, 0.15); color: var(--success); padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="brand">⚡ Neural<span>Metrics</span></div>
+            <div class="status-pill"><span class="status-dot"></span> System Operational · 60 FPS</div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-title">Total Revenue</div>
+              <div class="kpi-val">$148,250</div>
+              <div class="kpi-change">↑ +16.8% vs last month</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">Active Users</div>
+              <div class="kpi-val">24,890</div>
+              <div class="kpi-change">↑ +8.4% this week</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">API Response Latency</div>
+              <div class="kpi-val">18ms</div>
+              <div class="kpi-change">↓ -4.2% faster</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">On-Device RAM Usage</div>
+              <div class="kpi-val">184 MB</div>
+              <div class="kpi-change">⚡ Zero Cloud Spikes</div>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <div style="font-weight: 700; font-size: 1.1rem;">API Throughput & Requests</div>
+              <div class="chart-tabs">
+                <button class="chart-btn" onclick="switchData('24h')">24H</button>
+                <button class="chart-btn active" onclick="switchData('7d')">7D</button>
+                <button class="chart-btn" onclick="switchData('30d')">30D</button>
+              </div>
+            </div>
+            <canvas id="metricsChart"></canvas>
+          </div>
+
+          <div class="table-card">
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 14px;">Recent System Operations</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Service Module</th>
+                  <th>Operation</th>
+                  <th>Status</th>
+                  <th>Latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>12:44:02</td>
+                  <td>Qwen 3.5 Engine</td>
+                  <td>On-Device Code Synthesis</td>
+                  <td><span class="tag-success">COMPLETED</span></td>
+                  <td>14ms</td>
+                </tr>
+                <tr>
+                  <td>12:43:18</td>
+                  <td>Security Auditor</td>
+                  <td>OWASP Top 10 Hardening</td>
+                  <td><span class="tag-success">PASSED</span></td>
+                  <td>22ms</td>
+                </tr>
+                <tr>
+                  <td>12:41:05</td>
+                  <td>WebGL Live Renderer</td>
+                  <td>Inbuilt Browser Canvas</td>
+                  <td><span class="tag-success">ACTIVE</span></td>
+                  <td>16ms</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <script>
+            const canvas = document.getElementById('metricsChart');
+            const ctx = canvas.getContext('2d');
+
+            function resize() {
+              canvas.width = canvas.parentElement.clientWidth - 48;
+              canvas.height = 240;
+              drawChart();
+            }
+            window.addEventListener('resize', resize);
+
+            let chartData = [32, 45, 60, 52, 78, 92, 110];
+
+            function switchData(mode) {
+              document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+              event.target.classList.add('active');
+              if (mode === '24h') chartData = [12, 18, 22, 34, 40, 48, 55];
+              else if (mode === '7d') chartData = [32, 45, 60, 52, 78, 92, 110];
+              else if (mode === '30d') chartData = [150, 190, 240, 280, 340, 410, 490];
+              drawChart();
+            }
+
+            function drawChart() {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              const w = canvas.width;
+              const h = canvas.height;
+              const max = Math.max(...chartData) * 1.2;
+              const step = w / (chartData.length - 1);
+
+              // Draw Gradient Area
+              const grad = ctx.createLinearGradient(0, 0, 0, h);
+              grad.addColorStop(0, 'rgba(0, 242, 254, 0.35)');
+              grad.addColorStop(1, 'rgba(0, 242, 254, 0.0)');
+
+              ctx.beginPath();
+              ctx.moveTo(0, h);
+              chartData.forEach((val, i) => {
+                const x = i * step;
+                const y = h - (val / max) * (h - 40);
+                if (i === 0) ctx.lineTo(x, y);
+                else ctx.lineTo(x, y);
+              });
+              ctx.lineTo(w, h);
+              ctx.closePath();
+              ctx.fillStyle = grad;
+              ctx.fill();
+
+              // Draw Stroke Line
+              ctx.beginPath();
+              chartData.forEach((val, i) => {
+                const x = i * step;
+                const y = h - (val / max) * (h - 40);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+              });
+              ctx.strokeStyle = '#00f2fe';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+
+              // Draw Nodes
+              chartData.forEach((val, i) => {
+                const x = i * step;
+                const y = h - (val / max) * (h - 40);
+                ctx.fillStyle = '#00f2fe';
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, Math.PI * 2);
+                ctx.fill();
+              });
+            }
+
+            setTimeout(resize, 50);
+          </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    private fun generateModernLandingPageHtml(prompt: String, projectName: String): String {
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Next-Gen Intelligent SaaS</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+          <style>
+            :root {
+              --bg: #07090e;
+              --surface: #0e131f;
+              --card: #141c2e;
+              --accent: #00f2fe;
+              --accent-purple: #7928ca;
+              --text: #f8fafc;
+              --text-muted: #94a3b8;
+              --border: rgba(148, 163, 184, 0.15);
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+            body { background: var(--bg); color: var(--text); line-height: 1.6; }
+            nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+            .hero { text-align: center; padding: 80px 24px 40px; max-width: 850px; margin: 0 auto; }
+            .hero-badge { display: inline-block; background: rgba(0,242,254,0.1); border: 1px solid var(--accent); color: var(--accent); padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-bottom: 20px; }
+            h1 { font-family: 'Space Grotesk', sans-serif; font-size: 3.2rem; font-weight: 800; line-height: 1.15; margin-bottom: 20px; background: linear-gradient(135deg, #fff 0%, var(--accent) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+            .pricing-toggle { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 40px 0; }
+            .switch-btn { background: var(--card); border: 1px solid var(--border); color: #fff; padding: 8px 18px; border-radius: 20px; cursor: pointer; }
+            .switch-btn.active { background: var(--accent); color: #000; font-weight: 700; }
+            .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; max-width: 960px; margin: 0 auto 60px; padding: 0 24px; }
+            .price-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 32px; text-align: center; transition: all 0.3s; }
+            .price-card.featured { border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,242,254,0.2); }
+            .price-card:hover { transform: translateY(-4px); }
+            .price-val { font-size: 2.4rem; font-weight: 800; color: #fff; margin: 16px 0; }
+            .btn { display: block; width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; cursor: pointer; text-decoration: none; margin-top: 20px; }
+            .btn-accent { background: var(--accent); color: #000; border: none; }
           </style>
         </head>
         <body>
           <nav>
-            <div class="logo">Alex <span>Vance</span></div>
-            <div class="nav-links">
-              <a href="#about">About</a>
-              <a href="#skills">Skills</a>
-              <a href="#projects">Projects</a>
-              <a href="#contact">Contact</a>
-            </div>
+            <div style="font-weight: 800; font-size: 1.2rem;">✦ NEXUS <span>SaaS</span></div>
           </nav>
-
           <header class="hero">
-            <div class="status-badge">
-              <span class="status-dot"></span> Available for Full-Stack & Cyber Projects
-            </div>
-            <h1>Full-Stack Software Engineer & Systems Architect</h1>
-            <p class="subtitle">Building ultra-fast distributed backends, reactive web UIs, and hardened zero-day security solutions.</p>
-            <div class="cta-buttons">
-              <a href="#projects" class="btn btn-primary">View Featured Work</a>
-              <a href="#contact" class="btn btn-secondary">Get in Touch</a>
-            </div>
+            <div class="hero-badge">Next-Generation Local Intelligence</div>
+            <h1>Deploy Intelligence Anywhere With Zero Latency</h1>
+            <p style="color: var(--text-muted); font-size: 1.1rem;">Self-contained multi-agent framework built for edge computing and developer workflows.</p>
           </header>
-
-          <section id="skills" class="section">
-            <div class="section-title">Core Technologies</div>
-            <div class="skills-grid">
-              <div class="skill-pill">Node.js / Express</div>
-              <div class="skill-pill">React & Next.js</div>
-              <div class="skill-pill">Kotlin / Android</div>
-              <div class="skill-pill">Python FastAPI</div>
-              <div class="skill-pill">Tailwind CSS</div>
-              <div class="skill-pill">PostgreSQL & SQLite</div>
-              <div class="skill-pill">Docker & K8s</div>
-              <div class="skill-pill">OWASP Hardening</div>
+          <div class="pricing-toggle">
+            <button class="switch-btn active" onclick="toggleBilling('monthly')">Monthly</button>
+            <button class="switch-btn" onclick="toggleBilling('annual')">Annual (Save 20%)</button>
+          </div>
+          <div class="pricing-grid">
+            <div class="price-card">
+              <h3>Starter</h3>
+              <div class="price-val" id="p1">$0</div>
+              <p style="color: var(--text-muted);">Free on-device inference forever</p>
+              <button class="btn btn-accent">Get Started</button>
             </div>
-          </section>
-
-          <section id="projects" class="section">
-            <div class="section-title">Featured Projects</div>
-            <div class="projects-grid">
-              <div class="project-card">
-                <div class="project-tag">AI & EDGE ARCHITECTURE</div>
-                <h3>AntiBot Autonomous Hub</h3>
-                <p>On-device multi-agent orchestration team executing backend, frontend, and cybersecurity audits in sync.</p>
-              </div>
-              <div class="project-card">
-                <div class="project-tag">HIGH PERFORMANCE REST</div>
-                <h3>Zero-Latency Core API</h3>
-                <p>Asynchronous microservice engine processing 25,000 req/sec with sub-millisecond response times.</p>
-              </div>
-              <div class="project-card">
-                <div class="project-tag">CYBERSECURITY AUDITOR</div>
-                <h3>Automated Hardening Scanner</h3>
-                <p>Real-time vulnerability analyzer and patch generator for OWASP Top 10 web injection vectors.</p>
-              </div>
+            <div class="price-card featured">
+              <h3>Professional</h3>
+              <div class="price-val" id="p2">$29</div>
+              <p style="color: var(--text-muted);">Advanced multi-agent team</p>
+              <button class="btn btn-accent">Start Free Trial</button>
             </div>
-          </section>
-
-          <section id="contact" class="section">
-            <div class="contact-box">
-              <h2 style="font-size: 1.8rem; margin-bottom: 12px;">Let's build something remarkable.</h2>
-              <p style="color: var(--text-muted); margin-bottom: 24px;">Always excited to collaborate on innovative software, open-source tools, and security research.</p>
-              <a href="mailto:alex@example.com" class="btn btn-primary">Send an Email</a>
+            <div class="price-card">
+              <h3>Enterprise</h3>
+              <div class="price-val" id="p3">$99</div>
+              <p style="color: var(--text-muted);">Dedicated high-throughput cluster</p>
+              <button class="btn btn-accent">Contact Team</button>
             </div>
-          </section>
+          </div>
+          <script>
+            function toggleBilling(mode) {
+              document.querySelectorAll('.switch-btn').forEach(b => b.classList.remove('active'));
+              event.target.classList.add('active');
+              if (mode === 'annual') {
+                document.getElementById('p2').textContent = '$23/mo';
+                document.getElementById('p3').textContent = '$79/mo';
+              } else {
+                document.getElementById('p2').textContent = '$29/mo';
+                document.getElementById('p3').textContent = '$99/mo';
+              }
+            }
+          </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
 
-          <footer>
-            <p>© 2026 Alex Vance · Synthesized on-device by AntiBot Neural Engine</p>
-          </footer>
+    private fun generateArcadeGameHtml(prompt: String, projectName: String): String {
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <title>Cyberpunk Neon Snake Arcade</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+            body { background: #07090e; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+            h1 { color: #00f2fe; margin-bottom: 12px; font-size: 1.5rem; text-shadow: 0 0 10px #00f2fe; }
+            .score-bar { display: flex; gap: 24px; margin-bottom: 12px; font-weight: 700; }
+            canvas { background: #0e131f; border: 2px solid #00f2fe; border-radius: 12px; box-shadow: 0 0 25px rgba(0,242,254,0.3); }
+            .dpad { display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); gap: 8px; margin-top: 18px; }
+            .dbtn { background: #1e293b; border: 1px solid #00f2fe; color: #00f2fe; font-size: 1.4rem; font-weight: 900; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+            .dbtn:active { background: #00f2fe; color: #000; }
+          </style>
+        </head>
+        <body>
+          <h1>CYBERPUNK SNAKE</h1>
+          <div class="score-bar">
+            <div>Score: <span id="score">0</span></div>
+            <div>Best: <span id="best">0</span></div>
+          </div>
+          <canvas id="gameCanvas" width="340" height="340"></canvas>
+          <div class="dpad">
+            <div></div><button class="dbtn" onclick="setDir(0, -1)">▲</button><div></div>
+            <button class="dbtn" onclick="setDir(-1, 0)">◀</button><div></div><button class="dbtn" onclick="setDir(1, 0)">▶</button>
+            <div></div><button class="dbtn" onclick="setDir(0, 1)">▼</button><div></div>
+          </div>
+          <script>
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const grid = 17;
+            let snake = [{x: 8, y: 8}];
+            let food = {x: 12, y: 12};
+            let dx = 1, dy = 0;
+            let score = 0;
+            let best = localStorage.getItem('snake_best') || 0;
+            document.getElementById('best').textContent = best;
+
+            function setDir(x, y) {
+              if (dx !== -x && dy !== -y) { dx = x; dy = y; }
+            }
+
+            window.addEventListener('keydown', e => {
+              if (e.key === 'ArrowUp' && dy !== 1) { dx = 0; dy = -1; }
+              if (e.key === 'ArrowDown' && dy !== -1) { dx = 0; dy = 1; }
+              if (e.key === 'ArrowLeft' && dx !== 1) { dx = -1; dy = 0; }
+              if (e.key === 'ArrowRight' && dx !== -1) { dx = 1; dy = 0; }
+            });
+
+            function loop() {
+              const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+              if (head.x < 0) head.x = grid - 1;
+              if (head.x >= grid) head.x = 0;
+              if (head.y < 0) head.y = grid - 1;
+              if (head.y >= grid) head.y = 0;
+
+              for (let part of snake) {
+                if (part.x === head.x && part.y === head.y) {
+                  snake = [{x: 8, y: 8}];
+                  dx = 1; dy = 0;
+                  score = 0;
+                  document.getElementById('score').textContent = score;
+                  return setTimeout(loop, 110);
+                }
+              }
+
+              snake.unshift(head);
+              if (head.x === food.x && head.y === food.y) {
+                score++;
+                document.getElementById('score').textContent = score;
+                if (score > best) { best = score; localStorage.setItem('snake_best', best); document.getElementById('best').textContent = best; }
+                food = {x: Math.floor(Math.random() * grid), y: Math.floor(Math.random() * grid)};
+              } else {
+                snake.pop();
+              }
+
+              ctx.fillStyle = '#0e131f';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+              ctx.fillStyle = '#ff007f';
+              ctx.fillRect(food.x * (canvas.width/grid), food.y * (canvas.height/grid), canvas.width/grid - 1, canvas.height/grid - 1);
+
+              ctx.fillStyle = '#00f2fe';
+              snake.forEach(p => {
+                ctx.fillRect(p.x * (canvas.width/grid), p.y * (canvas.height/grid), canvas.width/grid - 1, canvas.height/grid - 1);
+              });
+
+              setTimeout(loop, 110);
+            }
+            loop();
+          </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    private fun generateDynamicWebHtml(prompt: String, lower: String, projectName: String): String {
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${'$'}projectName · Modern Application</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+          <style>
+            :root {
+              --bg: #090d16;
+              --surface: #0f172a;
+              --card: #1e293b;
+              --accent: #00f2fe;
+              --text: #f8fafc;
+              --text-muted: #94a3b8;
+              --border: rgba(148, 163, 184, 0.15);
+            }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+            body { background: var(--bg); color: var(--text); padding: 32px 20px; min-height: 100vh; line-height: 1.6; }
+            .container { max-width: 800px; margin: 0 auto; }
+            .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+            h1 { font-size: 2rem; font-weight: 800; margin-bottom: 12px; color: var(--accent); }
+            p { color: var(--text-muted); margin-bottom: 24px; }
+            .btn { background: var(--accent); color: #000; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 700; cursor: pointer; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="card">
+              <h1>${'$'}projectName</h1>
+              <p>Generated by on-device neural engine matching your prompt requirements.</p>
+              <button class="btn" onclick="alert('Application interactive!')">Explore Interactive Features</button>
+            </div>
+          </div>
         </body>
         </html>
         """.trimIndent()
