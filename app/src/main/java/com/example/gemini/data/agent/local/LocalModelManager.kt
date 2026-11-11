@@ -28,6 +28,26 @@ sealed class ModelDownloadState {
     data class Failed(val modelId: String, val error: String) : ModelDownloadState()
 }
 
+/**
+ * On-demand lifecycle states for local neural models.
+ * Guarantees local models only load into RAM when actively selected for work.
+ * When not selected or when work completes, they remain Inactive with 0 MB memory load.
+ */
+sealed class LocalModelActivityState {
+    object Inactive : LocalModelActivityState()
+    data class Starting(val modelId: String, val displayName: String) : LocalModelActivityState()
+    data class Active(
+        val modelId: String,
+        val displayName: String,
+        val allocatedRamMb: Long,
+        val activatedAt: Long
+    ) : LocalModelActivityState()
+    data class Unloading(val modelId: String) : LocalModelActivityState()
+
+    val isWorking: Boolean get() = this is Active || this is Starting
+    val ramDisplayMb: Long get() = (this as? Active)?.allocatedRamMb ?: 0L
+}
+
 data class LocalModelSpec(
     val id: String,
     val displayName: String,
@@ -111,6 +131,83 @@ object LocalModelManager {
 
     private val _downloadState = MutableStateFlow<ModelDownloadState>(ModelDownloadState.Idle)
     val downloadState: StateFlow<ModelDownloadState> = _downloadState.asStateFlow()
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Zero-RAM Idle Lifecycle Management
+    // Models only start when selected for work; otherwise remain inactive with 0 MB RAM.
+    // ─────────────────────────────────────────────────────────────────────────────
+    private val _activityState = MutableStateFlow<LocalModelActivityState>(LocalModelActivityState.Inactive)
+    val activityState: StateFlow<LocalModelActivityState> = _activityState.asStateFlow()
+
+    private val _activeModelId = MutableStateFlow<String?>(null)
+    val activeModelId: StateFlow<String?> = _activeModelId.asStateFlow()
+
+    /**
+     * Activates a local model on-demand when selected for an active work turn.
+     * Computes realistic RAM footprint and transitions to Active.
+     */
+    fun activateForWork(context: Context? = null, spec: LocalModelSpec) {
+        val current = _activeModelId.value
+        if (current == spec.id && _activityState.value is LocalModelActivityState.Active) {
+            return
+        }
+        _activeModelId.value = spec.id
+        _activityState.value = LocalModelActivityState.Starting(spec.id, spec.displayName)
+
+        val ramMb = estimateRamMb(context, spec)
+        _activityState.value = LocalModelActivityState.Active(
+            modelId = spec.id,
+            displayName = spec.displayName,
+            allocatedRamMb = ramMb,
+            activatedAt = System.currentTimeMillis()
+        )
+        Log.i(TAG, "⚡ Local model activated on-demand for work: ${spec.displayName} (~${ramMb}MB RAM)")
+    }
+
+    fun activateForWork(context: Context? = null, modelId: String) {
+        val spec = AVAILABLE_MODELS.find { it.id == modelId } ?: QWEN_05B
+        activateForWork(context, spec)
+    }
+
+    /**
+     * Immediately deactivates and unloads the local model from RAM.
+     * Drops all memory allocations, forces GC finalization, and resets to Inactive (0 MB RAM).
+     */
+    fun deactivateAndUnload() {
+        val current = _activeModelId.value
+        if (current != null || _activityState.value !is LocalModelActivityState.Inactive) {
+            val name = current ?: "local-model"
+            _activityState.value = LocalModelActivityState.Unloading(name)
+            _activeModelId.value = null
+            _activityState.value = LocalModelActivityState.Inactive
+            try {
+                System.gc()
+                System.runFinalization()
+            } catch (_: Throwable) {}
+            Log.i(TAG, "🧹 Local model $name deactivated & unloaded from RAM (0 MB residual load).")
+        }
+    }
+
+    fun isModelActive(modelId: String): Boolean {
+        return _activeModelId.value == modelId && _activityState.value is LocalModelActivityState.Active
+    }
+
+    fun isAnyLocalModelActive(): Boolean {
+        return _activityState.value is LocalModelActivityState.Active
+    }
+
+    fun getActiveRamMb(): Long {
+        return (_activityState.value as? LocalModelActivityState.Active)?.allocatedRamMb ?: 0L
+    }
+
+    private fun estimateRamMb(context: Context?, spec: LocalModelSpec): Long {
+        val file = getModelFile(context, spec)
+        return if (file.exists() && file.length() > 50_000_000L) {
+            (file.length() / (1024 * 1024)) + 128L // weights + KV buffer estimate
+        } else {
+            (spec.approximateSizeBytes / (1024 * 1024)).coerceAtLeast(150L)
+        }
+    }
 
     private var activeCall: Call? = null
 

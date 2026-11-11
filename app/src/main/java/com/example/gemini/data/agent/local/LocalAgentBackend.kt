@@ -228,11 +228,13 @@ class LocalAgentBackend(
     fun detach() {
         activeJob?.cancel()
         activeJob = null
+        LocalModelManager.deactivateAndUnload()
     }
 
     fun stopStreaming() {
         activeJob?.cancel()
         activeJob = null
+        LocalModelManager.deactivateAndUnload()
         val cur = _currentConversation.value ?: return
         val updated = cur.copy(isRunning = false)
         _currentConversation.value = updated
@@ -273,6 +275,9 @@ class LocalAgentBackend(
         activeJob = backendScope.launch(Dispatchers.IO) {
             val assistantId = UUID.randomUUID().toString()
             try {
+                // On-demand activation: only loads weights and memory when actively working
+                LocalModelManager.activateForWork(application, effectiveModel)
+
                 val result = LocalIntelligenceEngine.generateResponse(
                     prompt = prompt,
                     messages = _messages.value,
@@ -385,6 +390,9 @@ class LocalAgentBackend(
                     _currentConversation.value = idleConv
                     store.currentConversation.value = idleConv
                 }
+            } finally {
+                // Zero-RAM policy: immediately release weights & garbage collect memory
+                LocalModelManager.deactivateAndUnload()
             }
         }
     }

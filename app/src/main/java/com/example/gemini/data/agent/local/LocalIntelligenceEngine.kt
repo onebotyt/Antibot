@@ -2382,6 +2382,9 @@ object LocalIntelligenceEngine {
         startTime: Long,
         modelSpec: LocalModelSpec = LocalModelManager.QWEN_05B
     ): LocalEngineResult {
+        // Ensure model is registered as active for this turn
+        LocalModelManager.activateForWork(context, modelSpec)
+
         val targetDomain = when (modelSpec.id) {
             LocalModelManager.QWEN_15B.id -> LocalCodingDomain.QWEN_CODER_1B
             LocalModelManager.QWEN_2B.id -> LocalCodingDomain.QWEN_CODER_2B

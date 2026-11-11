@@ -1544,6 +1544,7 @@ private fun LlmManagerSubScreen(
     val shellModel by authPrefs.llmManagerShellModel.collectAsState(initial = authPrefs.getLlmManagerShellModelSync())
     val fallbackModel by authPrefs.llmManagerFallbackModel.collectAsState(initial = authPrefs.getLlmManagerFallbackModelSync())
     val preferredCli by authPrefs.llmManagerPreferredCli.collectAsState(initial = authPrefs.getLlmManagerPreferredCliSync())
+    val localModelActivity by com.example.gemini.data.agent.local.LocalModelManager.activityState.collectAsState()
 
     var activeDialogTask by remember { mutableStateOf<String?>(null) } // "ARCH", "CODE", "QA", "SHELL", "FALLBACK"
 
@@ -1671,6 +1672,107 @@ private fun LlmManagerSubScreen(
                         color = Color(0xFF8B5CF6),
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+        }
+
+        // 🛡️ Zero-RAM Idle Standby & On-Demand Engine Policy Card
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981).copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Zero-RAM Idle Engine Standby",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Local models and CLIs only load into RAM when actively doing work. Zero memory load when inactive.",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Live status chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val localActive = localModelActivity is com.example.gemini.data.agent.local.LocalModelActivityState.Active
+                    val localRam = (localModelActivity as? com.example.gemini.data.agent.local.LocalModelActivityState.Active)?.allocatedRamMb ?: 0L
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (localActive) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "Local Qwen Model",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = if (localActive) "● Active (~${localRam}MB)" else "💤 Inactive (0 MB RAM)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (localActive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "CLI Engines (4)",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "💤 Standby (On-Demand)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
             }
         }

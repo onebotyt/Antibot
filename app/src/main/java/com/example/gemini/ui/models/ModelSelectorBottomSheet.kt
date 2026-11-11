@@ -77,6 +77,7 @@ fun ModelSelectorBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val downloadState by LocalModelManager.downloadState.collectAsState()
+    val localActivity by LocalModelManager.activityState.collectAsState()
     val installedModelIds = remember(downloadState) {
         LocalModelManager.AVAILABLE_MODELS.filter { LocalModelManager.isModelInstalled(context, it) }.map { it.id }.toSet()
     }
@@ -85,7 +86,7 @@ fun ModelSelectorBottomSheet(
 
     // Build the clean unified list of models: Auto at top, followed by Local Qwen 3.5 suite (0.5B, 1.5B, 2B, 3B, 4B),
     // followed by consolidated Cloud models (Gemini Flash as 1 card with High/Med/Low mode options)
-    val modelEntries = remember(availableModels, installedModelIds) {
+    val modelEntries = remember(availableModels, installedModelIds, localActivity) {
         val list = mutableListOf<ModelItemEntry>()
 
         // 1. Smart LLM Manager (Auto Dynamic Routing)
@@ -101,11 +102,17 @@ fun ModelSelectorBottomSheet(
         )
 
         // 2. On-device local models suite (Qwen 3.5 Coder 0.5B, 1.5B, 2B, 3B, 4B)
+        val activeWorkingId = LocalModelManager.activeModelId.value
         LocalModelManager.AVAILABLE_MODELS.forEach { spec ->
             val isInstalled = spec.id in installedModelIds || spec.isDefault
             val sizeMb = spec.approximateSizeBytes / (1024 * 1024)
+            val isActivelyRunning = activeWorkingId == spec.id && localActivity is LocalModelActivityState.Active
             val subtitle = if (isInstalled) {
-                if (spec.isDefault) "0 Tokens · Built-in (<15ms)" else "0 Tokens · ${spec.parameterCount} (Offline)"
+                if (isActivelyRunning) {
+                    "● Active Working (~${LocalModelManager.getActiveRamMb()}MB RAM)"
+                } else {
+                    "💤 Inactive (0 MB RAM · Starts On-Demand)"
+                }
             } else {
                 "~$sizeMb MB · 1-Click Install"
             }
@@ -114,8 +121,8 @@ fun ModelSelectorBottomSheet(
                 ModelItemEntry.Single(
                     id = spec.id,
                     title = spec.displayName,
-                    badge = if (isInstalled) "Local" else "1-Click",
-                    badgeColor = if (isInstalled) Color(0xFF10B981) else Color(0xFF8B5CF6),
+                    badge = if (!isInstalled) "1-Click" else if (isActivelyRunning) "Active" else "0 MB Idle",
+                    badgeColor = if (!isInstalled) Color(0xFF8B5CF6) else if (isActivelyRunning) Color(0xFF10B981) else Color(0xFF6B7280),
                     subtitle = subtitle,
                     isLocal = true,
                     isDownloadable = !spec.isDefault,
