@@ -1,6 +1,6 @@
 {
-  "version_code": 229,
-  "version_name": "2.4.109",
+  "version_code": 230,
+  "version_name": "2.4.110",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udd52 Offline GitHub-Style Local Version Control: Full local version control suite working completely without GitHub. Features an interactive Version Control Dialog with visual commit timeline cards, file additions/deletions diff viewer, 1-tap workspace rollback/revert, file-level restoration, branch manager, and in-chat natural AI commands ('save checkpoint', 'rollback', 'show version history'). Available everywhere across Top Bar, IDE Git tab, and Chat.",
