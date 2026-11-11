@@ -3141,7 +3141,7 @@ fun ChatScreen(
 
     if (showLocalVersionControlDialog) {
         val currentConvPath = currentConv?.workspaceUri?.removePrefix("file://")?.trimEnd('/') ?: ""
-        val activeProj = activeProject ?: if (currentConvPath.isNotBlank()) com.example.gemini.data.daemon.ProjectItem(java.io.File(currentConvPath).name, currentConvPath) else null
+        val activeProj = usedProjects.find { it.path == currentConvPath } ?: if (currentConvPath.isNotBlank()) com.example.gemini.data.daemon.ProjectItem(java.io.File(currentConvPath).name, currentConvPath) else null
 
         com.example.gemini.ui.components.LocalVersionControlDialog(
             activeProject = activeProj,

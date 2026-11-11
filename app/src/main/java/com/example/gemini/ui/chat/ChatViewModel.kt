@@ -33,6 +33,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
+import com.example.gemini.data.daemon.GitApiClient
+import com.example.gemini.data.daemon.GitCommitLog
 import android.util.Log
 import org.json.JSONObject
 import java.util.UUID
@@ -692,7 +694,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     if (logs.isEmpty()) {
                         Pair("📁 **No commit history found for `${java.io.File(activeProjPath).name}`.** Ask me to 'save checkpoint' to create your first local version!", "No commits")
                     } else {
-                        val rows = logs.joinToString("\n") { c ->
+                        val rows = logs.joinToString("\n") { c: GitCommitLog ->
                             "| `${c.shortHash}` | **${c.message}** | `${c.author.ifBlank { "Local" }}` | ${c.date} |"
                         }
                         val md = """

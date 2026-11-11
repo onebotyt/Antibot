@@ -22,6 +22,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.example.gemini.data.daemon.GitApiClient
+import com.example.gemini.data.daemon.GitCommitLog
 import org.json.JSONObject
 
 /**
@@ -171,7 +173,7 @@ object LocalIntelligenceEngine {
                     if (logs.isEmpty()) {
                         Pair("📁 **No commit history found for `${projectDir.name}`.** Ask me to 'save checkpoint' to create your first version!", "No commits")
                     } else {
-                        val rows = logs.joinToString("\n") { c ->
+                        val rows = logs.joinToString("\n") { c: GitCommitLog ->
                             "| `${c.shortHash}` | **${c.message}** | `${c.author.ifBlank { "Local" }}` | ${c.date} |"
                         }
                         val md = """
