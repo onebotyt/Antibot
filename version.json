@@ -1,6 +1,6 @@
 {
-  "version_code": 243,
-  "version_name": "2.4.123",
+  "version_code": 244,
+  "version_name": "2.4.124",
   "min_supported_version_code": 1,
   "changelog": [
     "\u2728 Claude-Style Background Work Summary & Interactive Artifact Viewer: Background steps (thinking, skill lookups, file creation, tool executions) are now cleanly summarized in a compact single-line summary row ('\u2022\u2022 Planning...' while running, '\u23f1\ufe0f Checking...' when done) matching the Claude Android app. Tapping opens a sleek Summary Bottom Sheet with a connected timeline of steps and detail logs, drastically reducing chat feed lag and memory load. Generated HTML, web apps, and code scripts are showcased in interactive Artifact Cards with 1-click live preview (HTML5/Canvas WebGL), syntax-highlighted Code view, and instant Inbuilt Browser integration. Fixed on-demand remote skill installation from GitHub and resolved RECOMMENDED badge UI wrapping in TargetPickerModal.",
