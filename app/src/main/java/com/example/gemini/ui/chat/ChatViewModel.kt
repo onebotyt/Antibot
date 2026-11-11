@@ -157,12 +157,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val pendingApprovals = agyBackend.pendingApprovals
     val isStreaming: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(
         activeAgent,
+        store.currentConversation,
         agyBackend.isStreaming,
         claudeBackend.isStreaming,
-        codexBackend.isStreaming,
-        openCodeBackend.isStreaming,
-        store.currentConversation
-    ) { agent, agyStream, claudeStream, codexStream, openCodeStream, conv ->
+        kotlinx.coroutines.flow.combine(codexBackend.isStreaming, openCodeBackend.isStreaming) { codex, openCode -> codex to openCode }
+    ) { agent, conv, agyStream, claudeStream, (codexStream, openCodeStream) ->
         when (agent) {
             AgentKind.AGY -> agyStream
             AgentKind.CLAUDE -> claudeStream
@@ -225,12 +224,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isAnyGenerationOrTaskActive = agyBackend.isAnyGenerationOrTaskActive
     val isCurrentChatActivelyRunning: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(
         activeAgent,
+        store.currentConversation,
         agyBackend.isCurrentChatActivelyRunning,
         claudeBackend.isCurrentChatActivelyRunning,
-        codexBackend.isCurrentChatActivelyRunning,
-        openCodeBackend.isCurrentChatActivelyRunning,
-        store.currentConversation
-    ) { agent, agyRunning, claudeRunning, codexRunning, openCodeRunning, conv ->
+        kotlinx.coroutines.flow.combine(
+            codexBackend.isCurrentChatActivelyRunning,
+            openCodeBackend.isCurrentChatActivelyRunning
+        ) { codex, openCode -> codex to openCode }
+    ) { agent, conv, agyRunning, claudeRunning, (codexRunning, openCodeRunning) ->
         when (agent) {
             AgentKind.AGY -> agyRunning
             AgentKind.CLAUDE -> claudeRunning

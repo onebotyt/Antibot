@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.gemini.data.agent.local.LocalModelActivityState
 import com.example.gemini.data.agent.local.LocalModelManager
 import com.example.gemini.data.agent.local.LocalModelSpec
 import com.example.gemini.data.agent.local.ModelDownloadState
