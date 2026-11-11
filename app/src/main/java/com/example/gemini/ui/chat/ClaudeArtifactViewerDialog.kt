@@ -77,7 +77,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.gemini.data.browser.BrowserSessionManager
 import java.io.File
 
 enum class ArtifactViewMode {
