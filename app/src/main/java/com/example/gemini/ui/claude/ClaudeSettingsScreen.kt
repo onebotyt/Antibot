@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.DeveloperMode
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.IntrinsicSize

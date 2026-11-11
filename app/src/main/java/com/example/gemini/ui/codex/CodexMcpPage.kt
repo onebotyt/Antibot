@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Terminal
