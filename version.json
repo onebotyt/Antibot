@@ -1,6 +1,6 @@
 {
-  "version_code": 233,
-  "version_name": "2.4.113",
+  "version_code": 234,
+  "version_name": "2.4.114",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83e\udde0 Smart Manager Brain (Qwen 2.5 Coder On-Device Neural Engine) & Multi-CLI Switcher: Upgraded Smart LLM Manager with on-device Qwen 2.5 Coder 0.5B neural model as the primary routing brain (<15ms zero-latency intent classification, 0 cloud tokens). Added full support for selecting, switching, and setting defaults across all 5 CLI engines (Antigravity, Local Qwen, Claude Code, Codex, OpenCode). Categorized task routing dialog into dedicated CLI Manager and Cloud Model sections, added interactive CLI switcher cards, real-time brain metrics, and preferred CLI auto-dispatch.",
