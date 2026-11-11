@@ -34,6 +34,7 @@ data class LocalModelSpec(
     val shortName: String,
     val parameterCount: String,
     val fileName: String,
+    val legacyFileNames: List<String> = emptyList(),
     val downloadUrl: String,
     val approximateSizeBytes: Long,
     val description: String,
@@ -45,29 +46,68 @@ object LocalModelManager {
 
     val QWEN_05B = LocalModelSpec(
         id = "local-qwen-coder-0.5b",
-        displayName = "Qwen 2.5 Coder 0.5B",
+        displayName = "Qwen 3.5 Coder 0.5B",
         shortName = "Qwen 0.5B",
         parameterCount = "0.5B Parameters",
-        fileName = "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
+        fileName = "qwen3.5-coder-0.5b-instruct-q4_k_m.gguf",
+        legacyFileNames = listOf("qwen2.5-coder-0.5b-instruct-q4_k_m.gguf"),
         downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
-        approximateSizeBytes = 398_000_000L,
+        approximateSizeBytes = 491_400_064L,
         description = "Ultra-fast on-device neural code engine (<15ms, 0 tokens). Pre-configured & built-in.",
         isDefault = true
     )
 
     val QWEN_15B = LocalModelSpec(
         id = "local-qwen-coder-1.5b",
-        displayName = "Qwen 2.5 Coder 1.5B",
-        shortName = "Qwen 1.5B (1B Model)",
+        displayName = "Qwen 3.5 Coder 1.5B",
+        shortName = "Qwen 1.5B (1B)",
         parameterCount = "1.5B Parameters",
-        fileName = "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        fileName = "qwen3.5-coder-1.5b-instruct-q4_k_m.gguf",
+        legacyFileNames = listOf("qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"),
         downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-        approximateSizeBytes = 986_000_000L,
+        approximateSizeBytes = 1_117_320_768L,
         description = "High-accuracy 1B-class neural code LLM. Advanced multi-file synthesis, complex backend logic & deep reasoning. 1-Click Install.",
         isDefault = false
     )
 
-    val AVAILABLE_MODELS = listOf(QWEN_05B, QWEN_15B)
+    val QWEN_2B = LocalModelSpec(
+        id = "local-qwen-coder-2b",
+        displayName = "Qwen 3.5 Coder 2B",
+        shortName = "Qwen 2B",
+        parameterCount = "2.0B Parameters",
+        fileName = "qwen3.5-coder-2b-instruct-q4_k_m.gguf",
+        downloadUrl = "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
+        approximateSizeBytes = 1_280_835_840L,
+        description = "High-efficiency 2B on-device neural code LLM. Fast function synthesis, accurate typing and clean refactoring. 1-Click Install.",
+        isDefault = false
+    )
+
+    val QWEN_3B = LocalModelSpec(
+        id = "local-qwen-coder-3b",
+        displayName = "Qwen 3.5 Coder 3B",
+        shortName = "Qwen 3B",
+        parameterCount = "3.0B Parameters",
+        fileName = "qwen3.5-coder-3b-instruct-q4_k_m.gguf",
+        legacyFileNames = listOf("qwen2.5-coder-3b-instruct-q4_k_m.gguf"),
+        downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+        approximateSizeBytes = 2_104_932_800L,
+        description = "Full-featured 3B code model. Excels at REST APIs, multi-file database models, algorithms and unit tests. 1-Click Install.",
+        isDefault = false
+    )
+
+    val QWEN_4B = LocalModelSpec(
+        id = "local-qwen-coder-4b",
+        displayName = "Qwen 3.5 Coder 4B",
+        shortName = "Qwen 4B",
+        parameterCount = "4.0B Parameters",
+        fileName = "qwen3.5-coder-4b-instruct-q4_k_m.gguf",
+        downloadUrl = "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+        approximateSizeBytes = 2_740_937_888L,
+        description = "Flagship 4B on-device code LLM. Deep architectural planning, comprehensive fullstack apps & OWASP security audits. 1-Click Install.",
+        isDefault = false
+    )
+
+    val AVAILABLE_MODELS = listOf(QWEN_05B, QWEN_15B, QWEN_2B, QWEN_3B, QWEN_4B)
 
     private val _downloadState = MutableStateFlow<ModelDownloadState>(ModelDownloadState.Idle)
     val downloadState: StateFlow<ModelDownloadState> = _downloadState.asStateFlow()
@@ -98,12 +138,16 @@ object LocalModelManager {
 
     fun getModelFile(context: Context? = null, spec: LocalModelSpec): File {
         val dir = getModelsDir(context)
-        val fileInDir = File(dir, spec.fileName)
-        if (fileInDir.exists()) return fileInDir
         val termuxDir = File("/data/user/0/com.termux/files/home/.antibot/models")
-        val termuxFile = File(termuxDir, spec.fileName)
-        if (termuxFile.exists()) return termuxFile
-        return fileInDir
+
+        val candidateNames = listOf(spec.fileName) + spec.legacyFileNames
+        for (name in candidateNames) {
+            val fileInDir = File(dir, name)
+            if (fileInDir.exists() && fileInDir.length() > 50_000_000L) return fileInDir
+            val termuxFile = File(termuxDir, name)
+            if (termuxFile.exists() && termuxFile.length() > 50_000_000L) return termuxFile
+        }
+        return File(dir, spec.fileName)
     }
 
     fun isModelInstalled(context: Context? = null, spec: LocalModelSpec): Boolean {
@@ -221,15 +265,20 @@ object LocalModelManager {
 
     fun deleteModel(context: Context, spec: LocalModelSpec): Boolean {
         if (spec.isDefault) return false
-        val file = getModelFile(context, spec)
-        if (file.exists()) {
-            val deleted = file.delete()
-            if (deleted) {
-                _downloadState.value = ModelDownloadState.Idle
-            }
-            return deleted
+        val dir = getModelsDir(context)
+        val termuxDir = File("/data/user/0/com.termux/files/home/.antibot/models")
+        var anyDeleted = false
+        val candidateNames = listOf(spec.fileName) + spec.legacyFileNames
+        for (name in candidateNames) {
+            val f = File(dir, name)
+            if (f.exists()) anyDeleted = f.delete() || anyDeleted
+            val tf = File(termuxDir, name)
+            if (tf.exists()) anyDeleted = tf.delete() || anyDeleted
         }
-        return false
+        if (anyDeleted) {
+            _downloadState.value = ModelDownloadState.Idle
+        }
+        return anyDeleted
     }
 
     fun resetState() {

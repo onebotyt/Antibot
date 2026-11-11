@@ -40,7 +40,7 @@ data class SmartRoutingDecision(
     val reason: RoutingReason,
     val explanation: String,
     val badgeColor: Color = reason.badgeColor,
-    val managerBrain: String = "Qwen 2.5 Coder 0.5B (On-Device Neural Engine)"
+    val managerBrain: String = "Qwen 3.5 Coder 0.5B (On-Device Neural Engine)"
 ) {
     val targetCliDisplayName: String
         get() = when (targetAgent) {
@@ -231,15 +231,19 @@ object SmartModelRouter {
                 "codex" -> availableModels.find { it.id.contains("codex", ignoreCase = true) || it.id.contains("gpt", ignoreCase = true) }
                     ?: AiModel(id = "cli:codex", displayName = "Codex CLI", family = ModelFamily.OTHER, description = "OpenAI Codex CLI Manager")
                 "opencode" -> AiModel(id = "cli:opencode", displayName = "OpenCode CLI", family = ModelFamily.OTHER, description = "OpenCode Multi-Model CLI Manager")
-                "local", "qwen" -> AiModel(id = LocalCodingDomain.QWEN_CODER.modelId, displayName = "Local Qwen 2.5 Coder 0.5B", family = ModelFamily.LOCAL, description = "On-Device Neural Engine")
-                "local-1.5b", "qwen-1.5b", "1b" -> AiModel(id = LocalCodingDomain.QWEN_CODER_1B.modelId, displayName = "Local Qwen 2.5 Coder 1.5B", family = ModelFamily.LOCAL, description = "On-Device 1B Neural Engine")
+                "local", "qwen" -> AiModel(id = LocalCodingDomain.QWEN_CODER.modelId, displayName = "Local Qwen 3.5 Coder 0.5B", family = ModelFamily.LOCAL, description = "On-Device Neural Engine")
+                "local-1.5b", "qwen-1.5b", "1b", "1.5b" -> AiModel(id = LocalCodingDomain.QWEN_CODER_1B.modelId, displayName = "Local Qwen 3.5 Coder 1.5B", family = ModelFamily.LOCAL, description = "On-Device 1B Neural Engine")
+                "local-2b", "qwen-2b", "2b" -> AiModel(id = LocalCodingDomain.QWEN_CODER_2B.modelId, displayName = "Local Qwen 3.5 Coder 2B", family = ModelFamily.LOCAL, description = "On-Device 2B Neural Engine")
+                "local-3b", "qwen-3b", "3b" -> AiModel(id = LocalCodingDomain.QWEN_CODER_3B.modelId, displayName = "Local Qwen 3.5 Coder 3B", family = ModelFamily.LOCAL, description = "On-Device 3B Neural Engine")
+                "local-4b", "qwen-4b", "4b" -> AiModel(id = LocalCodingDomain.QWEN_CODER_4B.modelId, displayName = "Local Qwen 3.5 Coder 4B", family = ModelFamily.LOCAL, description = "On-Device 4B Neural Engine")
                 else -> availableModels.find { it.family == ModelFamily.GEMINI }
                     ?: AiModel(id = "cli:agy", displayName = "Antigravity CLI", family = ModelFamily.GEMINI, description = "Gemini Cloud Code CLI Manager")
             }
         }
 
-        if (pattern == LocalCodingDomain.QWEN_CODER_1B.modelId) {
-            return AiModel(id = LocalCodingDomain.QWEN_CODER_1B.modelId, displayName = "Local Qwen 2.5 Coder 1.5B", family = ModelFamily.LOCAL, description = "On-Device 1B Neural Engine")
+        val localDomain = LocalCodingDomain.entries.find { it.modelId.equals(pattern, ignoreCase = true) }
+        if (localDomain != null) {
+            return AiModel(id = localDomain.modelId, displayName = localDomain.displayName, family = ModelFamily.LOCAL, description = localDomain.description)
         }
 
         // 1. Exact ID match
@@ -304,7 +308,7 @@ object SmartModelRouter {
             return SmartRoutingDecision(
                 targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
                 targetAgent = AgentKind.LOCAL,
-                modelDisplayName = "Qwen 2.5 Coder 0.5B",
+                modelDisplayName = "Qwen 3.5 Coder 0.5B",
                 reason = RoutingReason.LOCAL_OFFLINE,
                 explanation = "Network offline · Running 100% on-device Qwen neural engine",
                 badgeColor = Color(0xFF10B981)
@@ -362,7 +366,7 @@ object SmartModelRouter {
                 return SmartRoutingDecision(
                     targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
                     targetAgent = AgentKind.LOCAL,
-                    modelDisplayName = "Qwen 2.5 Coder 0.5B",
+                    modelDisplayName = "Qwen 3.5 Coder 0.5B",
                     reason = reason,
                     explanation = "Qwen Brain evaluated command · Executed locally on device (0 tokens)",
                     badgeColor = Color(0xFF10B981)
@@ -506,9 +510,9 @@ object SmartModelRouter {
         return SmartRoutingDecision(
             targetModelId = LocalCodingDomain.QWEN_CODER.modelId,
             targetAgent = AgentKind.LOCAL,
-            modelDisplayName = "Qwen 2.5 Coder 0.5B",
+            modelDisplayName = "Qwen 3.5 Coder 0.5B",
             reason = RoutingReason.LOCAL_SHELL,
-            explanation = "Running on Local Qwen 2.5 Coder (100% On-Device Brain)",
+            explanation = "Running on Local Qwen 3.5 Coder (100% On-Device Brain)",
             badgeColor = Color(0xFF10B981)
         )
     }

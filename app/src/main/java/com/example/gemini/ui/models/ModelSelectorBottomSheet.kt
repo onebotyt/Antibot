@@ -77,15 +77,15 @@ fun ModelSelectorBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val downloadState by LocalModelManager.downloadState.collectAsState()
-    val is15BInstalled = remember(downloadState) {
-        LocalModelManager.isModelInstalled(context, "local-qwen-coder-1.5b")
+    val installedModelIds = remember(downloadState) {
+        LocalModelManager.AVAILABLE_MODELS.filter { LocalModelManager.isModelInstalled(context, it) }.map { it.id }.toSet()
     }
     var showDownloadDialogForModel by remember { mutableStateOf<LocalModelSpec?>(null) }
     var showDeleteDialogForModel by remember { mutableStateOf<LocalModelSpec?>(null) }
 
-    // Build the clean unified list of models: Auto at top, followed by Local Qwen (0.5B and 1.5B),
+    // Build the clean unified list of models: Auto at top, followed by Local Qwen 3.5 suite (0.5B, 1.5B, 2B, 3B, 4B),
     // followed by consolidated Cloud models (Gemini Flash as 1 card with High/Med/Low mode options)
-    val modelEntries = remember(availableModels, is15BInstalled) {
+    val modelEntries = remember(availableModels, installedModelIds) {
         val list = mutableListOf<ModelItemEntry>()
 
         // 1. Smart LLM Manager (Auto Dynamic Routing)
@@ -100,32 +100,29 @@ fun ModelSelectorBottomSheet(
             )
         )
 
-        // 2a. Built-in on-device model: Qwen 2.5 Coder 0.5B
-        list.add(
-            ModelItemEntry.Single(
-                id = "local-qwen-coder-0.5b",
-                title = "Qwen 2.5 Coder 0.5B",
-                badge = "Local",
-                badgeColor = Color(0xFF10B981),
-                subtitle = "0 Tokens · Built-in (<15ms)",
-                isLocal = true,
-                isDownloaded = true
-            )
-        )
+        // 2. On-device local models suite (Qwen 3.5 Coder 0.5B, 1.5B, 2B, 3B, 4B)
+        LocalModelManager.AVAILABLE_MODELS.forEach { spec ->
+            val isInstalled = spec.id in installedModelIds || spec.isDefault
+            val sizeMb = spec.approximateSizeBytes / (1024 * 1024)
+            val subtitle = if (isInstalled) {
+                if (spec.isDefault) "0 Tokens · Built-in (<15ms)" else "0 Tokens · ${spec.parameterCount} (Offline)"
+            } else {
+                "~$sizeMb MB · 1-Click Install"
+            }
 
-        // 2b. High-accuracy 1B-class model: Qwen 2.5 Coder 1.5B
-        list.add(
-            ModelItemEntry.Single(
-                id = "local-qwen-coder-1.5b",
-                title = "Qwen 2.5 Coder 1.5B (1B)",
-                badge = if (is15BInstalled) "Local" else "1-Click Install",
-                badgeColor = if (is15BInstalled) Color(0xFF10B981) else Color(0xFF8B5CF6),
-                subtitle = if (is15BInstalled) "0 Tokens · 1B Neural Engine" else "986 MB · High Accuracy Code LLM",
-                isLocal = true,
-                isDownloadable = true,
-                isDownloaded = is15BInstalled
+            list.add(
+                ModelItemEntry.Single(
+                    id = spec.id,
+                    title = spec.displayName,
+                    badge = if (isInstalled) "Local" else "1-Click",
+                    badgeColor = if (isInstalled) Color(0xFF10B981) else Color(0xFF8B5CF6),
+                    subtitle = subtitle,
+                    isLocal = true,
+                    isDownloadable = !spec.isDefault,
+                    isDownloaded = isInstalled
+                )
             )
-        )
+        }
 
         // 3. Cloud models grouped by baseName to consolidate High/Medium/Low into 1 card
         val cloudModels = availableModels.filter { !LocalCodingDomain.isLocalModel(it.id) && !SmartModelRouter.isAuto(it.id) }
@@ -248,7 +245,7 @@ fun ModelSelectorBottomSheet(
                                             .fillMaxWidth()
                                             .clickable(enabled = !isThisDownloading) {
                                                 if (entry.isDownloadable && !entry.isDownloaded) {
-                                                    showDownloadDialogForModel = LocalModelManager.QWEN_15B
+                                                    showDownloadDialogForModel = LocalModelManager.AVAILABLE_MODELS.find { it.id == entry.id }
                                                 } else {
                                                     onSelectModel(entry.id)
                                                     onDismiss()
@@ -300,7 +297,7 @@ fun ModelSelectorBottomSheet(
 
                                             if (entry.isDownloadable && entry.isDownloaded) {
                                                 IconButton(
-                                                    onClick = { showDeleteDialogForModel = LocalModelManager.QWEN_15B },
+                                                    onClick = { showDeleteDialogForModel = LocalModelManager.AVAILABLE_MODELS.find { it.id == entry.id } },
                                                     modifier = Modifier.size(32.dp)
                                                 ) {
                                                     Icon(
@@ -312,7 +309,7 @@ fun ModelSelectorBottomSheet(
                                                 }
                                             } else if (entry.isDownloadable && !entry.isDownloaded && !isThisDownloading) {
                                                 IconButton(
-                                                    onClick = { showDownloadDialogForModel = LocalModelManager.QWEN_15B },
+                                                    onClick = { showDownloadDialogForModel = LocalModelManager.AVAILABLE_MODELS.find { it.id == entry.id } },
                                                     modifier = Modifier.size(32.dp)
                                                 ) {
                                                     Icon(

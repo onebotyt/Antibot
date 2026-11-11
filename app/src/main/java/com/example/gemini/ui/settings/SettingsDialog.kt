@@ -1557,8 +1557,11 @@ private fun LlmManagerSubScreen(
             id == "cli:local" -> "🧠 Local Qwen CLI (On-Device)"
             id == "claude" -> "Claude (Sonnet / Opus)"
             id == "gemini" -> "Gemini 3.8 Flash"
-            id == "local-qwen-coder-1.5b" -> "Local Qwen 2.5 Coder 1.5B (1B Model)"
-            id.startsWith("local") -> "Local Qwen 2.5 Coder 0.5B (0 Tokens)"
+            id == "local-qwen-coder-1.5b" -> "Local Qwen 3.5 Coder 1.5B (1B Model)"
+            id == "local-qwen-coder-2b" -> "Local Qwen 3.5 Coder 2B (2B Model)"
+            id == "local-qwen-coder-3b" -> "Local Qwen 3.5 Coder 3B (3B Model)"
+            id == "local-qwen-coder-4b" -> "Local Qwen 3.5 Coder 4B (4B Model)"
+            id.startsWith("local") -> "Local Qwen 3.5 Coder 0.5B (0 Tokens)"
             else -> availableModels.find { it.id == id }?.displayName ?: id
         }
     }
@@ -1581,7 +1584,7 @@ private fun LlmManagerSubScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 🧠 Smart Manager Brain Status Card (Qwen 2.5 Coder On-Device Neural Engine)
+        // 🧠 Smart Manager Brain Status Card (Qwen 3.5 Coder On-Device Neural Engine)
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color(0xFF10B981).copy(alpha = 0.08f),
@@ -1637,7 +1640,7 @@ private fun LlmManagerSubScreen(
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Powered by On-Device Qwen 2.5 Coder 0.5B neural engine. Analyzes intent in <15ms with 0 cloud tokens to seamlessly dispatch tasks across all 5 CLI managers.",
+                            text = "Powered by On-Device Qwen 3.5 Coder 0.5B neural engine. Analyzes intent in <15ms with 0 cloud tokens to seamlessly dispatch tasks across all 5 CLI managers.",
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1740,7 +1743,7 @@ private fun LlmManagerSubScreen(
         // 5 CLI Manager Interactive Switcher Cards
         val cliEngines = listOf(
             Triple(AgentKind.AGY, "Antigravity CLI", "Google Cloud Code Gemini backend · Multimodal · Fast code tools"),
-            Triple(AgentKind.LOCAL, "Local Qwen CLI", "On-Device Qwen 2.5 Coder 0.5B · 100% offline · 0 cloud tokens consumed"),
+            Triple(AgentKind.LOCAL, "Local Qwen CLI", "On-Device Qwen 3.5 Coder 0.5B · 100% offline · 0 cloud tokens consumed"),
             Triple(AgentKind.CLAUDE, "Claude Code CLI", "Anthropic Claude 3.5 Sonnet · Deep reasoning & architectural design"),
             Triple(AgentKind.CODEX, "Codex CLI", "OpenAI Codex CLI engine · Advanced script & test generation"),
             Triple(AgentKind.OPENCODE, "OpenCode CLI", "Multi-Provider CLI backend · Flexible local/remote models")
@@ -1956,8 +1959,11 @@ private fun LlmManagerSubScreen(
             val list = mutableListOf<Pair<String, String>>()
             list.add("gemini" to "Gemini 3.8 Flash (High Speed & Large Context)")
             list.add("claude" to "Claude 3.5 Sonnet (Deep Reasoning)")
-            list.add("local-qwen-coder-0.5b" to "Local Qwen 2.5 Coder 0.5B (0 Tokens • On-Device)")
-            list.add("local-qwen-coder-1.5b" to "Local Qwen 2.5 Coder 1.5B (0 Tokens • 1B Model)")
+            list.add("local-qwen-coder-0.5b" to "Local Qwen 3.5 Coder 0.5B (0 Tokens • Built-in)")
+            list.add("local-qwen-coder-1.5b" to "Local Qwen 3.5 Coder 1.5B (0 Tokens • 1B Model)")
+            list.add("local-qwen-coder-2b" to "Local Qwen 3.5 Coder 2B (0 Tokens • 2B Model)")
+            list.add("local-qwen-coder-3b" to "Local Qwen 3.5 Coder 3B (0 Tokens • 3B Model)")
+            list.add("local-qwen-coder-4b" to "Local Qwen 3.5 Coder 4B (0 Tokens • 4B Model)")
             availableModels.filter { !it.id.startsWith("local-") }.forEach {
                 if (it.id !in list.map { pair -> pair.first }) {
                     list.add(it.id to it.displayName)

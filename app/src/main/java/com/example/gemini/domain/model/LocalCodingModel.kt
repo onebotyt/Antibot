@@ -66,23 +66,53 @@ enum class LocalCodingDomain(
     ),
     QWEN_CODER(
         modelId = "local-qwen-coder-0.5b",
-        displayName = "Qwen 2.5 Coder 0.5B",
+        displayName = "Qwen 3.5 Coder 0.5B",
         shortName = "Qwen Coder",
-        tag = "350MB Neural LLM",
+        tag = "Built-in Neural LLM",
         description = "Ultra-compact 0.5B parameter quantized coding model for deep on-device offline reasoning and autocomplete",
-        placeholderPrompt = "Ask Qwen 2.5 Coder (Offline Neural LLM)...",
+        placeholderPrompt = "Ask Qwen 3.5 Coder (Offline Neural LLM)...",
         iconEmoji = "🧠",
-        sizeText = "350MB Q4_K_M"
+        sizeText = "Built-in"
     ),
     QWEN_CODER_1B(
         modelId = "local-qwen-coder-1.5b",
-        displayName = "Qwen 2.5 Coder 1.5B",
-        shortName = "Qwen 1.5B (1B Model)",
+        displayName = "Qwen 3.5 Coder 1.5B",
+        shortName = "Qwen 1.5B (1B)",
         tag = "1B Neural LLM",
         description = "High-accuracy 1.5B parameter neural code model for deep on-device multi-file synthesis & complex logic (Optional Download)",
-        placeholderPrompt = "Ask Qwen 2.5 Coder 1.5B (Offline Neural LLM)...",
+        placeholderPrompt = "Ask Qwen 3.5 Coder 1.5B (Offline Neural LLM)...",
         iconEmoji = "🧠",
-        sizeText = "986MB Q4_K_M"
+        sizeText = "1.1GB Q4_K_M"
+    ),
+    QWEN_CODER_2B(
+        modelId = "local-qwen-coder-2b",
+        displayName = "Qwen 3.5 Coder 2B",
+        shortName = "Qwen 2B",
+        tag = "2B Neural LLM",
+        description = "High-efficiency 2B on-device neural code LLM for fast function synthesis and typing (Optional Download)",
+        placeholderPrompt = "Ask Qwen 3.5 Coder 2B (Offline Neural LLM)...",
+        iconEmoji = "🧠",
+        sizeText = "1.3GB Q4_K_M"
+    ),
+    QWEN_CODER_3B(
+        modelId = "local-qwen-coder-3b",
+        displayName = "Qwen 3.5 Coder 3B",
+        shortName = "Qwen 3B",
+        tag = "3B Neural LLM",
+        description = "Full-featured 3B code model for multi-file backend logic, database schemas and tests (Optional Download)",
+        placeholderPrompt = "Ask Qwen 3.5 Coder 3B (Offline Neural LLM)...",
+        iconEmoji = "🧠",
+        sizeText = "2.1GB Q4_K_M"
+    ),
+    QWEN_CODER_4B(
+        modelId = "local-qwen-coder-4b",
+        displayName = "Qwen 3.5 Coder 4B",
+        shortName = "Qwen 4B",
+        tag = "4B Flagship LLM",
+        description = "Flagship 4B on-device code LLM for fullstack application architecture & OWASP security audits (Optional Download)",
+        placeholderPrompt = "Ask Qwen 3.5 Coder 4B (Offline Neural LLM)...",
+        iconEmoji = "🧠",
+        sizeText = "2.7GB Q4_K_M"
     );
 
     companion object {
