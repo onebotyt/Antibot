@@ -36,10 +36,15 @@ sealed class ChatFeedItem(val key: String, val contentType: String) {
     data class VoiceCall(
         val id: String,
         val startedAt: Long,
-        val durationMs: Long?,
         val live: Boolean,
         val record: com.example.gemini.data.voice.VoiceChatRecord?
     ) : ChatFeedItem("voicecall_$id", "VOICE_CALL")
+    /** Claude-style single-line work summary pill. Background steps stay hidden until tapped. */
+    @Immutable
+    data class ClaudeSummaryItem(val summary: TurnWorkSummary) : ChatFeedItem("claude_summary_${summary.messageId}", "CLAUDE_SUMMARY")
+    /** Claude-style interactive artifact card (Live Preview & Code). */
+    @Immutable
+    data class ClaudeArtifactFeedItem(val messageId: String, val artifact: ClaudeArtifactItem) : ChatFeedItem("claude_artifact_${messageId}_${artifact.id}", "CLAUDE_ARTIFACT")
 }
 
 object ChatFeedCache {
@@ -61,14 +66,32 @@ object ChatFeedCache {
                 msgItems.add(ChatFeedItem.User(if (shown === msg.content) msg else msg.copy(content = shown)))
             }
             MessageRole.ASSISTANT -> {
-                val durTag = if (msg.thoughtDurationMs != null && msg.thoughtDurationMs > 0) ":${msg.thoughtDurationMs}" else ""
-                val contentToParse = if (!msg.thoughtText.isNullOrEmpty() && !msg.content.contains("<!-- thought") && !msg.content.contains("<thought")) {
-                    "<!-- thought$durTag -->\n${msg.thoughtText}\n<!-- /thought -->\n${msg.content}"
-                } else {
-                    msg.content
+                val (workSummary, artifacts, cleanContent) = ClaudeWorkSummaryParser.parse(msg)
+
+                // 1. Single summary row for background thoughts & tools (keeps chat feed ultra-lightweight)
+                if (workSummary != null && workSummary.steps.isNotEmpty()) {
+                    msgItems.add(ChatFeedItem.ClaudeSummaryItem(workSummary))
                 }
-                if (contentToParse.isNotEmpty() || msg.toolCalls.isNotEmpty()) {
-                    val blocks = parseMarkdownBlocks(contentToParse, msg.toolCalls)
+
+                // 2. Artifact cards (1-click live preview & code)
+                for (art in artifacts) {
+                    msgItems.add(ChatFeedItem.ClaudeArtifactFeedItem(msg.id, art))
+                }
+
+                // 3. Clean assistant text
+                if (cleanContent.isNotEmpty()) {
+                    val blocks = parseMarkdownBlocks(cleanContent, emptyList())
+                    for (i in blocks.indices) {
+                        msgItems.add(ChatFeedItem.AssistantBlock(
+                            messageId = msg.id,
+                            blockIndex = i,
+                            block = blocks[i],
+                            isFirst = i == 0,
+                            isLast = i == blocks.lastIndex
+                        ))
+                    }
+                } else if (msg.toolCalls.isNotEmpty() && workSummary == null && artifacts.isEmpty()) {
+                    val blocks = parseMarkdownBlocks(msg.content, msg.toolCalls)
                     for (i in blocks.indices) {
                         msgItems.add(ChatFeedItem.AssistantBlock(
                             messageId = msg.id,
@@ -79,7 +102,7 @@ object ChatFeedCache {
                         ))
                     }
                 }
-                if (msg.content.isNotEmpty()) {
+                if (msg.content.isNotEmpty() || artifacts.isNotEmpty()) {
                     msgItems.add(ChatFeedItem.AssistantFooter(msg))
                 }
             }
@@ -201,21 +224,15 @@ object ChatFeedCache {
                     addItem(item)
                 }
             } else {
-                val hasActiveRunningTool = msg.toolCalls.any {
-                    it.status == "RUNNING" || it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE"
+                val (workSummary, artifacts, cleanContent) = ClaudeWorkSummaryParser.parse(msg)
+                if (workSummary != null && workSummary.steps.isNotEmpty()) {
+                    addItem(ChatFeedItem.ClaudeSummaryItem(workSummary))
                 }
-                val durTag = if (msg.thoughtDurationMs != null && msg.thoughtDurationMs > 0) ":${msg.thoughtDurationMs}" else ""
-                val contentToParse = if (!msg.thoughtText.isNullOrEmpty() && !msg.content.contains("<!-- thought") && !msg.content.contains("<thought")) {
-                    if (msg.content.isBlank()) {
-                        "<!-- thought:streaming$durTag -->\n${msg.thoughtText}"
-                    } else {
-                        "<!-- thought:streaming$durTag -->\n${msg.thoughtText}\n<!-- /thought -->\n${msg.content}"
-                    }
-                } else {
-                    msg.content
+                for (art in artifacts) {
+                    addItem(ChatFeedItem.ClaudeArtifactFeedItem(msg.id, art))
                 }
-                if (contentToParse.isNotEmpty() || msg.toolCalls.isNotEmpty()) {
-                    val blocks = parseMarkdownBlocks(contentToParse, msg.toolCalls)
+                if (cleanContent.isNotEmpty()) {
+                    val blocks = parseMarkdownBlocks(cleanContent, emptyList())
                     for (i in blocks.indices) {
                         addItem(ChatFeedItem.AssistantBlock(
                             messageId = msg.id,
@@ -225,9 +242,25 @@ object ChatFeedCache {
                             isLast = i == blocks.lastIndex
                         ))
                     }
-                } else if (!hasActiveRunningTool) {
-                    // Only show waiting indicator before ANY output or tool call has appeared
-                    addItem(ChatFeedItem.AssistantTyping(msg.id, selectedModelId))
+                } else if (workSummary == null && artifacts.isEmpty()) {
+                    val hasActiveRunningTool = msg.toolCalls.any {
+                        it.status == "RUNNING" || it.status == "PENDING_APPROVAL" || it.status == "AWAITING_CHOICE"
+                    }
+                    if (hasActiveRunningTool) {
+                        val blocks = parseMarkdownBlocks(msg.content, msg.toolCalls)
+                        for (i in blocks.indices) {
+                            addItem(ChatFeedItem.AssistantBlock(
+                                messageId = msg.id,
+                                blockIndex = i,
+                                block = blocks[i],
+                                isFirst = i == 0,
+                                isLast = i == blocks.lastIndex
+                            ))
+                        }
+                    } else {
+                        // Only show waiting indicator before ANY output or tool call has appeared
+                        addItem(ChatFeedItem.AssistantTyping(msg.id, selectedModelId))
+                    }
                 }
             }
         }

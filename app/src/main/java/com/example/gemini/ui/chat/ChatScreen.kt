@@ -669,6 +669,10 @@ fun ChatScreen(
     var cloudPreviewInApp by remember { mutableStateOf<Pair<String, Int>?>(null) }
     /** 1-Click In-App Live Web Preview URL: (file:// or http://). */
     var activeWebPreviewUrl by remember { mutableStateOf<String?>(null) }
+    /** Claude-style Work Summary bottom sheet state. */
+    var activeSummaryBottomSheet by remember { mutableStateOf<TurnWorkSummary?>(null) }
+    /** Claude-style Artifact & Code/Preview Viewer dialog state. */
+    var activeArtifactViewer by remember { mutableStateOf<ClaudeArtifactItem?>(null) }
     var showCloudRunCommand by remember { mutableStateOf(false) }
 
     // the voice agent moved the call to another chat (it started a new one): show that chat
@@ -1811,6 +1815,30 @@ fun ChatScreen(
                                                     showRawPayloadDialog = payloadJson
                                                 }
                                             )
+                                        }
+                                        is ChatFeedItem.ClaudeSummaryItem -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 2.dp)
+                                            ) {
+                                                ClaudeWorkSummaryRow(
+                                                    summary = feedItem.summary,
+                                                    onClick = { activeSummaryBottomSheet = feedItem.summary }
+                                                )
+                                            }
+                                        }
+                                        is ChatFeedItem.ClaudeArtifactFeedItem -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp, vertical = 2.dp)
+                                            ) {
+                                                ClaudeArtifactCard(
+                                                    artifact = feedItem.artifact,
+                                                    onClick = { activeArtifactViewer = feedItem.artifact }
+                                                )
+                                            }
                                         }
                                         is ChatFeedItem.AssistantThinking -> {
                                             Column(
@@ -3369,6 +3397,18 @@ fun ChatScreen(
             initialUrl = previewUrl,
             onNavigateToBrowser = onNavigateToBrowser,
             onDismiss = { activeWebPreviewUrl = null }
+        )
+    }
+    activeSummaryBottomSheet?.let { summary ->
+        ClaudeSummaryBottomSheet(
+            summary = summary,
+            onDismiss = { activeSummaryBottomSheet = null }
+        )
+    }
+    activeArtifactViewer?.let { artifact ->
+        ClaudeArtifactViewerDialog(
+            artifact = artifact,
+            onDismiss = { activeArtifactViewer = null }
         )
     }
     if (showCloudRunCommand) {

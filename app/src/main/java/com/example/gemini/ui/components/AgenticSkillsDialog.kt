@@ -1022,12 +1022,19 @@ private fun TargetPickerModal(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     Text(
                                         text = target.displayName,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                                        color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                     if (isUniversal) {
                                         Surface(
@@ -1035,20 +1042,25 @@ private fun TargetPickerModal(
                                             color = SkillPurple
                                         ) {
                                             Text(
-                                                "RECOMMENDED",
+                                                text = "RECOMMENDED",
                                                 color = Color.White,
-                                                fontSize = 9.sp,
+                                                fontSize = 8.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
                                 }
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = subtitle,
                                     fontSize = 11.sp,
                                     fontFamily = if (isUniversal || target == SkillInstallTarget.LOCAL) FontFamily.Default else FontFamily.Monospace,
-                                    color = if (enabled) SkillPurple else MaterialTheme.colorScheme.outline
+                                    color = if (enabled) SkillPurple else MaterialTheme.colorScheme.outline,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             Icon(
