@@ -1899,13 +1899,12 @@ object LocalIntelligenceEngine {
 
         ### 🚀 Instant Actions:
         - **🌐 Inbuilt Browser Live Preview:**
-          `file://${indexFile.absolutePath}`
-        - **⚡ Terminal Server Run Command:**
-          ```bash
-          cd ${targetDir.absolutePath} && node server.js
-          ```
-        - **📂 Open Project in IDE Editor:**
+          **[🌐 Open Live Preview (1-Click)](file://${indexFile.absolutePath})**
+          *(Tap the **👁️ Live Preview** button below or this link to view on screen)*
+        - **📂 Project Location:**
           `${targetDir.absolutePath}`
+        - **⚡ Terminal Server Run Command (Optional):**
+          `cd ${targetDir.absolutePath} && node server.js`
         """.trimIndent()
 
         val thoughtText = "AntiBot Autonomous Dev Team completed full-stack synthesis in $mode mode. Backend Architect produced REST endpoints; Frontend UI/UX crafted responsive storefront; Cybersecurity Specialist audited and hardened 3 vulnerability vectors."
@@ -2228,15 +2227,13 @@ object LocalIntelligenceEngine {
         ---
 
         ### 🌐 Inbuilt Browser Live Preview:
-        You can view and interact with this project right now on your phone:
-        - **Inbuilt Browser URL:**
-          `file://${indexHtml.absolutePath}`
-        - **Terminal Local Server Command:**
-          ```bash
-          python3 -m http.server 8080 --directory ${targetDir.absolutePath}
-          ```
-        - **IDE File Location:**
-          `${indexHtml.absolutePath}`
+        **[🌐 Open Live Preview (1-Click)](file://${indexHtml.absolutePath})**
+
+        Tap the **[🌐 Open Live Preview](file://${indexHtml.absolutePath})** link or click the **👁️ Live Preview** button on this message to view your rendered website directly on your screen!
+
+        - **Project Location:** `${targetDir.absolutePath}`
+        - **Entry File:** [${indexHtml.name}](file://${indexHtml.absolutePath}) (${formatBytes(indexHtml.length())})
+        - **Direct URL:** `file://${indexHtml.absolutePath}`
 
         *(All files are saved directly to your phone's storage and run offline without cloud tokens!)*
         """.trimIndent()

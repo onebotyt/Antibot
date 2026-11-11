@@ -667,6 +667,8 @@ fun ChatScreen(
     var showCloudPreview by remember { mutableStateOf(false) }
     /** The in-app preview on screen: (cloud chat, port). */
     var cloudPreviewInApp by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    /** 1-Click In-App Live Web Preview URL: (file:// or http://). */
+    var activeWebPreviewUrl by remember { mutableStateOf<String?>(null) }
     var showCloudRunCommand by remember { mutableStateOf(false) }
 
     // the voice agent moved the call to another chat (it started a new one): show that chat
@@ -1048,7 +1050,7 @@ fun ChatScreen(
                             } catch (_: Exception) { "" }
                             val fileName = File(cleanPath).name.ifBlank { "index.html" }
                             TermuxDaemonManager.openOrSelectTab(cleanPath, fileName, content)
-                            onNavigateToBrowser()
+                            activeWebPreviewUrl = "file://$cleanPath"
                         }
                     } else if (isMd) {
                         scope.launch {
@@ -1876,7 +1878,8 @@ fun ChatScreen(
                                                     showRawPayloadDialog = payloadJson
                                                 },
                                                 onShowArtifacts = { showArtifactsDrawer = true },
-                                                artifactsCount = artifacts.size
+                                                artifactsCount = artifacts.size,
+                                                onOpenWebPreview = { url -> activeWebPreviewUrl = url }
                                             )
                                         }
                                         is ChatFeedItem.StreamingMessage -> {
@@ -1906,7 +1909,8 @@ fun ChatScreen(
                                                 summarizingModelName = summarizingModelName,
                                                 pendingQueuedUserMessage = pendingQueuedUserMessage,
                                                 onShowArtifacts = { showArtifactsDrawer = true },
-                                                artifactsCount = artifacts.size
+                                                artifactsCount = artifacts.size,
+                                                onOpenWebPreview = { url -> activeWebPreviewUrl = url }
                                             )
                                         }
                                         }
@@ -2322,6 +2326,22 @@ fun ChatScreen(
                             if (messages.isEmpty()) com.example.gemini.ui.components.AppToastHelper.showToast(
                                 "Send the cloud agent a message first: its VM starts with the chat.", com.example.gemini.ui.components.ChatToastType.INFO
                             ) else showCloudRunCommand = true
+                        }
+                    )
+                }
+
+                // 1-Click Web Live Preview Banner (when conversation contains an HTML file or dev server preview target)
+                val latestWebPreviewUrl = remember(messages) {
+                    WebPreviewHelper.findLatestWebPreviewTarget(messages, context)
+                }
+
+                if (latestWebPreviewUrl != null && !(isAgyChat && currentConv?.isCloud == true)) {
+                    WebPreviewBanner(
+                        targetUrl = latestWebPreviewUrl,
+                        onPreview = { activeWebPreviewUrl = latestWebPreviewUrl },
+                        onOpenInBrowser = {
+                            com.example.gemini.ui.browser.BrowserSessionManager.instance.openUrl(latestWebPreviewUrl, newTab = true)
+                            onNavigateToBrowser()
                         }
                     )
                 }
@@ -3342,6 +3362,13 @@ fun ChatScreen(
             suggestedPorts = previewPorts,
             initialPort = port,
             onDismiss = { cloudPreviewInApp = null }
+        )
+    }
+    activeWebPreviewUrl?.let { previewUrl ->
+        LiveWebPreviewDialog(
+            initialUrl = previewUrl,
+            onNavigateToBrowser = onNavigateToBrowser,
+            onDismiss = { activeWebPreviewUrl = null }
         )
     }
     if (showCloudRunCommand) {

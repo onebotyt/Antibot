@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +48,8 @@ import android.net.Uri
 import android.content.Intent
 import java.io.File
 import com.example.gemini.data.remote.HubMediaResolver
+import com.example.gemini.ui.chat.WebPreviewHelper
+import com.example.gemini.ui.chat.WebPreviewCard
 import kotlinx.coroutines.launch
 import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.MessageRole
@@ -74,6 +77,7 @@ fun MessageBubble(
     artifactsCount: Int = 0,
     summarizingModelName: String = "AI",
     pendingQueuedUserMessage: String? = null,
+    onOpenWebPreview: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -259,13 +263,25 @@ fun MessageBubble(
                     ModelTypingIndicator(modelId = modelId)
                 }
 
-                // Token Telemetry and Action Icons (Copy, Retry, Raw Payload, Artifacts)
+                // Token Telemetry and Action Icons (Copy, Retry, Raw Payload, Artifacts, Web Preview)
                 if (!message.isStreaming && message.content.isNotEmpty()) {
+                    val previewTarget = remember(message.content) {
+                        WebPreviewHelper.extractWebPreviewTarget(message.content, context)
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 6.dp)
                     ) {
+                        if (previewTarget != null) {
+                            WebPreviewCard(
+                                targetUrl = previewTarget,
+                                onClick = { onOpenWebPreview?.invoke(previewTarget) }
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+
                         // Token & Cache Telemetry Badge (Displayed just above action icons)
                         if (message.tokenUsage != null) {
                             val payloadToShow = message.rawContent ?: message.rawPayload
@@ -312,6 +328,21 @@ fun MessageBubble(
                                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                                     modifier = Modifier.size(16.dp)
                                 )
+                            }
+
+                            if (previewTarget != null) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { onOpenWebPreview?.invoke(previewTarget) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Visibility,
+                                        contentDescription = "Live Preview Output",
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
 
                             val payloadToShow = message.rawContent ?: message.rawPayload
@@ -576,14 +607,27 @@ fun AssistantMessageFooter(
     onViewRawPayload: ((String) -> Unit)? = null,
     onShowArtifacts: (() -> Unit)? = null,
     artifactsCount: Int = 0,
+    onOpenWebPreview: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val previewTarget = remember(message.content) {
+        WebPreviewHelper.extractWebPreviewTarget(message.content, context)
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp)
     ) {
+        if (previewTarget != null) {
+            WebPreviewCard(
+                targetUrl = previewTarget,
+                onClick = { onOpenWebPreview?.invoke(previewTarget) }
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+
         // Token & Cache Telemetry Badge (Displayed just above action icons)
         if (message.tokenUsage != null) {
             val payloadToShow = message.rawContent ?: message.rawPayload
@@ -670,6 +714,21 @@ fun AssistantMessageFooter(
                     },
                     dismissButton = { TextButton(onClick = { confirmRetry = false }) { Text("Cancel") } }
                 )
+            }
+
+            if (previewTarget != null) {
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = { onOpenWebPreview?.invoke(previewTarget) },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Visibility,
+                        contentDescription = "Live Preview Output",
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             val payloadToShow = message.rawContent ?: message.rawPayload

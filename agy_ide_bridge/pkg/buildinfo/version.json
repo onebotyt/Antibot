@@ -1,8 +1,9 @@
 {
-  "version_code": 237,
-  "version_name": "2.4.117",
+  "version_code": 238,
+  "version_name": "2.4.118",
   "min_supported_version_code": 1,
   "changelog": [
+    "🌐 1-Click In-Chat Live Web Preview: Added instant 1-click on-screen preview for generated HTML webpages, portfolios, web apps, and local dev servers. Assistant messages now feature an interactive '🌐 Live Output Preview' card with direct preview actions. Added LiveWebPreviewDialog with full HTML5/JavaScript/CSS 3D canvas rendering directly on your screen without leaving the chat, 'Open in Inbuilt Browser' integration, and a sticky WebPreviewBanner above the chat input to re-open active web projects at any time. Replaced confusing terminal commands with direct 1-click preview links.",
     "🧠 Qwen 3.5 Local Models Upgrade & 2B, 3B, 4B Models: Upgraded local on-device neural engine suite to Qwen 3.5 architecture across all model tiers. Added 1-click on-demand installation for Qwen 3.5 Coder 2B (~1.28GB), 3B (~2.10GB), and 4B (~2.74GB) models alongside 0.5B (built-in ultra-fast default) and 1.5B (1B tier). All large models remain downloadable on-demand with live progress tracking, cancel/delete storage controls, zero cloud tokens, and backwards compatibility with existing downloaded weights.",
     "🧠 1-Click Installable 1B Local Model & Universal Multi-Engine Skills: Added 1-click on-demand download for Qwen 2.5 Coder 1.5B (1B model, ~986MB GGUF) with live download progress tracking, cancel/delete storage controls, and zero cloud tokens. Added '🌟 Universal (All Models & CLIs)' and '🧠 Local Model' targets in Skills Hub: any installed skill is immediately accessible across Local AI, Antigravity, Claude Code, Codex, and OpenCode without needing duplicate installs.",
     "🔄 Skills Library Updates & Claude 3.5 Sonnet Fix: Corrected model reference from Claude 3.7 to Claude 3.5 Sonnet across all Smart Manager CLI and Model selectors. Added live Skills Update detection and sync with remote repository (https://github.com/sickn33/agentic-awesome-skills.git): automatic HEAD check, Update Available banner with 1-tap update, header sync button with badge, Re-sync All Installed Skills action in Installed tab, and in-chat natural commands ('update skills', 'check skills update').",
