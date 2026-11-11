@@ -1,6 +1,6 @@
 {
-  "version_code": 239,
-  "version_name": "2.4.119",
+  "version_code": 240,
+  "version_name": "2.4.120",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udee1\ufe0f Zero-RAM Idle Standby & On-Demand Engine Activation: Implemented strict zero-idle-RAM policy for all local neural models (Qwen 0.5B, 1.5B, 2B, 3B, 4B) and multi-CLI engines. Local models only load into memory when actively performing a task and immediately unload (0 MB RAM load) upon completion or when switched away. In Manager Mode, SmartManagerOrchestrator ensures turn-based lazy activation: only the specific engine selected for work starts, while all other CLIs and local models stay completely inactive on standby. Added live Zero-RAM Standby monitors in Settings and dynamic memory status indicators in Model Selector.",
