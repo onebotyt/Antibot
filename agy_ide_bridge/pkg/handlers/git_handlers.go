@@ -534,3 +534,186 @@ func (h *Handler) GitCommitFileContentHandler(w http.ResponseWriter, r *http.Req
 		"content": content,
 	})
 }
+
+func (h *Handler) GitRollbackHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("[GitRollbackHandler Panic] %v", rec)
+			writeJSON(w, http.StatusInternalServerError, models.GitActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("Internal error rolling back: %v", rec),
+			})
+		}
+	}()
+
+	var req models.GitActionReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	projectDir := h.resolvePostProjectDir(req.Project)
+
+	if req.Hash == "" {
+		writeJSON(w, http.StatusBadRequest, models.GitActionResult{
+			Success: false,
+			Error:   "Commit hash is required for rollback",
+		})
+		return
+	}
+
+	out, err := git.Rollback(projectDir, req.Hash, req.Hard)
+	if err != nil {
+		writeJSON(w, http.StatusOK, models.GitActionResult{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+	h.NotifyGitChanged(projectDir)
+	writeJSON(w, http.StatusOK, models.GitActionResult{
+		Success: true,
+		Output:  out,
+	})
+}
+
+func (h *Handler) GitRestoreHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("[GitRestoreHandler Panic] %v", rec)
+			writeJSON(w, http.StatusInternalServerError, models.GitActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("Internal error restoring file: %v", rec),
+			})
+		}
+	}()
+
+	var req models.GitActionReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	projectDir := h.resolvePostProjectDir(req.Project)
+
+	if req.Hash == "" || req.File == "" {
+		writeJSON(w, http.StatusBadRequest, models.GitActionResult{
+			Success: false,
+			Error:   "Commit hash and file path are required for restore",
+		})
+		return
+	}
+
+	out, err := git.RestoreFile(projectDir, req.Hash, req.File)
+	if err != nil {
+		writeJSON(w, http.StatusOK, models.GitActionResult{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+	h.NotifyGitChanged(projectDir)
+	writeJSON(w, http.StatusOK, models.GitActionResult{
+		Success: true,
+		Output:  out,
+	})
+}
+
+func (h *Handler) GitRevertHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("[GitRevertHandler Panic] %v", rec)
+			writeJSON(w, http.StatusInternalServerError, models.GitActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("Internal error reverting commit: %v", rec),
+			})
+		}
+	}()
+
+	var req models.GitActionReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	projectDir := h.resolvePostProjectDir(req.Project)
+
+	if req.Hash == "" {
+		writeJSON(w, http.StatusBadRequest, models.GitActionResult{
+			Success: false,
+			Error:   "Commit hash is required for revert",
+		})
+		return
+	}
+
+	out, err := git.RevertCommit(projectDir, req.Hash)
+	if err != nil {
+		writeJSON(w, http.StatusOK, models.GitActionResult{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+	h.NotifyGitChanged(projectDir)
+	writeJSON(w, http.StatusOK, models.GitActionResult{
+		Success: true,
+		Output:  out,
+	})
+}
+
+func (h *Handler) GitCheckpointHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("[GitCheckpointHandler Panic] %v", rec)
+			writeJSON(w, http.StatusInternalServerError, models.GitActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("Internal error saving checkpoint: %v", rec),
+			})
+		}
+	}()
+
+	var req models.GitActionReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	projectDir := h.resolvePostProjectDir(req.Project)
+
+	commit, err := git.SaveCheckpoint(projectDir, req.Message)
+	if err != nil {
+		writeJSON(w, http.StatusOK, models.GitActionResult{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+	h.NotifyGitChanged(projectDir)
+	writeJSON(w, http.StatusOK, models.GitActionResult{
+		Success: true,
+		Output:  "Checkpoint saved successfully",
+		Commit:  commit,
+	})
+}
+
+func (h *Handler) GitFileLogHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("[GitFileLogHandler Panic] %v", rec)
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"commits": []models.GitCommitLog{},
+				"error":   fmt.Sprintf("Internal error fetching file log: %v", rec),
+			})
+		}
+	}()
+
+	projectDir := h.resolveProjectDir(r)
+	file := r.URL.Query().Get("file")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 25
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+
+	if file == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file parameter required"})
+		return
+	}
+
+	logs, err := git.GetFileLog(projectDir, file, limit)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"commits": []models.GitCommitLog{},
+			"error":   err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"commits": logs,
+	})
+}
+

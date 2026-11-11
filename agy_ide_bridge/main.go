@@ -388,6 +388,11 @@ func main() {
 	mux.HandleFunc("/api/git/commit/details", h.GitCommitDetailsHandler)
 	mux.HandleFunc("/api/git/commit/diff", h.GitCommitFileDiffHandler)
 	mux.HandleFunc("/api/git/commit/content", h.GitCommitFileContentHandler)
+	mux.HandleFunc("/api/git/rollback", h.GitRollbackHandler)
+	mux.HandleFunc("/api/git/restore", h.GitRestoreHandler)
+	mux.HandleFunc("/api/git/revert", h.GitRevertHandler)
+	mux.HandleFunc("/api/git/checkpoint", h.GitCheckpointHandler)
+	mux.HandleFunc("/api/git/file/log", h.GitFileLogHandler)
 
 	// Sub-resource endpoints
 	mux.HandleFunc("/api/instances/", func(w http.ResponseWriter, r *http.Request) {

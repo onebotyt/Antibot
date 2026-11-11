@@ -474,50 +474,87 @@ fun GitSourceControlView(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Commit Button
-            Button(
-                onClick = {
-                    if (commitMessage.isBlank()) {
-                        Toast.makeText(context, "Please enter a commit message", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    val projPath = activeProject?.path ?: return@Button
-                    scope.launch {
-                        isOperating = true
-                        val cfg = GitApiClient.getConfig(projPath)
-                        isOperating = false
-                        if (cfg == null || cfg.userName.isBlank() || cfg.userEmail.isBlank()) {
-                            if (cfg != null) {
-                                configUserName = cfg.userName
-                                configUserEmail = cfg.userEmail
-                                configPullRebase = cfg.pullRebase
-                                configRemoteUrl = cfg.remoteUrl
-                            }
-                            configPromptReason = "Author Name and Email are required to commit in Git. Please configure them below to proceed:"
-                            showConfigDialog = true
-                        } else {
-                            showCommitDialog = true
-                        }
-                    }
-                },
-                enabled = !isOperating && (status?.hasChanges == true || commitMessage.isNotBlank()),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ClaudeTerracotta,
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
+            // Checkpoint & Commit Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (isOperating) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                } else {
-                    Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        val projPath = activeProject?.path ?: return@OutlinedButton
+                        val msg = commitMessage.ifBlank { "Checkpoint " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()) }
+                        scope.launch {
+                            isOperating = true
+                            val res = GitApiClient.saveCheckpoint(projPath, msg)
+                            if (res.success) {
+                                commitMessage = ""
+                                Toast.makeText(context, "Checkpoint saved!", Toast.LENGTH_SHORT).show()
+                                refreshGitData()
+                            } else {
+                                executionError = Pair("Checkpoint Failed", res.error.ifBlank { "Could not save checkpoint." })
+                            }
+                            isOperating = false
+                        }
+                    },
+                    enabled = !isOperating,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = ClaudeTerracotta
+                    ),
+                    border = BorderStroke(1.dp, ClaudeTerracotta.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Checkpoint", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                Text("Commit", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                Button(
+                    onClick = {
+                        if (commitMessage.isBlank()) {
+                            Toast.makeText(context, "Please enter a commit message", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        val projPath = activeProject?.path ?: return@Button
+                        scope.launch {
+                            isOperating = true
+                            val cfg = GitApiClient.getConfig(projPath)
+                            isOperating = false
+                            if (cfg == null || cfg.userName.isBlank() || cfg.userEmail.isBlank()) {
+                                if (cfg != null) {
+                                    configUserName = cfg.userName
+                                    configUserEmail = cfg.userEmail
+                                    configPullRebase = cfg.pullRebase
+                                    configRemoteUrl = cfg.remoteUrl
+                                }
+                                configPromptReason = "Author Name and Email are required to commit in Git. Please configure them below to proceed:"
+                                showConfigDialog = true
+                            } else {
+                                showCommitDialog = true
+                            }
+                        }
+                    },
+                    enabled = !isOperating && (status?.hasChanges == true || commitMessage.isNotBlank()),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ClaudeTerracotta,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    if (isOperating) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                    } else {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text("Commit", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

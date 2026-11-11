@@ -117,6 +117,81 @@ object LocalIntelligenceEngine {
             )
         }
 
+        // 0.6. Local Version Control Intent (Checkpoint, Rollback, Show History)
+        val vcIntent = com.example.gemini.domain.project.ChatVersionControlParser.parseIntent(trimmed)
+        if (vcIntent != null) {
+            val projPath = projectDir.absolutePath
+            val (reply, thought) = when (vcIntent) {
+                is com.example.gemini.domain.project.VersionControlIntent.SaveCheckpoint -> {
+                    val msg = vcIntent.message.ifBlank { "Checkpoint " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(java.util.Date()) }
+                    val res = GitApiClient.saveCheckpoint(projPath, msg)
+                    if (res.success) {
+                        val commitSha = res.commit?.shortHash ?: "HEAD"
+                        val md = """
+                        🔖 **Local Version Checkpoint Saved!**
+
+                        - **Project**: `${projectDir.name}`
+                        - **Message**: `${msg}`
+                        - **Commit SHA**: `${commitSha}`
+                        - **Timestamp**: `${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(java.util.Date())}`
+
+                        *Your project state is saved locally without GitHub. You can rollback to this checkpoint anytime.*
+                        """.trimIndent()
+                        Pair(md, "Saved local version checkpoint: $msg")
+                    } else {
+                        Pair("⚠️ **Could not save checkpoint**: ${res.error}", "Checkpoint failed")
+                    }
+                }
+                is com.example.gemini.domain.project.VersionControlIntent.Rollback -> {
+                    val hash = vcIntent.targetHash
+                    if (hash != null) {
+                        val res = GitApiClient.rollback(projPath, hash, hard = true)
+                        if (res.success) {
+                            Pair("⏪ **Workspace Rolled Back!** Restored `${projectDir.name}` to commit `${hash}`.", "Rolled back to $hash")
+                        } else {
+                            Pair("⚠️ **Rollback failed**: ${res.error}", "Rollback failed")
+                        }
+                    } else {
+                        val logs = GitApiClient.getLog(projPath, limit = 2)
+                        if (logs.size < 2) {
+                            Pair("⚠️ **Cannot rollback**: No prior commit to revert to.", "Rollback aborted")
+                        } else {
+                            val parent = logs[1]
+                            val res = GitApiClient.rollback(projPath, parent.hash, hard = true)
+                            if (res.success) {
+                                Pair("⏪ **Workspace Rolled Back to Previous Version!** Restored to `${parent.shortHash}` (${parent.message}).", "Rolled back to ${parent.shortHash}")
+                            } else {
+                                Pair("⚠️ **Rollback failed**: ${res.error}", "Rollback failed")
+                            }
+                        }
+                    }
+                }
+                is com.example.gemini.domain.project.VersionControlIntent.ShowHistory -> {
+                    val logs = GitApiClient.getLog(projPath, limit = 8)
+                    if (logs.isEmpty()) {
+                        Pair("📁 **No commit history found for `${projectDir.name}`.** Ask me to 'save checkpoint' to create your first version!", "No commits")
+                    } else {
+                        val rows = logs.joinToString("\n") { c ->
+                            "| `${c.shortHash}` | **${c.message}** | `${c.author.ifBlank { "Local" }}` | ${c.date} |"
+                        }
+                        val md = """
+                        📜 **Local Version History for `${projectDir.name}`**
+
+                        | SHA | Message | Author | Date |
+                        | :--- | :--- | :--- | :--- |
+                        $rows
+                        """.trimIndent()
+                        Pair(md, "Displayed commit history")
+                    }
+                }
+            }
+            return@withContext LocalEngineResult(
+                thoughtText = thought,
+                content = reply,
+                durationMs = System.currentTimeMillis() - startTime
+            )
+        }
+
         // 1. Direct Shell Execution ($cmd, !cmd, run <cmd>, exec <cmd>)
         if (bridgeIntent?.intent == "DIRECT_COMMAND" || isDirectCommand(trimmed, lower)) {
             return@withContext handleDirectCommand(trimmed, lower, projectDir, context, startTime)

@@ -475,6 +475,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             handleMoveChatViaIntent(expanded, moveIntent)
             return@let
         }
+        val vcIntent = com.example.gemini.domain.project.ChatVersionControlParser.parseIntent(expanded)
+        if (vcIntent != null) {
+            handleVersionControlViaIntent(expanded, vcIntent)
+            return@let
+        }
         if (_isAutoRouting.value || com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId.value)) {
             val decision = getDynamicRoutingDecision(expanded)
             _activeRoutingDecision.value = decision
@@ -581,6 +586,134 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 role = MessageRole.ASSISTANT,
                 content = responseMarkdown,
                 thoughtText = "Detected request to move conversation into project '${result.projectItem.name}'. Created project structure, exported PROJECT_CONTEXT.md and docs/CONVERSATION_HISTORY.md, and updated active workspace.",
+                createdAt = System.currentTimeMillis()
+            )
+
+            withContext(Dispatchers.Main) {
+                _messages.value = _messages.value + assistantMsg
+            }
+        }
+    }
+
+    private fun handleVersionControlViaIntent(prompt: String, intent: com.example.gemini.domain.project.VersionControlIntent) {
+        val conv = _currentConversation.value ?: return
+        val userMsg = ChatMessage(
+            conversationId = conv.id,
+            role = MessageRole.USER,
+            content = prompt,
+            createdAt = System.currentTimeMillis()
+        )
+        _messages.value = _messages.value + userMsg
+
+        val convPath = conv.workspaceUri?.removePrefix("file://")?.trimEnd('/')
+        val activeProjPath = convPath?.takeIf { it.isNotBlank() } ?: com.example.gemini.data.daemon.TermuxDaemonManager.activeProject.value?.path
+        if (activeProjPath.isNullOrBlank()) {
+            val assistantMsg = ChatMessage(
+                conversationId = conv.id,
+                role = MessageRole.ASSISTANT,
+                content = "⚠️ **No active project workspace found.** Please open or create a project first using the 'Move to Project' (📁) button in the top bar before using local version control.",
+                createdAt = System.currentTimeMillis()
+            )
+            _messages.value = _messages.value + assistantMsg
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val (replyMarkdown, thought) = when (intent) {
+                is com.example.gemini.domain.project.VersionControlIntent.SaveCheckpoint -> {
+                    val finalMsg = if (intent.message.isNotBlank() && intent.message != "Local Checkpoint") {
+                        intent.message
+                    } else {
+                        "Checkpoint " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                    }
+                    val res = GitApiClient.saveCheckpoint(activeProjPath, finalMsg)
+                    if (res.success) {
+                        val commitSha = res.commit?.shortHash ?: "HEAD"
+                        val md = """
+                        🔖 **Local Version Checkpoint Saved!**
+
+                        - **Project**: `${java.io.File(activeProjPath).name}`
+                        - **Message**: `${finalMsg}`
+                        - **Commit SHA**: `${commitSha}`
+                        - **Timestamp**: `${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}`
+
+                        *Your workspace state has been committed locally without GitHub. You can rollback to this checkpoint anytime by asking 'rollback' or using the Version Control icon (🕒) in the top bar.*
+                        """.trimIndent()
+                        Pair(md, "Created local version checkpoint: $finalMsg")
+                    } else {
+                        Pair("⚠️ **Could not save checkpoint**: ${res.error}", "Checkpoint creation failed")
+                    }
+                }
+
+                is com.example.gemini.domain.project.VersionControlIntent.Rollback -> {
+                    val targetHash = intent.targetHash
+                    if (targetHash != null) {
+                        val res = GitApiClient.rollback(activeProjPath, targetHash, hard = true)
+                        if (res.success) {
+                            val md = """
+                            ⏪ **Workspace Rolled Back!**
+
+                            - **Target Version**: `${targetHash}`
+                            - **Project**: `${java.io.File(activeProjPath).name}`
+
+                            *All project files have been restored to commit `${targetHash}`.*
+                            """.trimIndent()
+                            Pair(md, "Rolled back to commit $targetHash")
+                        } else {
+                            Pair("⚠️ **Rollback failed**: ${res.error}", "Rollback failed")
+                        }
+                    } else {
+                        val logs = GitApiClient.getLog(activeProjPath, limit = 2)
+                        if (logs.size < 2) {
+                            Pair("⚠️ **Cannot rollback**: There is only 1 commit or no prior commit to roll back to.", "Rollback aborted: no parent commit")
+                        } else {
+                            val parent = logs[1]
+                            val res = GitApiClient.rollback(activeProjPath, parent.hash, hard = true)
+                            if (res.success) {
+                                val md = """
+                                ⏪ **Workspace Rolled Back to Previous Version!**
+
+                                - **Restored Version**: `${parent.shortHash}` — *${parent.message}*
+                                - **Project**: `${java.io.File(activeProjPath).name}`
+                                - **Date**: `${parent.date}`
+
+                                *All project files have been restored to the previous commit.*
+                                """.trimIndent()
+                                Pair(md, "Rolled back to previous version ${parent.shortHash}")
+                            } else {
+                                Pair("⚠️ **Rollback failed**: ${res.error}", "Rollback failed")
+                            }
+                        }
+                    }
+                }
+
+                is com.example.gemini.domain.project.VersionControlIntent.ShowHistory -> {
+                    val logs = GitApiClient.getLog(activeProjPath, limit = 8)
+                    if (logs.isEmpty()) {
+                        Pair("📁 **No commit history found for `${java.io.File(activeProjPath).name}`.** Ask me to 'save checkpoint' to create your first local version!", "No commits")
+                    } else {
+                        val rows = logs.joinToString("\n") { c ->
+                            "| `${c.shortHash}` | **${c.message}** | `${c.author.ifBlank { "Local" }}` | ${c.date} |"
+                        }
+                        val md = """
+                        📜 **Local Version History for `${java.io.File(activeProjPath).name}`**
+
+                        | SHA | Message | Author | Date |
+                        | :--- | :--- | :--- | :--- |
+                        $rows
+
+                        *Tap the Version Control icon (🕒) in the top bar to inspect visual file diffs or rollback to any version.*
+                        """.trimIndent()
+                        Pair(md, "Displayed local commit history")
+                    }
+                }
+            }
+
+            val assistantMsg = ChatMessage(
+                conversationId = conv.id,
+                role = MessageRole.ASSISTANT,
+                content = replyMarkdown,
+                thoughtText = thought,
                 createdAt = System.currentTimeMillis()
             )
 

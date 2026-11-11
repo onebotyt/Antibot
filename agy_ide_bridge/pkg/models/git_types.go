@@ -76,9 +76,10 @@ type GitSetConfigReq struct {
 
 // GitActionResult represents the outcome and stderr/stdout of a git operation.
 type GitActionResult struct {
-	Success bool   `json:"success"`
-	Output  string `json:"output,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Success bool          `json:"success"`
+	Output  string        `json:"output,omitempty"`
+	Error   string        `json:"error,omitempty"`
+	Commit  *GitCommitLog `json:"commit,omitempty"`
 }
 
 // GitActionReq represents incoming git operation requests.
@@ -88,6 +89,9 @@ type GitActionReq struct {
 	Branch  string   `json:"branch,omitempty"`
 	Message string   `json:"message,omitempty"`
 	Create  bool     `json:"create,omitempty"`
+	Hash    string   `json:"hash,omitempty"`
+	File    string   `json:"file,omitempty"`
+	Hard    bool     `json:"hard,omitempty"`
 }
 
 // GitDiffResponse represents unified diff for a file.

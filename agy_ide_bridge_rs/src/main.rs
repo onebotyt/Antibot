@@ -285,6 +285,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/git/pull", post(handlers::git::git_pull_handler))
         .route("/api/git/checkout", post(handlers::git::git_checkout_handler))
         .route("/api/git/branch/create", post(handlers::git::git_checkout_handler))
+        .route("/api/git/rollback", post(handlers::git::git_rollback_handler))
+        .route("/api/git/restore", post(handlers::git::git_restore_handler))
+        .route("/api/git/revert", post(handlers::git::git_revert_handler))
+        .route("/api/git/checkpoint", post(handlers::git::git_checkpoint_handler))
+        .route("/api/git/file/log", get(handlers::git::git_file_log_handler))
         .route(
             "/api/git/config",
             get(handlers::git::git_config_get_handler).post(handlers::git::git_config_set_handler),

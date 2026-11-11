@@ -64,6 +64,15 @@ pub struct GitCommitContentQuery {
     pub file: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GitFileLogQuery {
+    pub dir: Option<String>,
+    pub path: Option<String>,
+    pub project: Option<String>,
+    pub file: String,
+    pub limit: Option<usize>,
+}
+
 fn resolve_dir(state: &AppState, project: Option<&str>, dir: Option<&str>, path: Option<&str>) -> String {
     project
         .or(dir)
@@ -1393,6 +1402,178 @@ pub async fn git_config_set_handler(
             error: None,
         }),
     )
+}
+
+pub async fn git_rollback_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GitActionReq>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_post_dir(&state, req.project.as_deref());
+    let hash = match req.hash {
+        Some(h) if !h.trim().is_empty() => h,
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "Commit hash is required" }))),
+    };
+
+    let mode = if req.hard.unwrap_or(true) { "--hard" } else { "--mixed" };
+    let mut cmd = Command::new("git");
+    cmd.current_dir(&repo_dir).args(["reset", mode, &hash]);
+
+    match cmd.output() {
+        Ok(out) if out.status.success() => (
+            StatusCode::OK,
+            Json(json!({ "success": true, "output": String::from_utf8_lossy(&out.stdout) })),
+        ),
+        Ok(out) => (
+            StatusCode::OK,
+            Json(json!({ "success": false, "error": String::from_utf8_lossy(&out.stderr) })),
+        ),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))),
+    }
+}
+
+pub async fn git_restore_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GitActionReq>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_post_dir(&state, req.project.as_deref());
+    let hash = match req.hash {
+        Some(h) if !h.trim().is_empty() => h,
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "Commit hash is required" }))),
+    };
+    let file = match req.file {
+        Some(f) if !f.trim().is_empty() => f,
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "File path is required" }))),
+    };
+
+    let mut cmd = Command::new("git");
+    cmd.current_dir(&repo_dir).args(["checkout", &hash, "--", &file]);
+
+    match cmd.output() {
+        Ok(out) if out.status.success() => (
+            StatusCode::OK,
+            Json(json!({ "success": true, "output": String::from_utf8_lossy(&out.stdout) })),
+        ),
+        Ok(out) => (
+            StatusCode::OK,
+            Json(json!({ "success": false, "error": String::from_utf8_lossy(&out.stderr) })),
+        ),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))),
+    }
+}
+
+pub async fn git_revert_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GitActionReq>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_post_dir(&state, req.project.as_deref());
+    let hash = match req.hash {
+        Some(h) if !h.trim().is_empty() => h,
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "Commit hash is required" }))),
+    };
+
+    let mut cmd = Command::new("git");
+    cmd.current_dir(&repo_dir).args(["revert", "--no-edit", &hash]);
+
+    match cmd.output() {
+        Ok(out) if out.status.success() => (
+            StatusCode::OK,
+            Json(json!({ "success": true, "output": String::from_utf8_lossy(&out.stdout) })),
+        ),
+        Ok(out) => (
+            StatusCode::OK,
+            Json(json!({ "success": false, "error": String::from_utf8_lossy(&out.stderr) })),
+        ),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))),
+    }
+}
+
+pub async fn git_checkpoint_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GitActionReq>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_post_dir(&state, req.project.as_deref());
+    let msg = req.message.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "Local checkpoint".to_string());
+
+    let is_repo = Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(&repo_dir)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !is_repo {
+        let _ = Command::new("git").args(["init"]).current_dir(&repo_dir).output();
+        let _ = Command::new("git").args(["config", "user.name", "AntiBot Local"]).current_dir(&repo_dir).output();
+        let _ = Command::new("git").args(["config", "user.email", "antibot@local"]).current_dir(&repo_dir).output();
+    }
+
+    let _ = Command::new("git").args(["add", "-A"]).current_dir(&repo_dir).output();
+    let res = Command::new("git").args(["commit", "-m", &msg]).current_dir(&repo_dir).output();
+
+    match res {
+        Ok(out) if out.status.success() => (
+            StatusCode::OK,
+            Json(json!({ "success": true, "output": "Checkpoint saved successfully" })),
+        ),
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if stderr.contains("nothing to commit") || stdout.contains("nothing to commit") {
+                (StatusCode::OK, Json(json!({ "success": true, "output": "Working tree clean, no changes to save" })))
+            } else {
+                (StatusCode::OK, Json(json!({ "success": false, "error": if stderr.is_empty() { stdout } else { stderr } })))
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))),
+    }
+}
+
+pub async fn git_file_log_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<GitFileLogQuery>,
+) -> impl IntoResponse {
+    let repo_dir = resolve_dir(&state, params.project.as_deref(), params.dir.as_deref(), params.path.as_deref());
+    let limit = params.limit.unwrap_or(25);
+
+    let res = Command::new("git")
+        .args([
+            "log",
+            &format!("-n{}", limit),
+            "--follow",
+            "--format=commit %H%x00%h%x00%an%x00%ad%x00%s",
+            "--date=short",
+            "--",
+            &params.file,
+        ])
+        .current_dir(&repo_dir)
+        .output();
+
+    match res {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let mut commits = Vec::new();
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("commit ") {
+                    let parts: Vec<&str> = rest.split('\0').collect();
+                    if parts.len() >= 5 {
+                        commits.push(json!({
+                            "hash": parts[0],
+                            "shortHash": parts[1],
+                            "author": parts[2],
+                            "date": parts[3],
+                            "message": parts[4]
+                        }));
+                    }
+                }
+            }
+            (StatusCode::OK, Json(json!({ "commits": commits })))
+        }
+        Ok(out) => (
+            StatusCode::OK,
+            Json(json!({ "commits": [], "error": String::from_utf8_lossy(&out.stderr) })),
+        ),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "commits": [], "error": e.to_string() }))),
+    }
 }
 
 #[cfg(test)]

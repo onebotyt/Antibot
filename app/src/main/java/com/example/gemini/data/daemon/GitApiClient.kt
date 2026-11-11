@@ -100,7 +100,8 @@ data class GitConfig(
 data class GitActionResult(
     val success: Boolean,
     val output: String = "",
-    val error: String = ""
+    val error: String = "",
+    val commit: GitCommitLog? = null
 )
 
 data class GitDiffResponse(
@@ -724,6 +725,243 @@ object GitApiClient {
         } catch (e: Exception) {
             Log.e(TAG, "getCommitFileContent failed: ${e.message}")
             null
+        }
+    }
+
+    suspend fun rollback(projectPath: String, hash: String, hard: Boolean = true): GitActionResult = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("project", projectPath)
+                put("hash", hash)
+                put("hard", hard)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/git/rollback")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                val json = try { JSONObject(bodyStr) } catch (_: Exception) { JSONObject() }
+                if (response.isSuccessful && json.optBoolean("success", false)) {
+                    GitActionResult(
+                        success = true,
+                        output = json.optString("output", "Rolled back to $hash")
+                    )
+                } else {
+                    val err = json.optString("error", if (!response.isSuccessful) "HTTP ${response.code}" else "Rollback failed")
+                    fallbackLocalRollback(projectPath, hash, hard, err)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "rollback API failed, falling back to local git: ${e.message}")
+            fallbackLocalRollback(projectPath, hash, hard, e.message ?: "")
+        }
+    }
+
+    suspend fun restoreFile(projectPath: String, hash: String, filePath: String): GitActionResult = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("project", projectPath)
+                put("hash", hash)
+                put("file", filePath)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/git/restore")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                val json = try { JSONObject(bodyStr) } catch (_: Exception) { JSONObject() }
+                if (response.isSuccessful && json.optBoolean("success", false)) {
+                    GitActionResult(
+                        success = true,
+                        output = json.optString("output", "Restored $filePath from $hash")
+                    )
+                } else {
+                    val err = json.optString("error", if (!response.isSuccessful) "HTTP ${response.code}" else "Restore failed")
+                    fallbackLocalRestore(projectPath, hash, filePath, err)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "restore API failed, falling back to local git: ${e.message}")
+            fallbackLocalRestore(projectPath, hash, filePath, e.message ?: "")
+        }
+    }
+
+    suspend fun revert(projectPath: String, hash: String): GitActionResult = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("project", projectPath)
+                put("hash", hash)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/git/revert")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                val json = try { JSONObject(bodyStr) } catch (_: Exception) { JSONObject() }
+                if (response.isSuccessful && json.optBoolean("success", false)) {
+                    GitActionResult(
+                        success = true,
+                        output = json.optString("output", "Reverted $hash")
+                    )
+                } else {
+                    val err = json.optString("error", if (!response.isSuccessful) "HTTP ${response.code}" else "Revert failed")
+                    fallbackLocalRevert(projectPath, hash, err)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "revert API failed, falling back to local git: ${e.message}")
+            fallbackLocalRevert(projectPath, hash, e.message ?: "")
+        }
+    }
+
+    suspend fun saveCheckpoint(projectPath: String, message: String): GitActionResult = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("project", projectPath)
+                put("message", message)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/git/checkpoint")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                val json = try { JSONObject(bodyStr) } catch (_: Exception) { JSONObject() }
+                if (response.isSuccessful && json.optBoolean("success", false)) {
+                    GitActionResult(
+                        success = true,
+                        output = json.optString("output", "Checkpoint saved"),
+                        commit = parseCommitLogObject(json.optJSONObject("commit"))
+                    )
+                } else {
+                    val err = json.optString("error", if (!response.isSuccessful) "HTTP ${response.code}" else "Checkpoint failed")
+                    fallbackLocalCheckpoint(projectPath, message, err)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "checkpoint API failed, falling back to local git: ${e.message}")
+            fallbackLocalCheckpoint(projectPath, message, e.message ?: "")
+        }
+    }
+
+    suspend fun getFileLog(projectPath: String, filePath: String, limit: Int = 25): List<GitCommitLog> = withContext(Dispatchers.IO) {
+        try {
+            val encProj = URLEncoder.encode(projectPath, "UTF-8")
+            val encFile = URLEncoder.encode(filePath, "UTF-8")
+            val request = Request.Builder()
+                .url("$baseUrl/api/git/file/log?project=$encProj&file=$encFile&limit=$limit")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val bodyStr = response.body?.string() ?: return@withContext emptyList()
+                val json = JSONObject(bodyStr)
+                val arr = json.optJSONArray("commits") ?: return@withContext emptyList()
+                val list = mutableListOf<GitCommitLog>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    list.add(
+                        GitCommitLog(
+                            hash = obj.getString("hash"),
+                            shortHash = obj.optString("shortHash", obj.getString("hash").take(7)),
+                            author = obj.optString("author", ""),
+                            date = obj.optString("date", ""),
+                            message = obj.optString("message", "")
+                        )
+                    )
+                }
+                list
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "getFileLog failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun parseCommitLogObject(obj: JSONObject?): GitCommitLog? {
+        if (obj == null) return null
+        return GitCommitLog(
+            hash = obj.optString("hash", ""),
+            shortHash = obj.optString("shortHash", ""),
+            author = obj.optString("author", ""),
+            date = obj.optString("date", ""),
+            message = obj.optString("message", "")
+        )
+    }
+
+    private fun runLocalGit(projectPath: String, args: List<String>): Pair<Boolean, String> {
+        return try {
+            val dir = java.io.File(projectPath)
+            if (!dir.exists()) return Pair(false, "Directory does not exist: $projectPath")
+
+            val envList = arrayOf(
+                "PATH=/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/home/.local/bin:/usr/bin:/bin",
+                "HOME=/data/data/com.termux/files/home"
+            )
+            val cmd = arrayOf("sh", "-c", "exec git \"\$@\"", "git") + args.toTypedArray()
+            val proc = Runtime.getRuntime().exec(cmd, envList, dir)
+            val stdout = proc.inputStream.bufferedReader().use { it.readText() }
+            val stderr = proc.errorStream.bufferedReader().use { it.readText() }
+            val exit = proc.waitFor()
+            if (exit == 0) {
+                Pair(true, stdout.ifBlank { "OK" })
+            } else {
+                Pair(false, stderr.ifBlank { stdout }.ifBlank { "Process exited with $exit" })
+            }
+        } catch (e: Exception) {
+            Pair(false, e.message ?: "Unknown local git error")
+        }
+    }
+
+    private fun fallbackLocalRollback(projectPath: String, hash: String, hard: Boolean, prevErr: String): GitActionResult {
+        val mode = if (hard) "--hard" else "--mixed"
+        val (ok, out) = runLocalGit(projectPath, listOf("reset", mode, hash))
+        return GitActionResult(success = ok, output = out, error = if (ok) "" else out.ifBlank { prevErr })
+    }
+
+    private fun fallbackLocalRestore(projectPath: String, hash: String, filePath: String, prevErr: String): GitActionResult {
+        val (ok, out) = runLocalGit(projectPath, listOf("checkout", hash, "--", filePath))
+        return GitActionResult(success = ok, output = out, error = if (ok) "" else out.ifBlank { prevErr })
+    }
+
+    private fun fallbackLocalRevert(projectPath: String, hash: String, prevErr: String): GitActionResult {
+        val (ok, out) = runLocalGit(projectPath, listOf("revert", "--no-edit", hash))
+        return GitActionResult(success = ok, output = out, error = if (ok) "" else out.ifBlank { prevErr })
+    }
+
+    private fun fallbackLocalCheckpoint(projectPath: String, message: String, prevErr: String): GitActionResult {
+        runLocalGit(projectPath, listOf("rev-parse", "--is-inside-work-tree")).let { (isRepo, _) ->
+            if (!isRepo) {
+                runLocalGit(projectPath, listOf("init"))
+                runLocalGit(projectPath, listOf("config", "user.name", "AntiBot Local"))
+                runLocalGit(projectPath, listOf("config", "user.email", "antibot@local"))
+            }
+        }
+        val (stagedOk, stageOut) = runLocalGit(projectPath, listOf("add", "-A"))
+        if (!stagedOk) return GitActionResult(success = false, error = stageOut.ifBlank { prevErr })
+
+        val msg = message.ifBlank { "Checkpoint " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()) }
+        val (commOk, commOut) = runLocalGit(projectPath, listOf("commit", "-m", msg))
+        return if (commOk) {
+            GitActionResult(success = true, output = commOut)
+        } else {
+            if (commOut.contains("nothing to commit", ignoreCase = true)) {
+                GitActionResult(success = true, output = "Working tree clean, no changes to save")
+            } else {
+                GitActionResult(success = false, error = commOut.ifBlank { prevErr })
+            }
         }
     }
 }

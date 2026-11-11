@@ -337,6 +337,10 @@ pub struct GitActionReq {
     pub message: Option<String>,
     pub remote: Option<String>,
     pub url: Option<String>,
+    pub hash: Option<String>,
+    pub file: Option<String>,
+    #[serde(default)]
+    pub hard: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

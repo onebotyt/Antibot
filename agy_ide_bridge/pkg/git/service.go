@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gemini-server/pkg/config"
 	"gemini-server/pkg/models"
@@ -799,3 +800,113 @@ func GetCommitFileContent(projectDir, hash, filePath string) (string, error) {
 	relPath := cleanRelPath(projectDir, filePath)
 	return runGitCmd(projectDir, "show", fmt.Sprintf("%s:%s", hash, relPath))
 }
+
+// Rollback resets the workspace to a specified commit.
+func Rollback(projectDir string, hash string, hard bool) (string, error) {
+	mode := "--hard"
+	if !hard {
+		mode = "--mixed"
+	}
+	return runGitCmd(projectDir, "reset", mode, hash)
+}
+
+// RestoreFile restores a specific file to its state at a given commit.
+func RestoreFile(projectDir string, hash string, filePath string) (string, error) {
+	rel := cleanRelPath(projectDir, filePath)
+	if rel == "" {
+		return "", fmt.Errorf("invalid file path")
+	}
+	return runGitCmd(projectDir, "checkout", hash, "--", rel)
+}
+
+// SaveCheckpoint stages all changes (modified and untracked) and commits with message.
+func SaveCheckpoint(projectDir string, message string) (*models.GitCommitLog, error) {
+	if st, err := GetStatus(projectDir); err != nil || !st.IsGitRepo {
+		if err := InitRepo(projectDir); err != nil {
+			return nil, fmt.Errorf("failed to initialize repository: %w", err)
+		}
+	}
+	cfg, _ := GetConfig(projectDir)
+	if cfg == nil || cfg.UserName == "" {
+		_ = SetConfig(projectDir, models.GitSetConfigReq{
+			Project:   projectDir,
+			UserName:  "AntiBot Local",
+			UserEmail: "antibot@local",
+		})
+	}
+
+	if strings.TrimSpace(message) == "" {
+		message = "Checkpoint " + time.Now().Format("2006-01-02 15:04:05")
+	}
+
+	if _, err := runGitCmd(projectDir, "add", "-A"); err != nil {
+		return nil, fmt.Errorf("failed to stage changes: %w", err)
+	}
+
+	out, err := runGitCmd(projectDir, "commit", "-m", message)
+	if err != nil {
+		if strings.Contains(strings.ToLower(out), "nothing to commit") || strings.Contains(strings.ToLower(err.Error()), "nothing to commit") {
+			logs, _ := GetLog(projectDir, 1, 0)
+			if len(logs) > 0 {
+				return &logs[0], nil
+			}
+			return nil, fmt.Errorf("working tree clean, no changes to save")
+		}
+		return nil, fmt.Errorf("failed to save checkpoint: %w", err)
+	}
+
+	logs, err := GetLog(projectDir, 1, 0)
+	if err == nil && len(logs) > 0 {
+		return &logs[0], nil
+	}
+	return nil, nil
+}
+
+// RevertCommit creates a revert commit for a specific commit hash.
+func RevertCommit(projectDir string, hash string) (string, error) {
+	return runGitCmd(projectDir, "revert", "--no-edit", hash)
+}
+
+// GetFileLog returns commit history specifically for a single file.
+func GetFileLog(projectDir string, filePath string, limit int) ([]models.GitCommitLog, error) {
+	rel := cleanRelPath(projectDir, filePath)
+	if rel == "" {
+		return nil, fmt.Errorf("invalid file path")
+	}
+	if limit <= 0 {
+		limit = 25
+	}
+	args := []string{
+		"log",
+		fmt.Sprintf("-n%d", limit),
+		"--follow",
+		"--format=commit %H%x00%h%x00%an%x00%ad%x00%s",
+		"--date=short",
+		"--",
+		rel,
+	}
+	out, err := runGitCmd(projectDir, args...)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(out, "\n")
+	var logs []models.GitCommitLog
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "commit ") {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(line, "commit "), "\x00")
+		if len(parts) >= 5 {
+			logs = append(logs, models.GitCommitLog{
+				Hash:      parts[0],
+				ShortHash: parts[1],
+				Author:    parts[2],
+				Date:      parts[3],
+				Message:   parts[4],
+			})
+		}
+	}
+	return logs, nil
+}
+
