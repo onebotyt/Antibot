@@ -36,6 +36,7 @@ sealed class ChatFeedItem(val key: String, val contentType: String) {
     data class VoiceCall(
         val id: String,
         val startedAt: Long,
+        val durationMs: Long?,
         val live: Boolean,
         val record: com.example.gemini.data.voice.VoiceChatRecord?
     ) : ChatFeedItem("voicecall_$id", "VOICE_CALL")
