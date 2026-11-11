@@ -294,6 +294,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/git/config",
             get(handlers::git::git_config_get_handler).post(handlers::git::git_config_set_handler),
         )
+        // Agentic Skills Gateway
+        .route("/api/skills/search", get(handlers::skills::skills_search_handler))
+        .route("/api/skills/get", get(handlers::skills::skills_get_handler))
+        .route("/api/skills/bundles", get(handlers::skills::skills_bundles_handler))
+        .route("/api/skills/install", post(handlers::skills::skills_install_handler))
+        .route("/api/skills/installed", get(handlers::skills::skills_installed_handler))
         // LSP Diagnostics & Auto-Completion Gateway
         .route("/api/lsp/complete", post(handlers::lsp::lsp_complete_handler))
         .route("/api/lsp/symbols", post(handlers::lsp::lsp_symbols_handler))

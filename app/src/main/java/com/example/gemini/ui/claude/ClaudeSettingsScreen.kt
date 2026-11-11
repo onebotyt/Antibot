@@ -560,6 +560,7 @@ private fun McpPage(deps: ClaudeSettingsDeps, onOpenRea: () -> Unit, onOpenReaGr
         ClaudeMcpPreset("Notes & To-dos", "Read & edit your notes", Icons.Outlined.EditNote, com.example.gemini.theme.AppColors.warning, local(bridge.NOTES_MCP_NAME, "/notes")),
         ClaudeMcpPreset("Jarvis", "Voice control of this app", Icons.Outlined.RecordVoiceOver, com.example.gemini.theme.AppColors.accentTeal, local(bridge.JARVIS_MCP_NAME, "/jarvis")),
         ClaudeMcpPreset("Theme", "Create & switch app themes", Icons.Outlined.Palette, com.example.gemini.theme.AppColors.accentAlt, local(bridge.THEME_MCP_NAME, "/theme")),
+        ClaudeMcpPreset("Agentic Skills", "2,955+ skills for Claude Code", Icons.Outlined.Psychology, com.example.gemini.theme.AppColors.accentAlt, local(bridge.SKILLS_MCP_NAME, "/skills")),
         ClaudeMcpPreset("Stitch", "Google Stitch UI design · API key", Icons.Outlined.Palette, com.example.gemini.theme.AppColors.accentPink,
             ClaudeMcpAddRequest(name = "stitch", transport = "http", url = "https://stitch.googleapis.com/mcp", headers = mapOf("X-Goog-Api-Key" to "")))
     )

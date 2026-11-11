@@ -149,6 +149,7 @@ fun CodexMcpPage(backend: CodexChatBackend, onOpenRea: () -> Unit = {}, onOpenRe
         CodexMcpPreset("Notes & To-dos", "Read & edit your notes", Icons.Outlined.EditNote, com.example.gemini.theme.AppColors.warning, local(bridge.NOTES_MCP_NAME, "/notes")),
         CodexMcpPreset("Jarvis", "Voice control of this app", Icons.Outlined.RecordVoiceOver, com.example.gemini.theme.AppColors.accentTeal, local(bridge.JARVIS_MCP_NAME, "/jarvis")),
         CodexMcpPreset("Theme", "Create & switch app themes", Icons.Outlined.Palette, com.example.gemini.theme.AppColors.accentAlt, local(bridge.THEME_MCP_NAME, "/theme")),
+        CodexMcpPreset("Agentic Skills", "2,955+ skills for Codex CLI", Icons.Outlined.Psychology, com.example.gemini.theme.AppColors.accentTeal, local(bridge.SKILLS_MCP_NAME, "/skills")),
         CodexMcpPreset("Stitch", "Google Stitch UI design · API key", Icons.Outlined.Palette, com.example.gemini.theme.AppColors.accentPink,
             McpDraft(name = "stitch", url = "https://stitch.googleapis.com/mcp", headers = "X-Goog-Api-Key: ")),
         // REA runs in the terminal's proot-distro Ubuntu: com.termux builds only; its tile picks the tool groups

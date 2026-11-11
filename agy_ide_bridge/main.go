@@ -394,6 +394,13 @@ func main() {
 	mux.HandleFunc("/api/git/checkpoint", h.GitCheckpointHandler)
 	mux.HandleFunc("/api/git/file/log", h.GitFileLogHandler)
 
+	// Agentic Skills endpoints
+	mux.HandleFunc("/api/skills/search", h.SkillsSearchHandler)
+	mux.HandleFunc("/api/skills/get", h.SkillsGetHandler)
+	mux.HandleFunc("/api/skills/bundles", h.SkillsBundlesHandler)
+	mux.HandleFunc("/api/skills/install", h.SkillsInstallHandler)
+	mux.HandleFunc("/api/skills/installed", h.SkillsInstalledHandler)
+
 	// Sub-resource endpoints
 	mux.HandleFunc("/api/instances/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/terminate") {

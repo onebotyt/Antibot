@@ -482,6 +482,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             handleVersionControlViaIntent(expanded, vcIntent)
             return@let
         }
+        val skillIntent = com.example.gemini.domain.project.ChatSkillParser.parseIntent(expanded)
+        if (skillIntent != null) {
+            handleSkillViaIntent(expanded, skillIntent)
+            return@let
+        }
         if (_isAutoRouting.value || com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId.value)) {
             val decision = getDynamicRoutingDecision(expanded)
             _activeRoutingDecision.value = decision
@@ -708,6 +713,145 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         """.trimIndent()
                         Pair(md, "Displayed local commit history")
                     }
+                }
+            }
+
+            val assistantMsg = ChatMessage(
+                conversationId = conv.id,
+                role = MessageRole.ASSISTANT,
+                content = replyMarkdown,
+                thoughtText = thought,
+                createdAt = System.currentTimeMillis()
+            )
+
+            withContext(Dispatchers.Main) {
+                _messages.value = _messages.value + assistantMsg
+            }
+        }
+    }
+
+    private fun handleSkillViaIntent(prompt: String, intent: com.example.gemini.domain.project.ChatSkillIntent) {
+        val conv = _currentConversation.value ?: return
+        val userMsg = ChatMessage(
+            conversationId = conv.id,
+            role = MessageRole.USER,
+            content = prompt,
+            createdAt = System.currentTimeMillis()
+        )
+        _messages.value = _messages.value + userMsg
+
+        val convPath = conv.workspaceUri?.removePrefix("file://")?.trimEnd('/')
+        val activeProjPath = convPath?.takeIf { it.isNotBlank() } ?: com.example.gemini.data.daemon.TermuxDaemonManager.activeProject.value?.path
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val (replyMarkdown, thought) = when (intent) {
+                is com.example.gemini.domain.project.ChatSkillIntent.SearchSkills -> {
+                    val results = com.example.gemini.data.skills.AgenticSkillsRepository.searchSkills(intent.query, limit = 8)
+                    if (results.isEmpty()) {
+                        Pair("🔍 **No skills found matching `${intent.query}`.** Try terms like `debugging`, `android`, `flutter`, `security`, or `architecture`.", "No skills match")
+                    } else {
+                        val rows = results.joinToString("\n") { s ->
+                            "| **`${s.name}`** | `${s.category}` | `${s.risk}` | ${s.description.take(75)}... |"
+                        }
+                        val md = """
+                        🧠 **Found ${results.size} Agentic Skills for `${intent.query}`**
+
+                        | Skill Name | Category | Risk | Description |
+                        | :--- | :--- | :--- | :--- |
+                        $rows
+
+                        *To install a skill to your project, ask: `install skill <name>` or open the Skills Hub (🧠) in the top bar.*
+                        """.trimIndent()
+                        Pair(md, "Searched skills for '${intent.query}'")
+                    }
+                }
+
+                is com.example.gemini.domain.project.ChatSkillIntent.InstallSkill -> {
+                    val target = if (!activeProjPath.isNullOrBlank()) {
+                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT
+                    } else {
+                        com.example.gemini.data.skills.SkillInstallTarget.GEMINI
+                    }
+                    val res = com.example.gemini.data.skills.AgenticSkillsRepository.installSkill(intent.skillId, target, activeProjPath)
+                    if (res.success) {
+                        val targetLoc = if (target == com.example.gemini.data.skills.SkillInstallTarget.PROJECT) {
+                            "Active Project (`${java.io.File(activeProjPath!!).name}/.agents/skills/${intent.skillId}`)"
+                        } else {
+                            "Global Antigravity (`~/.gemini/config/skills/${intent.skillId}`)"
+                        }
+                        val md = """
+                        ⚡ **Agentic Skill Installed!**
+
+                        - **Skill**: `${intent.skillId}`
+                        - **Target**: $targetLoc
+
+                        *All AI models and CLI agents can now automatically execute the `${intent.skillId}` playbook.*
+                        """.trimIndent()
+                        Pair(md, "Installed skill ${intent.skillId}")
+                    } else {
+                        Pair("⚠️ **Could not install skill**: ${res.message}", "Skill install failed")
+                    }
+                }
+
+                is com.example.gemini.domain.project.ChatSkillIntent.InstallBundle -> {
+                    val target = if (!activeProjPath.isNullOrBlank()) {
+                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT
+                    } else {
+                        com.example.gemini.data.skills.SkillInstallTarget.GEMINI
+                    }
+                    val res = com.example.gemini.data.skills.AgenticSkillsRepository.installBundle(intent.bundleName, target, activeProjPath)
+                    if (res.success) {
+                        val md = """
+                        📦 **Skill Bundle Installed!**
+
+                        - **Bundle**: `${intent.bundleName}`
+                        - **Result**: ${res.message}
+
+                        *All skills in this suite are ready for immediate use.*
+                        """.trimIndent()
+                        Pair(md, "Installed bundle ${intent.bundleName}")
+                    } else {
+                        Pair("⚠️ **Could not install bundle**: ${res.message}", "Bundle install failed")
+                    }
+                }
+
+                is com.example.gemini.domain.project.ChatSkillIntent.ListInstalledSkills -> {
+                    val targetDir = if (!activeProjPath.isNullOrBlank()) {
+                        java.io.File(activeProjPath, ".agents/skills")
+                    } else {
+                        java.io.File("/data/user/0/com.termux/files/home/.gemini/config/skills")
+                    }
+                    val installed = com.example.gemini.data.skills.AgenticSkillsRepository.listInstalled(targetDir)
+                    if (installed.isEmpty()) {
+                        Pair("📁 **No skills installed in `${targetDir.name}` yet.** Ask me to `search skills <topic>` or `install bundle essentials` to get started!", "No installed skills")
+                    } else {
+                        val listMd = installed.joinToString("\n") { "  - `💡 $it`" }
+                        val md = """
+                        📋 **Installed Skills in `${targetDir.absolutePath}` (${installed.size})**
+
+                        $listMd
+
+                        *Tap the Skills icon (🧠) in the top bar to browse 2,955+ additional skills.*
+                        """.trimIndent()
+                        Pair(md, "Listed installed skills")
+                    }
+                }
+
+                is com.example.gemini.domain.project.ChatSkillIntent.ListBundles -> {
+                    val bundles = com.example.gemini.data.skills.AgenticSkillsRepository.listBundles()
+                    val rows = bundles.take(10).joinToString("\n") { b ->
+                        "| **`${b.displayName}`** | `${b.skillCount}` | ${b.description.take(70)}... |"
+                    }
+                    val md = """
+                    📦 **Agentic Awesome Skills Bundles (${bundles.size} Total)**
+
+                    | Bundle Name | Skills Count | Description |
+                    | :--- | :--- | :--- |
+                    $rows
+
+                    *To install a bundle, ask: `install bundle <name>` or open the Skills Hub (🧠) in the top bar.*
+                    """.trimIndent()
+                    Pair(md, "Listed skill bundles")
                 }
             }
 

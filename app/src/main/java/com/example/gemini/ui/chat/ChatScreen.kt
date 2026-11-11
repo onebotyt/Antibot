@@ -361,6 +361,7 @@ fun ChatScreen(
     var showProjectPickerDialog by remember { mutableStateOf(false) }
     var showMoveChatDialog by remember { mutableStateOf(false) }
     var showLocalVersionControlDialog by remember { mutableStateOf(false) }
+    var showAgenticSkillsDialog by remember { mutableStateOf(false) }
     var showGitCloneDialog by remember { mutableStateOf(false) }
     var showWorkspaceFolderBrowserDialog by remember { mutableStateOf(false) }
     var showStopConfirmDialog by remember { mutableStateOf(false) }
@@ -1473,6 +1474,18 @@ fun ChatScreen(
                                 contentDescription = "Local Version Control",
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                                 modifier = Modifier.size(19.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(1.dp))
+                        IconButton(
+                            onClick = { showAgenticSkillsDialog = true },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Psychology,
+                                contentDescription = "Agentic Awesome Skills",
+                                tint = Color(0xFF8B5CF6),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(1.dp))
@@ -3151,6 +3164,16 @@ fun ChatScreen(
                 viewModel.onProjectChanged(proj.path)
                 com.example.gemini.data.daemon.TermuxDaemonManager.setActiveProject(proj)
             }
+        )
+    }
+
+    if (showAgenticSkillsDialog) {
+        val currentConvPath = currentConv?.workspaceUri?.removePrefix("file://")?.trimEnd('/') ?: ""
+        val activeProj = usedProjects.find { it.path == currentConvPath } ?: if (currentConvPath.isNotBlank()) com.example.gemini.data.daemon.ProjectItem(java.io.File(currentConvPath).name, currentConvPath) else null
+
+        com.example.gemini.ui.components.AgenticSkillsDialog(
+            activeProject = activeProj,
+            onDismiss = { showAgenticSkillsDialog = false }
         )
     }
 

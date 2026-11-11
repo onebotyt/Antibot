@@ -3832,6 +3832,7 @@ private fun McpSubScreen(
                     localSpec(bridge.ANDROID_AUTOMATION_MCP_NAME, "/android")),
                 McpPreset("Notes & To-dos", "Read & edit your notes", Icons.Outlined.EditNote, Color(0xFFF59E0B), localSpec(bridge.NOTES_MCP_NAME, "/notes")),
                 McpPreset("Jarvis Voice", "Hands-free voice assistant tools", Icons.Outlined.RecordVoiceOver, Color(0xFF6366F1), localSpec(bridge.JARVIS_MCP_NAME, "/jarvis")),
+                McpPreset("Agentic Skills", "2,955+ skills for any AI or project", Icons.Outlined.Psychology, Color(0xFF8B5CF6), localSpec(bridge.SKILLS_MCP_NAME, "/skills")),
                 McpPreset("Stitch", "Google Stitch UI design · API key", Icons.Outlined.Palette, Color(0xFFEC4899),
                     com.example.gemini.domain.model.McpServerSpec(serverName = "stitch", serverUrl = "https://stitch.googleapis.com/mcp", headers = mapOf("X-Goog-Api-Key" to "")))
             )

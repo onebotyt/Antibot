@@ -194,6 +194,76 @@ object LocalIntelligenceEngine {
             )
         }
 
+        // 0.7. Agentic Skills Intent (Search, Install, Bundles, List)
+        val skillIntent = com.example.gemini.domain.project.ChatSkillParser.parseIntent(trimmed)
+        if (skillIntent != null) {
+            val (reply, thought) = when (skillIntent) {
+                is com.example.gemini.domain.project.ChatSkillIntent.SearchSkills -> {
+                    val results = com.example.gemini.data.skills.AgenticSkillsRepository.searchSkills(skillIntent.query, limit = 8, context = context)
+                    if (results.isEmpty()) {
+                        Pair("🔍 **No skills found matching `${skillIntent.query}`.**", "No matching skills")
+                    } else {
+                        val rows = results.joinToString("\n") { s ->
+                            "| **`${s.name}`** | `${s.category}` | `${s.risk}` | ${s.description.take(75)}... |"
+                        }
+                        val md = """
+                        🧠 **Found ${results.size} Agentic Skills for `${skillIntent.query}`**
+
+                        | Skill Name | Category | Risk | Description |
+                        | :--- | :--- | :--- | :--- |
+                        $rows
+
+                        *To install a skill, ask me to `install skill <name>` or open the Skills Hub (🧠) in the top bar.*
+                        """.trimIndent()
+                        Pair(md, "Searched skills for '${skillIntent.query}'")
+                    }
+                }
+                is com.example.gemini.domain.project.ChatSkillIntent.InstallSkill -> {
+                    val res = com.example.gemini.data.skills.AgenticSkillsRepository.installSkill(
+                        skillIntent.skillId,
+                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT,
+                        projectDir.absolutePath
+                    )
+                    if (res.success) {
+                        Pair("⚡ **Agentic Skill Installed!** Installed `${skillIntent.skillId}` to `${projectDir.name}/.agents/skills/${skillIntent.skillId}`.", "Installed skill")
+                    } else {
+                        Pair("⚠️ **Could not install skill**: ${res.message}", "Install failed")
+                    }
+                }
+                is com.example.gemini.domain.project.ChatSkillIntent.InstallBundle -> {
+                    val res = com.example.gemini.data.skills.AgenticSkillsRepository.installBundle(
+                        skillIntent.bundleName,
+                        com.example.gemini.data.skills.SkillInstallTarget.PROJECT,
+                        projectDir.absolutePath
+                    )
+                    Pair(if (res.success) "📦 **Skill Bundle Installed!** ${res.message}" else "⚠️ ${res.message}", "Bundle install")
+                }
+                is com.example.gemini.domain.project.ChatSkillIntent.ListInstalledSkills -> {
+                    val skillsDir = java.io.File(projectDir, ".agents/skills")
+                    val installed = com.example.gemini.data.skills.AgenticSkillsRepository.listInstalled(skillsDir)
+                    if (installed.isEmpty()) {
+                        Pair("📁 **No skills installed in `${projectDir.name}` yet.** Ask me to `search skills <topic>` or `install bundle essentials`!", "No skills installed")
+                    } else {
+                        val md = "📋 **Installed Skills in `${projectDir.name}` (${installed.size})**\n\n" + installed.joinToString("\n") { "  - `💡 $it`" }
+                        Pair(md, "Listed installed skills")
+                    }
+                }
+                is com.example.gemini.domain.project.ChatSkillIntent.ListBundles -> {
+                    val bundles = com.example.gemini.data.skills.AgenticSkillsRepository.listBundles()
+                    val rows = bundles.take(10).joinToString("\n") { b ->
+                        "| **`${b.displayName}`** | `${b.skillCount}` | ${b.description.take(70)}... |"
+                    }
+                    val md = "📦 **Agentic Awesome Skills Bundles (${bundles.size} Total)**\n\n| Bundle | Skills | Description |\n| :--- | :--- | :--- |\n$rows"
+                    Pair(md, "Listed bundles")
+                }
+            }
+            return@withContext LocalEngineResult(
+                thoughtText = thought,
+                content = reply,
+                durationMs = System.currentTimeMillis() - startTime
+            )
+        }
+
         // 1. Direct Shell Execution ($cmd, !cmd, run <cmd>, exec <cmd>)
         if (bridgeIntent?.intent == "DIRECT_COMMAND" || isDirectCommand(trimmed, lower)) {
             return@withContext handleDirectCommand(trimmed, lower, projectDir, context, startTime)

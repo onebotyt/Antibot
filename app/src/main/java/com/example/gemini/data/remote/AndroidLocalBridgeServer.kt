@@ -32,7 +32,8 @@ class AndroidLocalBridgeServer private constructor() {
         EXTENSION_DEVELOPER("custom_plugin_developer_mcp"),
         ANDROID("android_automation_mcp"),
         NOTES("notes_mcp"),
-        JARVIS("jarvis_mcp")
+        JARVIS("jarvis_mcp"),
+        SKILLS("agentic_skills_mcp")
     }
 
     companion object {
@@ -43,6 +44,7 @@ class AndroidLocalBridgeServer private constructor() {
         const val NOTES_MCP_NAME = "notes_mcp"
         const val JARVIS_MCP_NAME = "jarvis_mcp"
         const val THEME_MCP_NAME = "theme_mcp"
+        const val SKILLS_MCP_NAME = "agentic_skills_mcp"
         fun isDeveloperMcpName(name: String) = name == DEVELOPER_MCP_NAME || name == LEGACY_DEVELOPER_MCP_NAME
         private const val TAG = "AndroidBridgeServer"
         private const val MAX_HEADER_BYTES = 64 * 1024
@@ -257,6 +259,7 @@ class AndroidLocalBridgeServer private constructor() {
                     path == "/android" -> handleMcpHttp(McpEndpoint.ANDROID, method, body, out)
                     path == "/notes" -> handleMcpHttp(McpEndpoint.NOTES, method, body, out)
                     path == "/jarvis" -> handleMcpHttp(McpEndpoint.JARVIS, method, body, out)
+                    path == "/skills" || path == "/aas" -> handleMcpHttp(McpEndpoint.SKILLS, method, body, out)
                     path == "/api/health" -> {
                         val res = JSONObject().apply {
                             put("status", "ok")
@@ -419,6 +422,7 @@ class AndroidLocalBridgeServer private constructor() {
                     if (endpoint == McpEndpoint.ANDROID) put("instructions", com.example.gemini.data.automation.AndroidAutomation.INSTRUCTIONS)
                     if (endpoint == McpEndpoint.NOTES) put("instructions", com.example.gemini.data.notes.NotesMcp.INSTRUCTIONS)
                     if (endpoint == McpEndpoint.JARVIS) put("instructions", com.example.gemini.data.jarvis.JarvisMcp.INSTRUCTIONS)
+                    if (endpoint == McpEndpoint.SKILLS) put("instructions", com.example.gemini.data.skills.AgenticSkillsMcp.INSTRUCTIONS)
                     if (endpoint == McpEndpoint.EXTENSION_DEVELOPER) put("instructions", "Start with webview_extension_docs. Read developer-mcp.md and the required API references, create a draft, write files, install or update, discover tools with webview_extension_test, and inspect logs to fix failures. No app source or manual ZIP handling is needed.")
                     put("capabilities", JSONObject().apply {
                         put("tools", JSONObject())
@@ -470,6 +474,7 @@ class AndroidLocalBridgeServer private constructor() {
         if (endpoint == McpEndpoint.ANDROID) return com.example.gemini.data.automation.AndroidAutomation.tools()
         if (endpoint == McpEndpoint.NOTES) return com.example.gemini.data.notes.NotesMcp.tools()
         if (endpoint == McpEndpoint.JARVIS) return com.example.gemini.data.jarvis.JarvisMcp.tools()
+        if (endpoint == McpEndpoint.SKILLS) return com.example.gemini.data.skills.AgenticSkillsMcp.tools()
         val tools = JSONArray()
         val browserEnabled = endpoint == McpEndpoint.BROWSER
         val terminalEnabled = endpoint == McpEndpoint.TERMINAL
@@ -799,6 +804,7 @@ class AndroidLocalBridgeServer private constructor() {
         if (toolName.startsWith("android_")) return com.example.gemini.data.automation.AndroidAutomation.call(appContext!!, toolName, args)
         if (toolName.startsWith("notes_")) return com.example.gemini.data.notes.NotesMcp.call(appContext!!, toolName, args)
         if (toolName.startsWith("jarvis_")) return com.example.gemini.data.jarvis.JarvisMcp.call(appContext!!, toolName, args)
+        if (com.example.gemini.data.skills.AgenticSkillsMcp.handles(toolName)) return com.example.gemini.data.skills.AgenticSkillsMcp.execute(toolName, args)
 
         if (toolName.startsWith("flow_")) {
             return com.example.gemini.ui.browser.BrowserExtensionManager.instance.callTool("google-flow", toolName, args)
