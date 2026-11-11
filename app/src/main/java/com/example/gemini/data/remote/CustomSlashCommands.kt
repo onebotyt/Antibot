@@ -59,6 +59,55 @@ object CustomSlashCommands {
             """.trimIndent()
         ),
         CustomSlashCommand(
+            name = "plan",
+            description = "Architectural planning, atomic checklists, and verification before code modification",
+            expansion = """
+                The user wants a structured, rigorous execution plan before any code is modified or implemented: ${'$'}ARGUMENTS
+                
+                You must formulate a clear, actionable, and atomic plan following these principles:
+                1. Context & Architecture Understanding: Analyze requirements, constraints, current project state, and target architecture.
+                2. Design Decisions & Trade-offs: Identify critical design choices, dependencies, and alternative approaches.
+                3. Atomic Step-by-Step Implementation Checklist: Break down the task into small, verifiable, atomic steps.
+                4. Self-Correction & Verification Strategy: Define precise acceptance criteria, test commands, and failure recovery checks.
+                5. Do NOT make irreversible destructive changes or start writing monolithic code until the plan is approved or clearly established.
+            """.trimIndent()
+        ),
+        CustomSlashCommand(
+            name = "boost",
+            description = "Maximum cognitive depth, deep reasoning trace, multi-perspective design, and verification",
+            expansion = """
+                OPERATE IN MAXIMUM COGNITIVE DEPTH AND RIGOR (BOOST MODE): ${'$'}ARGUMENTS
+                
+                Apply deep, multi-perspective engineering, strategic foresight, and relentless quality:
+                1. Explicit Multi-Step Reasoning Trace: Think through the problem thoroughly from first principles. Show detailed analytical thought steps before drawing conclusions or outputting code.
+                2. Multi-Perspective Evaluation: Consider performance, latency, memory consumption, fault tolerance, API ergonomics, security, and long-term maintainability.
+                3. High-Standard Production Synthesis: Write complete, robust, type-safe, and self-documenting code. Never emit lazy stubs, incomplete 'TODO' shortcuts, or generic placeholders.
+                4. Self-Critique & Edge-Case Verification: Scrutinize potential failure modes, boundary conditions, concurrent access pitfalls, and zero-day regressions.
+            """.trimIndent()
+        ),
+        CustomSlashCommand(
+            name = "goal",
+            description = "Autonomous persistent goal execution until fully completed and verified",
+            expansion = """
+                Execute this objective with autonomous persistence until fully accomplished and verified: ${'$'}ARGUMENTS
+                
+                Do not stop until the objective is completely satisfied:
+                1. Break down the high-level goal into measurable sub-milestones.
+                2. Execute each step methodically with self-checks and continuous verification.
+                3. If an error or roadblock occurs, systematically diagnose the root cause and adapt the strategy instead of halting.
+                4. Validate against end-to-end criteria before declaring completion.
+            """.trimIndent()
+        ),
+        CustomSlashCommand(
+            name = "schedule",
+            description = "Set up recurring or timed background task execution",
+            expansion = """
+                Configure a timed or scheduled task according to this specification: ${'$'}ARGUMENTS
+                
+                Inspect schedule parameters (one-shot timer vs recurring cron) and execute via schedule or background task management with proper prompts and conditions.
+            """.trimIndent()
+        ),
+        CustomSlashCommand(
             name = "automation",
             description = "Control this phone (read the screen, tap, type, open apps) with the Android Automation MCP",
             expansion = """
@@ -132,11 +181,21 @@ object CustomSlashCommands {
         persist()
     }
 
-    fun find(name: String): CustomSlashCommand? = commands.firstOrNull { it.name.equals(name, ignoreCase = true) }
+    fun find(name: String): CustomSlashCommand? =
+        commands.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?: DEFAULTS.firstOrNull { it.name.equals(name, ignoreCase = true) }
 
-    fun slashItems(): List<SlashCommandItem> = commands.map {
-        SlashCommandItem(it.name, "/${it.name}", it.description.ifBlank { it.expansion.lineSequence().firstOrNull().orEmpty().take(80) }, "custom",
-            argumentHint = if (it.expansion.contains("\$ARGUMENTS")) "arguments" else "")
+    fun slashItems(): List<SlashCommandItem> {
+        val all = (commands + DEFAULTS.filter { d -> commands.none { it.name.equals(d.name, ignoreCase = true) } })
+        return all.map {
+            SlashCommandItem(
+                it.name,
+                "/${it.name}",
+                it.description.ifBlank { it.expansion.lineSequence().firstOrNull().orEmpty().take(80) },
+                if (isDefault(it.name)) "builtin" else "custom",
+                argumentHint = if (it.expansion.contains("\$ARGUMENTS")) "arguments" else ""
+            )
+        }
     }
 
     private fun persist() {

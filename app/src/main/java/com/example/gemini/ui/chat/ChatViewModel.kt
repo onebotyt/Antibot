@@ -387,6 +387,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    /** Switches the active CLI agent for the current conversation without clearing messages or starting a new chat. */
+    fun switchOngoingChatAgent(targetAgent: AgentKind) {
+        val cur = store.currentConversation.value ?: return
+        if (cur.agent == targetAgent) return
+
+        // 1. Enforce strict Zero-Idle-RAM turn isolation: detach inactive backends
+        if (targetAgent != AgentKind.LOCAL) {
+            com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
+        }
+        when (targetAgent) {
+            AgentKind.LOCAL -> {
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+            }
+            AgentKind.AGY -> {
+                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+            }
+            AgentKind.CLAUDE -> {
+                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+            }
+            AgentKind.OPENCODE -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+            }
+            AgentKind.CODEX -> {
+                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+            }
+        }
+
+        // 2. Preserve all existing messages & context across agent switch
+        val currentMsgs = messages.value
+        val updated = cur.copy(agent = targetAgent, updatedAt = System.currentTimeMillis())
+        store.currentConversation.value = updated
+        _conversations.update { list ->
+            list.map { if (it.id == cur.id) updated else it }
+        }
+
+        // 3. Keep target backend in sync
+        if (targetAgent == AgentKind.LOCAL) {
+            localBackend.syncOngoingConversation(updated, currentMsgs)
+        } else {
+            store.messages.value = currentMsgs
+        }
+    }
+
     fun selectConversation(id: String) {
         val targetAgent = agentOf(id)
         if (targetAgent != AgentKind.LOCAL) {
@@ -570,35 +614,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             when (decision.targetAgent) {
                 AgentKind.LOCAL -> {
                     if (!isLocalActive) {
-                        startNewChat(AgentKind.LOCAL)
+                        switchOngoingChatAgent(AgentKind.LOCAL)
                     }
                     localBackend.selectModel(decision.targetModelId)
                     localBackend.sendMessage(expanded)
                 }
                 AgentKind.AGY -> {
                     if (isLocalActive || isClaudeActive || isOpenCodeActive || isCodexActive) {
-                        startNewChat(AgentKind.AGY)
+                        switchOngoingChatAgent(AgentKind.AGY)
                     }
                     agyBackend.selectModel(decision.targetModelId)
                     agyBackend.sendMessage(expanded)
                 }
                 AgentKind.CLAUDE -> {
                     if (!isClaudeActive) {
-                        startNewChat(AgentKind.CLAUDE)
+                        switchOngoingChatAgent(AgentKind.CLAUDE)
                     }
                     claudeBackend.selectModel(decision.targetModelId)
                     claudeBackend.sendMessage(expanded)
                 }
                 AgentKind.OPENCODE -> {
                     if (!isOpenCodeActive) {
-                        startNewChat(AgentKind.OPENCODE)
+                        switchOngoingChatAgent(AgentKind.OPENCODE)
                     }
                     openCodeBackend.selectModel(decision.targetModelId)
                     openCodeBackend.sendMessage(expanded)
                 }
                 AgentKind.CODEX -> {
                     if (!isCodexActive) {
-                        startNewChat(AgentKind.CODEX)
+                        switchOngoingChatAgent(AgentKind.CODEX)
                     }
                     codexBackend.selectModel(decision.targetModelId)
                     codexBackend.sendMessage(expanded)

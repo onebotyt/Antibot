@@ -3,6 +3,8 @@ package com.example.gemini.ui.chat
 import com.example.gemini.ui.components.ChatToast
 import com.example.gemini.ui.components.ChatToastType
 import com.example.gemini.ui.components.AppToastHelper
+import com.example.gemini.ui.components.accent
+import com.example.gemini.ui.components.label
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -169,14 +171,21 @@ fun ChatScreen(
     /** The chat on screen is Antigravity's (its hub, bridge banners and sign-in apply). */
     val isAgyChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.AGY
     val isFreshNewChat = currentConv == null || currentConv?.title == "New Chat"
+    val messages by viewModel.messages.collectAsState()
+    var pendingAgentSwitch by remember { mutableStateOf<com.example.gemini.domain.model.AgentKind?>(null) }
     val pickAgent: (com.example.gemini.domain.model.AgentKind) -> Unit = { agent ->
-        viewModel.setNewChatAgent(agent)
-        viewModel.startNewChat(agent)
-        if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-            viewModel.selectModel("local-model-only")
+        if (agent == effectiveAgent) {
+            // Already active
+        } else if (messages.isEmpty() || isFreshNewChat) {
+            viewModel.setNewChatAgent(agent)
+            viewModel.startNewChat(agent)
+            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                viewModel.selectModel("local-model-only")
+            }
+        } else {
+            pendingAgentSwitch = agent
         }
     }
-    val messages by viewModel.messages.collectAsState()
     val artifacts by viewModel.artifacts.collectAsState()
     val selectedModelId by viewModel.selectedModelId.collectAsState()
     val isAutoModel = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
@@ -2804,6 +2813,79 @@ fun ChatScreen(
             dismissButton = {
                 TextButton(onClick = { pendingMessageAction = null }) {
                     Text(text = "Cancel", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+            }
+        )
+    }
+
+    pendingAgentSwitch?.let { targetAgent ->
+        AlertDialog(
+            onDismissRequest = { pendingAgentSwitch = null },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(targetAgent.accent())
+                    )
+                    Text(
+                        text = "Switch to ${targetAgent.label()}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.5.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "You are currently in an ongoing chat with ${effectiveAgent.label()}.",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                    )
+                    Text(
+                        text = "• Switch in this Chat: Preserves all messages and continues with ${targetAgent.label()}.\n• Start New Chat: Opens a fresh clean chat with ${targetAgent.label()}.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.switchOngoingChatAgent(targetAgent)
+                        if (targetAgent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                            viewModel.selectModel("local-model-only")
+                        }
+                        pendingAgentSwitch = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = targetAgent.accent())
+                ) {
+                    Text("⚡ Switch in this Chat", fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            viewModel.setNewChatAgent(targetAgent)
+                            viewModel.startNewChat(targetAgent)
+                            if (targetAgent == com.example.gemini.domain.model.AgentKind.LOCAL) {
+                                viewModel.selectModel("local-model-only")
+                            }
+                            pendingAgentSwitch = null
+                        }
+                    ) {
+                        Text("🆕 Start New Chat")
+                    }
+                    TextButton(onClick = { pendingAgentSwitch = null }) {
+                        Text("Cancel")
+                    }
                 }
             }
         )

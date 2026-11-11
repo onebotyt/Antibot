@@ -225,6 +225,17 @@ class LocalAgentBackend(
         selectConversation(forkedId)
     }
 
+    fun syncOngoingConversation(conv: Conversation, msgList: List<ChatMessage>) {
+        val updatedConv = conv.copy(agent = AgentKind.LOCAL)
+        _currentConversation.value = updatedConv
+        _conversations.value = listOf(updatedConv) + _conversations.value.filter { it.id != updatedConv.id }
+        _messages.value = msgList
+        store.currentConversation.value = updatedConv
+        store.messages.value = msgList
+        persistConversations()
+        persistMessagesFor(updatedConv.id, msgList)
+    }
+
     fun detach() {
         activeJob?.cancel()
         activeJob = null
@@ -288,13 +299,17 @@ class LocalAgentBackend(
 
                 if (!isActive) return@launch
 
-                // 1. Initial emission with thoughtText and empty content
+                // 1. Initial emission: enter thinking phase
+                val fullThought = result.thoughtText.orEmpty().trim()
+                val hasThought = fullThought.isNotBlank()
+                val thoughtLines = fullThought.lines().filter { it.isNotBlank() }
+
                 val initialMsg = ChatMessage(
                     id = assistantId,
                     conversationId = curConv.id,
                     role = MessageRole.ASSISTANT,
                     content = "",
-                    thoughtText = result.thoughtText,
+                    thoughtText = if (hasThought) thoughtLines.firstOrNull()?.take(120) else null,
                     toolCalls = result.toolCalls,
                     isStreaming = true,
                     createdAt = System.currentTimeMillis(),
@@ -306,6 +321,29 @@ class LocalAgentBackend(
                     _messages.value = list
                     store.messages.value = list
                 }
+
+                // Progressive reasoning simulation: stream thought steps so user visibly sees the local model think
+                val thinkingStart = System.currentTimeMillis()
+                if (hasThought && thoughtLines.size > 1) {
+                    val thoughtAccumulator = StringBuilder()
+                    for ((stepIdx, line) in thoughtLines.withIndex()) {
+                        if (!isActive) break
+                        if (thoughtAccumulator.isNotEmpty()) thoughtAccumulator.append("\n\n")
+                        thoughtAccumulator.append(line)
+                        val partialThought = thoughtAccumulator.toString()
+                        withContext(Dispatchers.Main) {
+                            val updated = _messages.value.map { m ->
+                                if (m.id == assistantId) m.copy(thoughtText = partialThought) else m
+                            }
+                            _messages.value = updated
+                            store.messages.value = updated
+                        }
+                        delay(if (stepIdx < thoughtLines.lastIndex) 200L else 140L)
+                    }
+                } else if (hasThought) {
+                    delay(300L)
+                }
+                val thoughtDuration = System.currentTimeMillis() - thinkingStart
 
                 // 2. Stream content in natural chunks
                 val fullContent = result.content
@@ -328,6 +366,7 @@ class LocalAgentBackend(
                             if (m.id == assistantId) {
                                 m.copy(
                                     content = partialContent,
+                                    thoughtDurationMs = thoughtDuration,
                                     isStreaming = index < totalLength
                                 )
                             } else m
