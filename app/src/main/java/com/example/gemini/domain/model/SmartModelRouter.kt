@@ -227,13 +227,13 @@ object SmartModelRouter {
         if (pattern.startsWith("cli:")) {
             return when (pattern.removePrefix("cli:").lowercase(java.util.Locale.ROOT)) {
                 "claude", "claudecode" -> availableModels.find { it.family == ModelFamily.CLAUDE }
-                    ?: AiModel("cli:claude", "Claude Code CLI", "Anthropic Claude Code CLI Manager", ModelFamily.CLAUDE)
+                    ?: AiModel(id = "cli:claude", displayName = "Claude Code CLI", family = ModelFamily.CLAUDE, description = "Anthropic Claude Code CLI Manager")
                 "codex" -> availableModels.find { it.id.contains("codex", ignoreCase = true) || it.id.contains("gpt", ignoreCase = true) }
-                    ?: AiModel("cli:codex", "Codex CLI", "OpenAI Codex CLI Manager", ModelFamily.OTHER)
-                "opencode" -> AiModel("cli:opencode", "OpenCode CLI", "OpenCode Multi-Model CLI Manager", ModelFamily.OTHER)
-                "local", "qwen" -> AiModel(LocalCodingDomain.QWEN_CODER.modelId, "Local Qwen 2.5 Coder 0.5B", "On-Device Neural Engine", ModelFamily.OTHER)
+                    ?: AiModel(id = "cli:codex", displayName = "Codex CLI", family = ModelFamily.OTHER, description = "OpenAI Codex CLI Manager")
+                "opencode" -> AiModel(id = "cli:opencode", displayName = "OpenCode CLI", family = ModelFamily.OTHER, description = "OpenCode Multi-Model CLI Manager")
+                "local", "qwen" -> AiModel(id = LocalCodingDomain.QWEN_CODER.modelId, displayName = "Local Qwen 2.5 Coder 0.5B", family = ModelFamily.LOCAL, description = "On-Device Neural Engine")
                 else -> availableModels.find { it.family == ModelFamily.GEMINI }
-                    ?: AiModel("cli:agy", "Antigravity CLI", "Gemini Cloud Code CLI Manager", ModelFamily.GEMINI)
+                    ?: AiModel(id = "cli:agy", displayName = "Antigravity CLI", family = ModelFamily.GEMINI, description = "Gemini Cloud Code CLI Manager")
             }
         }
 
