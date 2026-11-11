@@ -12,7 +12,9 @@ import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import com.example.gemini.AntiGemApplication
 import com.example.gemini.data.daemon.GitApiClient
+import com.example.gemini.data.daemon.IdeApiClient
 
 object AgenticSkillsRepository {
     private const val TAG = "AgenticSkillsRepo"
@@ -33,34 +35,38 @@ object AgenticSkillsRepository {
 
     fun getLocalBaseDir(context: Context? = null): File? {
         if (baseDir != null && baseDir!!.exists()) return baseDir
-        for (p in localPaths) {
-            val f = File(p)
-            if (f.exists() && File(f, "skills").exists()) {
-                baseDir = f
-                return f
-            }
-        }
-        if (context != null) {
-            val appDir = File(context.filesDir, ".agentic-awesome-skills")
+        val ctx = context ?: AntiGemApplication.appContext
+        if (ctx != null) {
+            val appDir = File(ctx.filesDir, ".agentic-awesome-skills")
             if (appDir.exists() && File(appDir, "skills").exists()) {
                 baseDir = appDir
                 return appDir
             }
+        }
+        for (p in localPaths) {
+            try {
+                val f = File(p)
+                if (f.exists() && File(f, "skills").exists()) {
+                    baseDir = f
+                    return f
+                }
+            } catch (_: Exception) {}
         }
         return null
     }
 
     suspend fun getOrLoadIndex(context: Context? = null): List<SkillMeta> = withContext(Dispatchers.IO) {
         cachedIndex?.let { return@withContext it }
+        val ctx = context ?: AntiGemApplication.appContext
 
-        val bDir = getLocalBaseDir()
+        val bDir = getLocalBaseDir(ctx)
         val indexFile = if (bDir != null) File(bDir, "skills_index.json") else null
 
         val jsonStr = try {
-            if (indexFile != null && indexFile.exists()) {
+            if (indexFile != null && indexFile.exists() && indexFile.canRead()) {
                 indexFile.readText(Charsets.UTF_8)
-            } else if (context != null) {
-                context.assets.open("skills_index.json.xz").use { raw ->
+            } else if (ctx != null) {
+                ctx.assets.open("skills_index.json.xz").use { raw ->
                     XZInputStream(raw).use { xzIn ->
                         BufferedReader(InputStreamReader(xzIn, Charsets.UTF_8)).readText()
                     }
@@ -176,11 +182,18 @@ object AgenticSkillsRepository {
         }
 
         if (content == null) {
-            val installedDir = findInstalledSkillDir(id)
+            val installedDir = findInstalledSkillDir(id, context = context)
             if (installedDir != null) {
                 val f = File(installedDir, "SKILL.md")
-                if (f.exists()) content = f.readText(Charsets.UTF_8)
+                if (f.exists() && f.canRead()) content = f.readText(Charsets.UTF_8)
             }
+        }
+
+        if (content == null) {
+            try {
+                content = IdeApiClient.readFile("~/.agentic-awesome-skills/skills/$id/SKILL.md")
+                    ?: IdeApiClient.readFile("/data/user/0/com.termux/files/home/.agentic-awesome-skills/skills/$id/SKILL.md")
+            } catch (_: Exception) {}
         }
 
         if (content == null) {
@@ -203,158 +216,315 @@ object AgenticSkillsRepository {
     suspend fun installSkill(
         id: String,
         target: SkillInstallTarget,
-        projectPath: String? = null
+        projectPath: String? = null,
+        context: Context? = null
     ): SkillActionResult = withContext(Dispatchers.IO) {
-        val bDir = getLocalBaseDir()
-        val srcSkillDir = if (bDir != null) File(bDir, "skills/$id") else null
-        val hasLocalSrc = srcSkillDir != null && srcSkillDir.exists() && srcSkillDir.isDirectory
+        val ctx = context ?: AntiGemApplication.appContext
+        val bDir = getLocalBaseDir(ctx)
 
-        val targets = if (target == SkillInstallTarget.UNIVERSAL) {
-            val list = mutableListOf<File>()
-            if (!projectPath.isNullOrBlank()) {
-                list.add(File(projectPath, ".agents/skills/$id"))
+        var skillMd: String? = null
+
+        // 1. Try local catalog file read (if accessible)
+        if (bDir != null) {
+            try {
+                val srcFile = File(bDir, "skills/$id/SKILL.md")
+                if (srcFile.exists() && srcFile.canRead()) {
+                    skillMd = srcFile.readText(Charsets.UTF_8)
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Direct read of local catalog skill $id skipped: ${e.message}")
             }
-            list.add(File("/data/user/0/com.termux/files/home/.antibot/skills/$id"))
-            list.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills/$id"))
-            list.add(File("/data/user/0/com.termux/files/home/.claude/skills/$id"))
-            list.add(File("/data/user/0/com.termux/files/home/.codex/skills/$id"))
-            list.add(File("/data/user/0/com.termux/files/home/.opencode/skills/$id"))
-            list
-        } else {
-            val single = when (target) {
-                SkillInstallTarget.UNIVERSAL -> error("Handled above")
-                SkillInstallTarget.LOCAL -> File("/data/user/0/com.termux/files/home/.antibot/skills/$id")
-                SkillInstallTarget.PROJECT -> {
-                    if (projectPath.isNullOrBlank()) {
-                        return@withContext SkillActionResult(false, "No active project specified for project install.", error = "Missing project")
+        }
+
+        // 2. Try IDE Bridge daemon read (if bridge is running in Termux)
+        if (skillMd.isNullOrBlank()) {
+            try {
+                skillMd = IdeApiClient.readFile("~/.agentic-awesome-skills/skills/$id/SKILL.md")
+                    ?: IdeApiClient.readFile("/data/user/0/com.termux/files/home/.agentic-awesome-skills/skills/$id/SKILL.md")
+            } catch (e: Exception) {
+                Log.d(TAG, "Bridge read skill failed: ${e.message}")
+            }
+        }
+
+        // 3. Fallback to on-demand direct download from GitHub
+        if (skillMd.isNullOrBlank()) {
+            skillMd = fetchRemoteSkillMd(id)
+        }
+
+        if (skillMd.isNullOrBlank()) {
+            return@withContext SkillActionResult(
+                false,
+                "Could not install skill '$id'. Skill not found in local catalog and remote download failed (check internet connection).",
+                error = "Download failed"
+            )
+        }
+
+        var anySaved = false
+        var primaryInstalledPath = ""
+
+        // Target A: App internal private storage (ALWAYS 100% WRITABLE on all Android devices)
+        if (ctx != null) {
+            try {
+                val appBase = ctx.filesDir
+                val localDirs = mutableListOf<File>()
+
+                // Primary local skill dir & cache
+                localDirs.add(File(appBase, "skills/$id"))
+                localDirs.add(File(appBase, "skills_cache/skills/$id"))
+                localDirs.add(File(appBase, ".antibot/skills/$id"))
+
+                when (target) {
+                    SkillInstallTarget.UNIVERSAL -> {
+                        localDirs.add(File(appBase, "gemini/config/skills/$id"))
+                        localDirs.add(File(appBase, "claude/skills/$id"))
+                        localDirs.add(File(appBase, "codex/skills/$id"))
+                        localDirs.add(File(appBase, "opencode/skills/$id"))
                     }
-                    File(projectPath, ".agents/skills/$id")
+                    SkillInstallTarget.LOCAL -> {}
+                    SkillInstallTarget.GEMINI -> localDirs.add(File(appBase, "gemini/config/skills/$id"))
+                    SkillInstallTarget.CLAUDE -> localDirs.add(File(appBase, "claude/skills/$id"))
+                    SkillInstallTarget.CODEX -> localDirs.add(File(appBase, "codex/skills/$id"))
+                    SkillInstallTarget.OPENCODE -> localDirs.add(File(appBase, "opencode/skills/$id"))
+                    SkillInstallTarget.PROJECT -> {}
                 }
-                SkillInstallTarget.GEMINI -> File("/data/user/0/com.termux/files/home/.gemini/config/skills/$id")
-                SkillInstallTarget.CODEX -> File("/data/user/0/com.termux/files/home/.codex/skills/$id")
-                SkillInstallTarget.CLAUDE -> File("/data/user/0/com.termux/files/home/.claude/skills/$id")
-                SkillInstallTarget.OPENCODE -> File("/data/user/0/com.termux/files/home/.opencode/skills/$id")
-            }
-            listOf(single)
-        }
 
-        // 1. Try local catalog copy if available
-        if (hasLocalSrc && srcSkillDir != null) {
-            try {
-                for (t in targets) {
-                    t.parentFile?.mkdirs()
-                    srcSkillDir.copyRecursively(t, overwrite = true)
+                for (dir in localDirs) {
+                    dir.mkdirs()
+                    File(dir, "SKILL.md").writeText(skillMd, Charsets.UTF_8)
                 }
-                return@withContext SkillActionResult(
-                    success = true,
-                    message = if (target == SkillInstallTarget.UNIVERSAL)
-                        "🌟 Skill '$id' installed universally across Local Model, Antigravity, Claude, Codex, OpenCode & Project!"
-                    else
-                        "Skill '$id' successfully installed to ${target.displayName}!",
-                    installedPath = targets.first().absolutePath
-                )
+                anySaved = true
+                primaryInstalledPath = File(appBase, "skills/$id/SKILL.md").absolutePath
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy local skill $id", e)
+                Log.e(TAG, "Error saving skill to app internal storage", e)
             }
         }
 
-        // 2. On-demand direct download from GitHub repository
-        val remoteMd = fetchRemoteSkillMd(id)
-        if (remoteMd != null && remoteMd.isNotBlank()) {
+        // Target B: Project workspace (if specified)
+        if (!projectPath.isNullOrBlank() && (target == SkillInstallTarget.PROJECT || target == SkillInstallTarget.UNIVERSAL)) {
+            val projSkillDir = File(projectPath, ".agents/skills/$id")
+            var projSaved = false
             try {
-                for (t in targets) {
-                    t.mkdirs()
-                    File(t, "SKILL.md").writeText(remoteMd, Charsets.UTF_8)
-                }
-                val cacheDir = File("/data/user/0/com.termux/files/home/.antibot/skills_cache/skills/$id")
-                cacheDir.mkdirs()
-                File(cacheDir, "SKILL.md").writeText(remoteMd, Charsets.UTF_8)
-
-                return@withContext SkillActionResult(
-                    success = true,
-                    message = if (target == SkillInstallTarget.UNIVERSAL)
-                        "🌟 Skill '$id' downloaded & installed universally across Local Model, Antigravity, Claude, Codex & OpenCode!"
-                    else
-                        "Skill '$id' downloaded & installed to ${target.displayName}!",
-                    installedPath = targets.first().absolutePath
-                )
+                projSkillDir.mkdirs()
+                File(projSkillDir, "SKILL.md").writeText(skillMd, Charsets.UTF_8)
+                projSaved = true
+                anySaved = true
+                if (primaryInstalledPath.isBlank()) primaryInstalledPath = File(projSkillDir, "SKILL.md").absolutePath
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to write downloaded skill $id", e)
-                return@withContext SkillActionResult(false, "Failed to save downloaded skill '$id': ${e.message}", error = e.localizedMessage)
+                Log.w(TAG, "Direct project write failed, falling back to bridge: ${e.message}")
+            }
+            if (!projSaved) {
+                try {
+                    val bridgeSaved = IdeApiClient.saveFile("$projectPath/.agents/skills/$id/SKILL.md", skillMd, force = true)
+                    if (bridgeSaved) {
+                        anySaved = true
+                        if (primaryInstalledPath.isBlank()) primaryInstalledPath = "$projectPath/.agents/skills/$id/SKILL.md"
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Bridge project save failed: ${e.message}")
+                }
             }
         }
 
-        return@withContext SkillActionResult(
-            false,
-            "Could not install skill '$id'. Local catalog missing and remote download failed (check internet connection).",
-            error = "Download failed"
-        )
+        // Target C: Termux / CLI Locations (Bridge daemon or direct if permitted)
+        val termuxTargetPaths = mutableListOf<String>()
+        when (target) {
+            SkillInstallTarget.UNIVERSAL -> {
+                termuxTargetPaths.add("~/.antibot/skills/$id/SKILL.md")
+                termuxTargetPaths.add("~/.gemini/config/skills/$id/SKILL.md")
+                termuxTargetPaths.add("~/.claude/skills/$id/SKILL.md")
+                termuxTargetPaths.add("~/.codex/skills/$id/SKILL.md")
+                termuxTargetPaths.add("~/.opencode/skills/$id/SKILL.md")
+            }
+            SkillInstallTarget.LOCAL -> termuxTargetPaths.add("~/.antibot/skills/$id/SKILL.md")
+            SkillInstallTarget.GEMINI -> termuxTargetPaths.add("~/.gemini/config/skills/$id/SKILL.md")
+            SkillInstallTarget.CLAUDE -> termuxTargetPaths.add("~/.claude/skills/$id/SKILL.md")
+            SkillInstallTarget.CODEX -> termuxTargetPaths.add("~/.codex/skills/$id/SKILL.md")
+            SkillInstallTarget.OPENCODE -> termuxTargetPaths.add("~/.opencode/skills/$id/SKILL.md")
+            SkillInstallTarget.PROJECT -> {}
+        }
+
+        for (tp in termuxTargetPaths) {
+            // 1. Try bridge save
+            try {
+                val ok = IdeApiClient.saveFile(tp, skillMd, force = true)
+                if (ok) anySaved = true
+            } catch (_: Exception) {}
+
+            // 2. Try direct Termux file write if accessible (e.g. root or shared uid)
+            try {
+                val expanded = tp.replace("~", "/data/user/0/com.termux/files/home")
+                val f = File(expanded)
+                f.parentFile?.mkdirs()
+                f.writeText(skillMd, Charsets.UTF_8)
+                anySaved = true
+            } catch (_: Exception) {
+                // Ignore DAC permission denied for Termux direct write since bridge and/or internal app storage is used
+            }
+        }
+
+        // 3. Try bridge skill install API as well (if catalog exists in Termux)
+        try {
+            val bridgeTargetStr = when (target) {
+                SkillInstallTarget.UNIVERSAL -> "universal"
+                SkillInstallTarget.LOCAL -> "local"
+                SkillInstallTarget.GEMINI -> "gemini"
+                SkillInstallTarget.CLAUDE -> "claude"
+                SkillInstallTarget.CODEX -> "codex"
+                SkillInstallTarget.OPENCODE -> "opencode"
+                SkillInstallTarget.PROJECT -> "project"
+            }
+            IdeApiClient.installBridgeSkill(id, bridgeTargetStr, projectPath)
+        } catch (_: Exception) {}
+
+        if (anySaved) {
+            return@withContext SkillActionResult(
+                success = true,
+                message = if (target == SkillInstallTarget.UNIVERSAL)
+                    "🌟 Skill '$id' installed universally across Local Model, Antigravity, Claude, Codex, OpenCode & Project!"
+                else
+                    "Skill '$id' successfully installed to ${target.displayName}!",
+                installedPath = primaryInstalledPath
+            )
+        } else {
+            return@withContext SkillActionResult(
+                false,
+                "Failed to save skill '$id'. No writable location found.",
+                error = "Permission denied"
+            )
+        }
     }
 
     suspend fun installBundle(
         bundleName: String,
         target: SkillInstallTarget,
-        projectPath: String? = null
+        projectPath: String? = null,
+        context: Context? = null
     ): SkillActionResult = withContext(Dispatchers.IO) {
-        val bDir = getLocalBaseDir() ?: return@withContext SkillActionResult(false, "Local catalog missing")
-        val pluginsDir = File(bDir, "plugins")
+        val ctx = context ?: AntiGemApplication.appContext
+        val bundles = listBundles(ctx)
+        val bundle = bundles.find { it.name.equals(bundleName, ignoreCase = true) }
 
-        val bundleDir = File(pluginsDir, "agentic-bundle-$bundleName").takeIf { it.exists() }
-            ?: File(pluginsDir, bundleName).takeIf { it.exists() }
-            ?: pluginsDir.listFiles()?.find { it.name.contains(bundleName) }
-
-        if (bundleDir == null || !bundleDir.exists()) {
-            return@withContext SkillActionResult(false, "Bundle '$bundleName' not found.")
+        val skillNames = bundle?.skills ?: emptyList()
+        if (skillNames.isEmpty()) {
+            return@withContext SkillActionResult(false, "Bundle '$bundleName' not found or contains no skills.")
         }
 
-        val skillsSub = File(bundleDir, "skills")
-        if (!skillsSub.exists() || !skillsSub.isDirectory) {
-            return@withContext SkillActionResult(false, "Bundle has no skills folder.")
-        }
-
-        val skills = skillsSub.listFiles()?.filter { it.isDirectory } ?: emptyList()
         var installedCount = 0
-
-        for (s in skills) {
-            val res = installSkill(s.name, target, projectPath)
+        for (sName in skillNames) {
+            val res = installSkill(sName, target, projectPath, ctx)
             if (res.success) installedCount++
         }
 
         return@withContext SkillActionResult(
             success = installedCount > 0,
-            message = "Installed $installedCount skills from bundle '$bundleName' into ${target.displayName}!"
+            message = "Installed $installedCount/${skillNames.size} skills from bundle '$bundleName' into ${target.displayName}!"
         )
     }
 
-    suspend fun listBundles(): List<SkillBundle> = withContext(Dispatchers.IO) {
-        val bDir = getLocalBaseDir() ?: return@withContext emptyList()
-        val pluginsDir = File(bDir, "plugins")
-        if (!pluginsDir.exists()) return@withContext emptyList()
-
+    suspend fun listBundles(context: Context? = null): List<SkillBundle> = withContext(Dispatchers.IO) {
+        val ctx = context ?: AntiGemApplication.appContext
+        val bDir = getLocalBaseDir(ctx)
         val list = mutableListOf<SkillBundle>()
-        val dirs = pluginsDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("agentic-bundle-") } ?: emptyList()
 
-        for (d in dirs.sortedBy { it.name }) {
-            val rawName = d.name.removePrefix("agentic-bundle-")
-            val displayName = rawName.split("-").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
-            val skillsSub = File(d, "skills")
-            val skills = skillsSub.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
+        // 1. Try local filesystem if accessible
+        if (bDir != null) {
+            try {
+                val pluginsDir = File(bDir, "plugins")
+                if (pluginsDir.exists() && pluginsDir.canRead()) {
+                    val dirs = pluginsDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("agentic-bundle-") } ?: emptyList()
+                    for (d in dirs.sortedBy { it.name }) {
+                        val rawName = d.name.removePrefix("agentic-bundle-")
+                        val displayName = rawName.split("-").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                        val skillsSub = File(d, "skills")
+                        val skills = skillsSub.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
 
-            var desc = "Curated bundle of ${skills.size} expert skills for $displayName."
-            val pluginJson = File(d, "plugin.json")
-            if (pluginJson.exists()) {
-                try {
-                    val obj = JSONObject(pluginJson.readText(Charsets.UTF_8))
-                    val dStr = obj.optString("description", "")
-                    if (dStr.isNotBlank()) desc = dStr
-                } catch (_: Exception) {}
-            }
+                        var desc = "Curated bundle of ${skills.size} expert skills for $displayName."
+                        val pluginJson = File(d, "plugin.json")
+                        if (pluginJson.exists()) {
+                            try {
+                                val obj = JSONObject(pluginJson.readText(Charsets.UTF_8))
+                                val dStr = obj.optString("description", "")
+                                if (dStr.isNotBlank()) desc = dStr
+                            } catch (_: Exception) {}
+                        }
+                        list.add(SkillBundle(rawName, displayName, desc, skills))
+                    }
+                }
+            } catch (_: Exception) {}
+        }
 
-            list.add(SkillBundle(rawName, displayName, desc, skills))
+        // 2. Try IDE Bridge daemon fallback
+        if (list.isEmpty()) {
+            try {
+                val bridgeBundles = IdeApiClient.getSkillBundles()
+                if (bridgeBundles.isNotEmpty()) return@withContext bridgeBundles
+            } catch (_: Exception) {}
+        }
+
+        // 3. Fallback to predefined curated bundles
+        if (list.isEmpty()) {
+            return@withContext getCuratedFallbackBundles()
         }
 
         return@withContext list
     }
+
+    fun getCuratedFallbackBundles(): List<SkillBundle> = listOf(
+        SkillBundle(
+            name = "essentials",
+            displayName = "Essentials",
+            description = "Core software development, design, debugging, testing, and architecture skills.",
+            skills = listOf(
+                "concise-planning", "brainstorming", "systematic-debugging", "test-driven-development",
+                "clean-code", "refactoring-patterns", "api-design-principles", "database-design"
+            )
+        ),
+        SkillBundle(
+            name = "frontend",
+            displayName = "Frontend & UI/UX",
+            description = "High-end visual design, responsive layouts, Tailwind, React, and accessibility.",
+            skills = listOf(
+                "frontend-developer", "frontend-design", "high-end-visual-design", "tailwind-patterns",
+                "react-patterns", "nextjs-best-practices", "build-ui", "ui-ux-pro-max", "shadcn", "ui-a11y"
+            )
+        ),
+        SkillBundle(
+            name = "backend",
+            displayName = "Backend & Systems",
+            description = "Scalable backend architecture, APIs, microservices, databases, and microservices.",
+            skills = listOf(
+                "backend-architect", "api-endpoint-builder", "fastapi-pro", "python-pro",
+                "golang-pro", "rust-pro", "nodejs-best-practices", "database-architect", "sql-pro"
+            )
+        ),
+        SkillBundle(
+            name = "security",
+            displayName = "Security & Reverse Engineering",
+            description = "Penetration testing, SAST, vulnerability scanning, and reverse engineering tools.",
+            skills = listOf(
+                "security-auditor", "vulnerability-scanner", "sast-configuration",
+                "web-security-testing", "api-security-testing", "cloud-penetration-testing"
+            )
+        ),
+        SkillBundle(
+            name = "devops",
+            displayName = "DevOps & Cloud",
+            description = "Kubernetes, Terraform, CI/CD pipelines, Docker, and observability.",
+            skills = listOf(
+                "kubernetes-architect", "terraform-specialist", "github-actions-templates",
+                "observability-engineer", "devops-troubleshooter", "incident-responder"
+            )
+        ),
+        SkillBundle(
+            name = "mobile",
+            displayName = "Mobile Development",
+            description = "Android, iOS, Flutter, and React Native mobile application development.",
+            skills = listOf(
+                "mobile-developer", "flutter-expert", "ios-developer", "react-native-architecture",
+                "ios-screens", "hig-components-layout"
+            )
+        )
+    )
 
     suspend fun listInstalled(targetDir: File): List<String> = withContext(Dispatchers.IO) {
         if (!targetDir.exists() || !targetDir.isDirectory) return@withContext emptyList()
@@ -363,8 +533,19 @@ object AgenticSkillsRepository {
         }?.map { it.name }?.sorted() ?: emptyList()
     }
 
-    fun getAllSkillSearchDirs(projectPath: String? = null): List<File> {
+    fun getAllSkillSearchDirs(projectPath: String? = null, context: Context? = null): List<File> {
         val list = mutableListOf<File>()
+        val ctx = context ?: AntiGemApplication.appContext
+        if (ctx != null) {
+            val appBase = ctx.filesDir
+            list.add(File(appBase, "skills"))
+            list.add(File(appBase, ".antibot/skills"))
+            list.add(File(appBase, "skills_cache/skills"))
+            list.add(File(appBase, "gemini/config/skills"))
+            list.add(File(appBase, "claude/skills"))
+            list.add(File(appBase, "codex/skills"))
+            list.add(File(appBase, "opencode/skills"))
+        }
         if (!projectPath.isNullOrBlank()) {
             list.add(File(projectPath, ".agents/skills"))
         }
@@ -376,9 +557,9 @@ object AgenticSkillsRepository {
         return list
     }
 
-    suspend fun listAllInstalled(projectPath: String? = null): List<String> = withContext(Dispatchers.IO) {
+    suspend fun listAllInstalled(projectPath: String? = null, context: Context? = null): List<String> = withContext(Dispatchers.IO) {
         val all = mutableSetOf<String>()
-        for (d in getAllSkillSearchDirs(projectPath)) {
+        for (d in getAllSkillSearchDirs(projectPath, context)) {
             if (d.exists() && d.isDirectory) {
                 d.listFiles()?.filter { it.isDirectory && File(it, "SKILL.md").exists() }?.forEach {
                     all.add(it.name)
@@ -388,38 +569,46 @@ object AgenticSkillsRepository {
         return@withContext all.sorted()
     }
 
-    suspend fun isSkillInstalled(skillId: String, projectPath: String? = null): Boolean = withContext(Dispatchers.IO) {
-        for (d in getAllSkillSearchDirs(projectPath)) {
+    suspend fun isSkillInstalled(skillId: String, projectPath: String? = null, context: Context? = null): Boolean = withContext(Dispatchers.IO) {
+        for (d in getAllSkillSearchDirs(projectPath, context)) {
             if (File(d, "$skillId/SKILL.md").exists()) return@withContext true
         }
         return@withContext false
     }
 
-    suspend fun getInstalledSkillLocations(skillId: String, projectPath: String? = null): List<String> = withContext(Dispatchers.IO) {
+    suspend fun getInstalledSkillLocations(skillId: String, projectPath: String? = null, context: Context? = null): List<String> = withContext(Dispatchers.IO) {
         val locs = mutableListOf<String>()
+        val ctx = context ?: AntiGemApplication.appContext
+        val appBase = ctx?.filesDir
+
         if (!projectPath.isNullOrBlank() && File(projectPath, ".agents/skills/$skillId/SKILL.md").exists()) {
             locs.add("Project")
         }
-        if (File("/data/user/0/com.termux/files/home/.antibot/skills/$skillId/SKILL.md").exists()) {
+        if ((appBase != null && (File(appBase, "skills/$skillId/SKILL.md").exists() || File(appBase, ".antibot/skills/$skillId/SKILL.md").exists())) ||
+            File("/data/user/0/com.termux/files/home/.antibot/skills/$skillId/SKILL.md").exists()) {
             locs.add("Local Model")
         }
-        if (File("/data/user/0/com.termux/files/home/.gemini/config/skills/$skillId/SKILL.md").exists()) {
+        if ((appBase != null && File(appBase, "gemini/config/skills/$skillId/SKILL.md").exists()) ||
+            File("/data/user/0/com.termux/files/home/.gemini/config/skills/$skillId/SKILL.md").exists()) {
             locs.add("Antigravity")
         }
-        if (File("/data/user/0/com.termux/files/home/.claude/skills/$skillId/SKILL.md").exists()) {
+        if ((appBase != null && File(appBase, "claude/skills/$skillId/SKILL.md").exists()) ||
+            File("/data/user/0/com.termux/files/home/.claude/skills/$skillId/SKILL.md").exists()) {
             locs.add("Claude Code")
         }
-        if (File("/data/user/0/com.termux/files/home/.codex/skills/$skillId/SKILL.md").exists()) {
+        if ((appBase != null && File(appBase, "codex/skills/$skillId/SKILL.md").exists()) ||
+            File("/data/user/0/com.termux/files/home/.codex/skills/$skillId/SKILL.md").exists()) {
             locs.add("Codex")
         }
-        if (File("/data/user/0/com.termux/files/home/.opencode/skills/$skillId/SKILL.md").exists()) {
+        if ((appBase != null && File(appBase, "opencode/skills/$skillId/SKILL.md").exists()) ||
+            File("/data/user/0/com.termux/files/home/.opencode/skills/$skillId/SKILL.md").exists()) {
             locs.add("OpenCode")
         }
         return@withContext locs
     }
 
-    suspend fun findInstalledSkillDir(skillId: String, projectPath: String? = null): File? = withContext(Dispatchers.IO) {
-        for (d in getAllSkillSearchDirs(projectPath)) {
+    suspend fun findInstalledSkillDir(skillId: String, projectPath: String? = null, context: Context? = null): File? = withContext(Dispatchers.IO) {
+        for (d in getAllSkillSearchDirs(projectPath, context)) {
             val sDir = File(d, skillId)
             if (File(sDir, "SKILL.md").exists()) return@withContext sDir
         }
@@ -572,25 +761,18 @@ object AgenticSkillsRepository {
         // 3. Re-sync installed skills in active project & global configs
         var refreshedInstalledCount = 0
         try {
-            val targetDirs = mutableListOf<File>()
-            if (!projectPath.isNullOrBlank()) {
-                targetDirs.add(File(projectPath, ".agents/skills"))
-            }
-            targetDirs.add(File("/data/user/0/com.termux/files/home/.antibot/skills"))
-            targetDirs.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
-            targetDirs.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
-            targetDirs.add(File("/data/user/0/com.termux/files/home/.codex/skills"))
-            targetDirs.add(File("/data/user/0/com.termux/files/home/.opencode/skills"))
-
+            val targetDirs = getAllSkillSearchDirs(projectPath, context)
             val srcSkills = File(bDir, "skills")
-            if (srcSkills.exists()) {
+            if (srcSkills.exists() && srcSkills.canRead()) {
                 for (tDir in targetDirs) {
-                    if (tDir.exists() && tDir.isDirectory) {
+                    if (tDir.exists() && tDir.isDirectory && tDir.canWrite()) {
                         tDir.listFiles()?.filter { it.isDirectory }?.forEach { installedDir ->
                             val srcDir = File(srcSkills, installedDir.name)
                             if (srcDir.exists() && srcDir.isDirectory) {
-                                srcDir.copyRecursively(installedDir, overwrite = true)
-                                refreshedInstalledCount++
+                                try {
+                                    srcDir.copyRecursively(installedDir, overwrite = true)
+                                    refreshedInstalledCount++
+                                } catch (_: Exception) {}
                             }
                         }
                     }
@@ -632,29 +814,23 @@ object AgenticSkillsRepository {
         }
     }
 
-    suspend fun updateAllInstalledSkills(projectPath: String? = null): SkillActionResult = withContext(Dispatchers.IO) {
-        val bDir = getLocalBaseDir() ?: return@withContext SkillActionResult(false, "Skills catalog missing")
+    suspend fun updateAllInstalledSkills(projectPath: String? = null, context: Context? = null): SkillActionResult = withContext(Dispatchers.IO) {
+        val ctx = context ?: AntiGemApplication.appContext
+        val bDir = getLocalBaseDir(ctx) ?: return@withContext SkillActionResult(false, "Skills catalog missing")
         val srcSkills = File(bDir, "skills")
-        if (!srcSkills.exists()) return@withContext SkillActionResult(false, "Skills source folder missing")
+        if (!srcSkills.exists() || !srcSkills.canRead()) return@withContext SkillActionResult(false, "Skills source folder missing or unreadable")
 
-        val targetDirs = mutableListOf<File>()
-        if (!projectPath.isNullOrBlank()) {
-            targetDirs.add(File(projectPath, ".agents/skills"))
-        }
-        targetDirs.add(File("/data/user/0/com.termux/files/home/.antibot/skills"))
-        targetDirs.add(File("/data/user/0/com.termux/files/home/.gemini/config/skills"))
-        targetDirs.add(File("/data/user/0/com.termux/files/home/.claude/skills"))
-        targetDirs.add(File("/data/user/0/com.termux/files/home/.codex/skills"))
-        targetDirs.add(File("/data/user/0/com.termux/files/home/.opencode/skills"))
-
+        val targetDirs = getAllSkillSearchDirs(projectPath, ctx)
         var updatedCount = 0
         for (tDir in targetDirs) {
-            if (tDir.exists() && tDir.isDirectory) {
+            if (tDir.exists() && tDir.isDirectory && tDir.canWrite()) {
                 tDir.listFiles()?.filter { it.isDirectory }?.forEach { installedDir ->
                     val srcDir = File(srcSkills, installedDir.name)
                     if (srcDir.exists() && srcDir.isDirectory) {
-                        srcDir.copyRecursively(installedDir, overwrite = true)
-                        updatedCount++
+                        try {
+                            srcDir.copyRecursively(installedDir, overwrite = true)
+                            updatedCount++
+                        } catch (_: Exception) {}
                     }
                 }
             }

@@ -1,6 +1,7 @@
 package com.example.gemini
 
 import android.app.Application
+import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.os.Build
@@ -12,8 +13,17 @@ import com.telemetrydeck.sdk.TelemetryDeck
 import java.security.MessageDigest
 
 class AntiGemApplication : Application() {
+    companion object {
+        var instance: AntiGemApplication? = null
+            private set
+        val appContext: Context? get() = instance?.applicationContext
+        // SHA-256 of the release.jks certificate (alias "antigem"). Public, safe to commit.
+        const val RELEASE_CERT_SHA256 = "CCF2C681063BA941641519E4EAC7F024E92880CCD06EED5070DAA9717380F315"
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         com.example.gemini.data.preferences.AuthPreferences(this)
         com.example.gemini.theme.ThemeManager.init(this)
         UpdateCheckWorker.schedule(this)
@@ -37,9 +47,4 @@ class AntiGemApplication : Application() {
                 .joinToString("") { "%02X".format(it) } == RELEASE_CERT_SHA256
         }
     }.getOrDefault(false)
-
-    private companion object {
-        // SHA-256 of the release.jks certificate (alias "antigem"). Public, safe to commit.
-        const val RELEASE_CERT_SHA256 = "CCF2C681063BA941641519E4EAC7F024E92880CCD06EED5070DAA9717380F315"
-    }
 }

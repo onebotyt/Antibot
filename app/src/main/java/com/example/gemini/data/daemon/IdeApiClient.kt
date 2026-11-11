@@ -728,4 +728,56 @@ object IdeApiClient {
         }
         null
     }
+
+    suspend fun installBridgeSkill(id: String, target: String, projectPath: String? = null): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("id", id)
+                put("target", target)
+                if (projectPath != null) put("projectPath", projectPath)
+            }.toString()
+            val request = Request.Builder()
+                .url("$baseUrl/api/skills/install")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "installBridgeSkill failed: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun getSkillBundles(): List<com.example.gemini.data.skills.SkillBundle> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/skills/bundles")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val bodyStr = response.body?.string().orEmpty()
+                val json = JSONObject(bodyStr)
+                val arr = json.optJSONArray("bundles") ?: JSONArray()
+                val list = mutableListOf<com.example.gemini.data.skills.SkillBundle>()
+                for (i in 0 until arr.length()) {
+                    val b = arr.getJSONObject(i)
+                    val skillsArr = b.optJSONArray("skills") ?: JSONArray()
+                    val skillList = mutableListOf<String>()
+                    for (j in 0 until skillsArr.length()) {
+                        skillList.add(skillsArr.getString(j))
+                    }
+                    val name = b.optString("name", "")
+                    val displayName = b.optString("displayName", name.replace("-", " "))
+                    val desc = b.optString("description", "Curated bundle of ${skillList.size} skills")
+                    list.add(com.example.gemini.data.skills.SkillBundle(name, displayName, desc, skillList))
+                }
+                list
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getSkillBundles failed: ${e.message}")
+            emptyList()
+        }
+    }
 }

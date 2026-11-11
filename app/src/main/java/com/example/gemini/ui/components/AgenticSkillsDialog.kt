@@ -77,8 +77,8 @@ fun AgenticSkillsDialog(
     LaunchedEffect(Unit) {
         isSearching = true
         searchResults = AgenticSkillsRepository.searchSkills("", limit = 40, context = context)
-        bundles = AgenticSkillsRepository.listBundles()
-        installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
+        bundles = AgenticSkillsRepository.listBundles(context = context)
+        installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path, context = context)
         isSearching = false
 
         // Background check for skills updates from repository
@@ -268,7 +268,7 @@ fun AgenticSkillsDialog(
                                             Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
                                             updateStatus = AgenticSkillsRepository.checkForUpdates()
                                             searchResults = AgenticSkillsRepository.searchSkills(searchQuery, limit = 50, context = context)
-                                            installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
+                                            installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path, context = context)
                                         } else {
                                             Toast.makeText(context, "Update failed: ${res.error ?: res.message}", Toast.LENGTH_LONG).show()
                                         }
@@ -411,9 +411,9 @@ fun AgenticSkillsDialog(
                 val meta = showTargetPickerForSkill!!
                 showTargetPickerForSkill = null
                 scope.launch {
-                    val res = AgenticSkillsRepository.installSkill(meta.id, target, activeProject?.path)
+                    val res = AgenticSkillsRepository.installSkill(meta.id, target, activeProject?.path, context = context)
                     Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
-                    installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
+                    installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path, context = context)
                 }
             }
         )
@@ -429,9 +429,9 @@ fun AgenticSkillsDialog(
                 val bundle = showTargetPickerForBundle!!
                 showTargetPickerForBundle = null
                 scope.launch {
-                    val res = AgenticSkillsRepository.installBundle(bundle.name, target, activeProject?.path)
+                    val res = AgenticSkillsRepository.installBundle(bundle.name, target, activeProject?.path, context = context)
                     Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
-                    installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path)
+                    installedSkills = AgenticSkillsRepository.listAllInstalled(activeProject?.path, context = context)
                 }
             }
         )

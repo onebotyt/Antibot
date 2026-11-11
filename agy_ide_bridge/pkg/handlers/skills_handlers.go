@@ -208,32 +208,53 @@ func (h *Handler) SkillsInstallHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var targetDir string
+	var targetDirs []string
 	switch strings.ToLower(req.Target) {
 	case "gemini":
-		targetDir = config.ExpandHome("~/.gemini/config/skills")
+		targetDirs = []string{config.ExpandHome("~/.gemini/config/skills")}
 	case "codex":
-		targetDir = config.ExpandHome("~/.codex/skills")
+		targetDirs = []string{config.ExpandHome("~/.codex/skills")}
 	case "claude":
-		targetDir = config.ExpandHome("~/.claude/skills")
+		targetDirs = []string{config.ExpandHome("~/.claude/skills")}
 	case "opencode":
-		targetDir = config.ExpandHome("~/.opencode/skills")
+		targetDirs = []string{config.ExpandHome("~/.opencode/skills")}
+	case "local", "antibot":
+		targetDirs = []string{config.ExpandHome("~/.antibot/skills")}
+	case "universal":
+		targetDirs = []string{
+			config.ExpandHome("~/.antibot/skills"),
+			config.ExpandHome("~/.gemini/config/skills"),
+			config.ExpandHome("~/.claude/skills"),
+			config.ExpandHome("~/.codex/skills"),
+			config.ExpandHome("~/.opencode/skills"),
+		}
+		proj := req.ProjectPath
+		if proj == "" {
+			proj = h.Cfg.WorkspaceDir
+		}
+		if proj != "" {
+			targetDirs = append(targetDirs, filepath.Join(config.ExpandHome(proj), ".agents/skills"))
+		}
 	default:
 		if req.ProjectPath == "" {
 			req.ProjectPath = h.Cfg.WorkspaceDir
 		}
-		targetDir = filepath.Join(config.ExpandHome(req.ProjectPath), ".agents/skills")
+		targetDirs = []string{filepath.Join(config.ExpandHome(req.ProjectPath), ".agents/skills")}
 	}
 
-	destDir := filepath.Join(targetDir, req.ID)
-	os.MkdirAll(targetDir, 0755)
-
-	// Copy recursively
-	copyDir(srcSkillDir, destDir)
+	var firstInstalled string
+	for _, td := range targetDirs {
+		destDir := filepath.Join(td, req.ID)
+		os.MkdirAll(td, 0755)
+		copyDir(srcSkillDir, destDir)
+		if firstInstalled == "" {
+			firstInstalled = destDir
+		}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":       true,
-		"installedPath": destDir,
+		"installedPath": firstInstalled,
 		"message":       "Skill installed successfully",
 	})
 }

@@ -213,40 +213,66 @@ pub async fn skills_install_handler(
     let home = std::env::var("HOME").unwrap_or_else(|_| "/data/data/com.termux/files/home".to_string());
     let target = req.target.unwrap_or_else(|| "project".to_string()).to_lowercase();
 
-    let target_dir = match target.as_str() {
-        "gemini" => PathBuf::from(&home).join(".gemini/config/skills"),
-        "codex" => PathBuf::from(&home).join(".codex/skills"),
-        "claude" => PathBuf::from(&home).join(".claude/skills"),
-        "opencode" => PathBuf::from(&home).join(".opencode/skills"),
-        _ => {
+    let mut target_dirs: Vec<PathBuf> = Vec::new();
+
+    match target.as_str() {
+        "gemini" => target_dirs.push(PathBuf::from(&home).join(".gemini/config/skills")),
+        "codex" => target_dirs.push(PathBuf::from(&home).join(".codex/skills")),
+        "claude" => target_dirs.push(PathBuf::from(&home).join(".claude/skills")),
+        "opencode" => target_dirs.push(PathBuf::from(&home).join(".opencode/skills")),
+        "local" | "antibot" => target_dirs.push(PathBuf::from(&home).join(".antibot/skills")),
+        "universal" => {
+            target_dirs.push(PathBuf::from(&home).join(".antibot/skills"));
+            target_dirs.push(PathBuf::from(&home).join(".gemini/config/skills"));
+            target_dirs.push(PathBuf::from(&home).join(".claude/skills"));
+            target_dirs.push(PathBuf::from(&home).join(".codex/skills"));
+            target_dirs.push(PathBuf::from(&home).join(".opencode/skills"));
             let proj_path = req
                 .project_path
+                .as_deref()
                 .filter(|p| !p.trim().is_empty())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| state.workspace_dir.clone());
-            proj_path.join(".agents/skills")
+            target_dirs.push(proj_path.join(".agents/skills"));
+        }
+        _ => {
+            let proj_path = req
+                .project_path
+                .as_deref()
+                .filter(|p| !p.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| state.workspace_dir.clone());
+            target_dirs.push(proj_path.join(".agents/skills"));
         }
     };
 
-    let dest = target_dir.join(&req.id);
-    let _ = fs::create_dir_all(&target_dir);
+    let mut installed_paths: Vec<String> = Vec::new();
+    for tdir in &target_dirs {
+        let dest = tdir.join(&req.id);
+        let _ = fs::create_dir_all(tdir);
+        if copy_dir_all(&src_skill_dir, &dest).is_ok() {
+            installed_paths.push(dest.to_string_lossy().to_string());
+        }
+    }
 
-    match copy_dir_all(&src_skill_dir, &dest) {
-        Ok(_) => (
+    if !installed_paths.is_empty() {
+        (
             StatusCode::OK,
             Json(json!({
                 "success": true,
-                "installedPath": dest.to_string_lossy().to_string(),
+                "installedPath": installed_paths[0],
+                "installedPaths": installed_paths,
                 "message": format!("Skill '{}' installed successfully", req.id)
             })),
-        ),
-        Err(e) => (
+        )
+    } else {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "error": e.to_string()
+                "error": "Failed to copy skill files to any destination"
             })),
-        ),
+        )
     }
 }
 
