@@ -996,6 +996,7 @@ fun ChatScreen(
                 description = "OpenCode CLI",
                 family = com.example.gemini.domain.model.ModelFamily.OTHER
             )
+        }
         isDshChat -> {
             val dshSelId = dshBackend.selectedModelId.collectAsState().value
             val modelObj = dshBackend.availableModels.collectAsState().value.find { it.id == dshSelId }
