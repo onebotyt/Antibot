@@ -255,7 +255,8 @@ val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
       cp "$1" "$2"
     elif [ -f "src/main/assets/bin/agy_ide_bridge.xz" ]; then
       echo "📦 Using pre-compressed asset bridge..."
-      touch "$2"
+      xz -d -c "src/main/assets/bin/agy_ide_bridge.xz" > "$2"
+      chmod +x "$2"
     else
       echo "❌ Neither Rust binary nor asset bridge found!"
       exit 1

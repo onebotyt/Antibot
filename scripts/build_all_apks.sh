@@ -46,16 +46,22 @@ else
     cp "${OUTPUT_DIR}/antibot-v${VERSION_NAME}.apk" "${OUTPUT_DIR}/antibot.apk" 2>/dev/null || true
 fi
 
-if [[ -f "${ROOT_DIR}/agy_ide_bridge_rs/target/release/agy_ide_bridge_rs" ]]; then
+if [[ -s "${ROOT_DIR}/agy_ide_bridge_rs/target/release/agy_ide_bridge_rs" ]]; then
     cp "${ROOT_DIR}/agy_ide_bridge_rs/target/release/agy_ide_bridge_rs" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
     cp "${ROOT_DIR}/agy_ide_bridge_rs/target/release/agy_ide_bridge_rs" "${OUTPUT_DIR}/agy_ide_bridge"
-elif [[ -f "${ROOT_DIR}/app/build/intermediates/agyIdeBridge/agy_ide_bridge" ]]; then
+elif [[ -s "${ROOT_DIR}/app/build/intermediates/agyIdeBridge/agy_ide_bridge" ]]; then
     cp "${ROOT_DIR}/app/build/intermediates/agyIdeBridge/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
     cp "${ROOT_DIR}/app/build/intermediates/agyIdeBridge/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge"
-elif [[ -f "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" ]]; then
+elif [[ -s "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" ]]; then
     cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
     cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge"
+elif [[ -s "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge.xz" ]]; then
+    xz -d -c "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge.xz" > "${OUTPUT_DIR}/agy_ide_bridge"
+    cp "${OUTPUT_DIR}/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
 fi
+
+# Remove any empty 0-byte files so GitHub release asset validation never fails
+find "${OUTPUT_DIR}" -type f -size 0 -delete 2>/dev/null || true
 
 echo ""
 echo "================================================================="
