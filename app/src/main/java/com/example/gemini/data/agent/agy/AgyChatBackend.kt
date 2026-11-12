@@ -64,7 +64,7 @@ class AgyChatBackend(
     private val _messages = store.messages
     override val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
-    private val _conversationError = store.conversationError
+    private val _conversationError = MutableStateFlow<String?>(null)
     override val conversationError: StateFlow<String?> = _conversationError.asStateFlow()
 
     private val _userEmail = store.userEmail

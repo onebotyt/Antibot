@@ -66,10 +66,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== AGENT ROUTING (Antigravity / Local) ====================
 
+    private val agentPrefs = com.example.gemini.data.agent.AgentPreferences(application)
+    /** Agent used for new chats, picked on the empty chat screen (remembered). */
+    val newChatAgent: StateFlow<AgentKind> = agentPrefs.newChatAgent
+
     /** Agent of the conversation on screen; chat actions go to that agent's backend. */
-    val activeAgent: StateFlow<AgentKind> = store.currentConversation
-        .map { it?.agent ?: AgentKind.AGY }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, AgentKind.AGY)
+    val activeAgent: StateFlow<AgentKind> = kotlinx.coroutines.flow.combine(
+        store.currentConversation,
+        newChatAgent
+    ) { conv, defaultAgent ->
+        conv?.agent ?: defaultAgent
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, newChatAgent.value)
 
     val claudePrefs = com.example.gemini.data.agent.claude.ClaudePreferences(application)
     private val claudeClient = com.example.gemini.data.agent.claude.ClaudeBridgeClient()
@@ -91,10 +98,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isOpenCodeActive get() = store.currentConversation.value?.agent == AgentKind.OPENCODE
     val isCodexActive get() = store.currentConversation.value?.agent == AgentKind.CODEX
     val isDshActive get() = store.currentConversation.value?.agent == AgentKind.DSH
-
-    private val agentPrefs = com.example.gemini.data.agent.AgentPreferences(application)
-    /** Agent used for new chats, picked on the empty chat screen (remembered). */
-    val newChatAgent: StateFlow<AgentKind> = agentPrefs.newChatAgent
 
     /** Agents the app runs. */
     val enabledAgents: StateFlow<Set<AgentKind>> = agentPrefs.enabled
@@ -1628,8 +1631,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val _conversationError = store.conversationError
-    val conversationError: StateFlow<String?> = _conversationError.asStateFlow()
+    val conversationError: StateFlow<String?> = kotlinx.coroutines.flow.combine(
+        activeAgent,
+        agyBackend.conversationError,
+        claudeBackend.conversationError,
+        codexBackend.conversationError,
+        kotlinx.coroutines.flow.combine(
+            openCodeBackend.conversationError,
+            dshBackend.conversationError
+        ) { ocErr, dshErr -> ocErr to dshErr }
+    ) { agent, agyErr, claudeErr, codexErr, (openCodeErr, dshErr) ->
+        when (agent) {
+            AgentKind.AGY -> agyErr
+            AgentKind.CLAUDE -> claudeErr
+            AgentKind.CODEX -> codexErr
+            AgentKind.OPENCODE -> openCodeErr
+            AgentKind.DSH -> dshErr
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
 
     private val _conversationDrafts = mutableMapOf<String, androidx.compose.ui.text.input.TextFieldValue>()

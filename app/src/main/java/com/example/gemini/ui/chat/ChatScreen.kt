@@ -166,6 +166,7 @@ fun ChatScreen(
     val isClaudeChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.CLAUDE
     val isOpenCodeChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.OPENCODE
     val isCodexChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.CODEX
+    val isDshChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.DSH
     /** The chat on screen is Antigravity's (its hub, bridge banners and sign-in apply). */
     val isAgyChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.AGY
     val isFreshNewChat = currentConv == null || currentConv?.title == "New Chat"
@@ -995,6 +996,19 @@ fun ChatScreen(
                 description = "OpenCode CLI",
                 family = com.example.gemini.domain.model.ModelFamily.OTHER
             )
+        isDshChat -> {
+            val dshSelId = dshBackend.selectedModelId.collectAsState().value
+            val modelObj = dshBackend.availableModels.collectAsState().value.find { it.id == dshSelId }
+            AiModel(
+                id = dshSelId.ifBlank { "deepseek-reasoner" },
+                displayName = modelObj?.displayName ?: when (dshSelId) {
+                    "deepseek-reasoner" -> "DeepSeek R1"
+                    "deepseek-chat" -> "DeepSeek V3"
+                    else -> if (dshSelId.isNotBlank()) dshSelId else "DeepSeek R1"
+                },
+                description = "DeepSeek Harness",
+                family = com.example.gemini.domain.model.ModelFamily.OTHER
+            )
         }
         else -> AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
     }
@@ -1734,7 +1748,7 @@ fun ChatScreen(
                                         secondaryLabel = if (codexState == com.example.gemini.data.agent.codex.CodexState.CHECKING) null else "Server logs",
                                         onSecondary = { showLocalServerOutputDialog = true }
                                     )
-                                } else when (if (isClaudeChat || isOpenCodeChat || isCodexChat) null else systemConnectionState.status) {
+                                } else when (if (isClaudeChat || isOpenCodeChat || isCodexChat || isDshChat) null else systemConnectionState.status) {
                                     com.example.gemini.data.remote.SystemStatus.CHECKING_AUTH -> {
                                         com.example.gemini.ui.components.NewChatCheckingAuthPromptCard()
                                     }
@@ -2460,10 +2474,12 @@ fun ChatScreen(
                     isOnline = if (isCodexChat) !codexState.isBlocking
                         else if (isOpenCodeChat) !openCodeState.isBlocking
                         else if (isClaudeChat) !claudeState.isBlocking
+                        else if (isDshChat) true
                         else systemConnectionState.canSend,
                     isAuth = if (isCodexChat) codexState != com.example.gemini.data.agent.codex.CodexState.SIGNED_OUT
                         else if (isOpenCodeChat) true
                         else if (isClaudeChat) claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN
+                        else if (isDshChat) true
                         else systemConnectionState.isAuth,
                     offlineMessage = if (isCodexChat) when (codexState) {
                         com.example.gemini.data.agent.codex.CodexState.NOT_INSTALLED -> "Codex is not installed on the server. See Settings → Codex."
@@ -2477,7 +2493,8 @@ fun ChatScreen(
                         com.example.gemini.data.agent.claude.ClaudeStatus.NOT_INSTALLED -> "Claude Code is not installed. Set it up in Settings."
                         com.example.gemini.data.agent.claude.ClaudeStatus.BRIDGE_OUTDATED -> "Restart the local server to use Claude Code."
                         else -> "The local server is offline. Start it to send messages."
-                    } else "Server is offline. Start the server to send messages.",
+                    } else if (isDshChat) "DeepSeek Harness daemon is offline. Start the server to send messages."
+                    else "Server is offline. Start the server to send messages.",
                     selectedModel = currentModel,
                     quota = currentQuota,
                     textFieldValue = textFieldValue,

@@ -303,6 +303,11 @@ class LocalPtySession(
 
                 val ldLibPath = LocalEnvironmentManager.getLdLibraryPath(context)
                 envMap["LD_LIBRARY_PATH"] = ldLibPath
+                val termuxExec = File(lib, "libtermux-exec.so").takeIf { it.exists() }
+                    ?: File(prefix, "lib/libtermux-exec.so").takeIf { it.exists() }
+                if (termuxExec != null) {
+                    envMap["LD_PRELOAD"] = termuxExec.absolutePath
+                }
                 envMap["PREFIX"] = prefix.absolutePath
                 envMap["HOME"] = home.absolutePath
                 envMap["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
@@ -322,6 +327,19 @@ class LocalPtySession(
                 envMap["COLUMNS"] = "$safeCols"
                 envMap["LINES"] = "$safeRows"
                 envMap["PS1"] = "$ "
+                envMap["DPKG_ADMINDIR"] = "${prefix.absolutePath}/var/lib/dpkg"
+                envMap["DPKG_DATADIR"] = "${prefix.absolutePath}/share/dpkg"
+
+                val zshShare = File(prefix, "share/zsh")
+                if (zshShare.exists()) {
+                    val fpaths = mutableListOf<String>()
+                    zshShare.walkTopDown().maxDepth(3).filter { it.isDirectory && (it.name == "functions" || it.name == "site-functions" || it.name == "vendor-completions") }.forEach {
+                        fpaths.add(it.absolutePath)
+                    }
+                    if (fpaths.isNotEmpty()) {
+                        envMap["FPATH"] = fpaths.joinToString(":")
+                    }
+                }
 
                 val envList = envMap.map { "${it.key}=${it.value}" }.toTypedArray()
 

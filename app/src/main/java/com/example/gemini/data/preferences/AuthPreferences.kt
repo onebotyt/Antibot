@@ -291,9 +291,15 @@ class AuthPreferences(private val context: Context) {
 
     val groupChatsByWorkspace: Flow<Boolean> = context.dataStore.data.map { it[GROUP_CHATS_BY_WORKSPACE] ?: false }
 
-    val preferredModelId: Flow<String?> = context.dataStore.data.map { it[PREFERRED_MODEL_ID] }
+    val preferredModelId: Flow<String?> = context.dataStore.data.map { 
+        val id = it[PREFERRED_MODEL_ID]
+        if (id != null && (id.contains("smart", ignoreCase = true) || id.contains("router", ignoreCase = true))) null else id
+    }
     val preferredModelKey: Flow<String?> = context.dataStore.data.map { it[PREFERRED_MODEL_KEY] }
-    val preferredModelName: Flow<String?> = context.dataStore.data.map { it[PREFERRED_MODEL_NAME] }
+    val preferredModelName: Flow<String?> = context.dataStore.data.map { 
+        val name = it[PREFERRED_MODEL_NAME]
+        if (name != null && (name.contains("smart", ignoreCase = true) || name.contains("router", ignoreCase = true))) null else name
+    }
     val useSshTerminal: Flow<Boolean> = context.dataStore.data.map { 
         it[USE_SSH_TERMINAL] ?: false
     }

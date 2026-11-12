@@ -2497,6 +2497,25 @@ All files created here persist inside the application.
             env["LANG"] = "en_US.UTF-8"
             env["LC_ALL"] = "en_US.UTF-8"
 
+            val termuxExec = File(lib, "libtermux-exec.so").takeIf { it.exists() }
+                ?: File(prefix, "lib/libtermux-exec.so").takeIf { it.exists() }
+            if (termuxExec != null) {
+                env["LD_PRELOAD"] = termuxExec.absolutePath
+            }
+            env["DPKG_ADMINDIR"] = "${prefix.absolutePath}/var/lib/dpkg"
+            env["DPKG_DATADIR"] = "${prefix.absolutePath}/share/dpkg"
+
+            val zshShare = File(prefix, "share/zsh")
+            if (zshShare.exists()) {
+                val fpaths = mutableListOf<String>()
+                zshShare.walkTopDown().maxDepth(3).filter { it.isDirectory && (it.name == "functions" || it.name == "site-functions" || it.name == "vendor-completions") }.forEach {
+                    fpaths.add(it.absolutePath)
+                }
+                if (fpaths.isNotEmpty()) {
+                    env["FPATH"] = fpaths.joinToString(":")
+                }
+            }
+
             if (resolvedWorkingDir == null || !File(resolvedWorkingDir).exists()) {
                 resolvedWorkingDir = home.absolutePath
             }

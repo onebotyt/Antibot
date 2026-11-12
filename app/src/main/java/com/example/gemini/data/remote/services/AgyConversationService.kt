@@ -49,7 +49,28 @@ class AgyConversationService {
      * Subscribes to live conversation summary updates pushed by the AGY daemon via typed Wire LanguageServerService.
      */
     fun subscribeToSummaries(hubUrl: String = AuthPreferences.currentHubUrl, cloud: Boolean = false): Flow<SummariesUpdate> = flow {
-        if (!com.example.gemini.data.remote.AgyBridgeService.instance.awaitHubReady(timeoutMs = 10_000L)) {
+        if (!com.example.gemini.data.remote.AgyBridgeService.instance.awaitHubReady(timeoutMs = 2_000L)) {
+            if (!cloud && com.example.gemini.data.remote.AgyBridgeService.instance.isBridgeOnline) {
+                val bridgeConvs = com.example.gemini.data.remote.AgyBridgeService.instance.fetchConversations().getOrNull()
+                if (bridgeConvs != null) {
+                    val frameList = bridgeConvs.map { s ->
+                        Conversation(
+                            id = s.id,
+                            title = com.example.gemini.data.remote.PromptExpansion.cleanTitle(s.title),
+                            modelId = "",
+                            sessionId = s.id,
+                            summary = s.title,
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis(),
+                            isRunning = s.isRunning,
+                            stepCount = s.stepsCount,
+                            workspaceUri = ""
+                        )
+                    }
+                    emit(SummariesUpdate(frameList, emptySet()))
+                    return@flow
+                }
+            }
             throw Exception("Antigravity Hub is not running")
         }
         // cloud = the account's Antigravity cloud chats (Remote Agents), which the hub lists on request

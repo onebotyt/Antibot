@@ -233,13 +233,16 @@ data class AiModel(
         fun findInList(models: List<AiModel>, id: String, fallbackDisplayName: String? = null): AiModel {
             val found = models.find { it.id == id || (it.key.isNotBlank() && it.key.equals(id, ignoreCase = true)) }
             if (found != null) return found
-            if (!fallbackDisplayName.isNullOrBlank()) {
-                return fromApi(id.ifBlank { "gemini" }, fallbackDisplayName)
+            val sanitizedFallback = fallbackDisplayName?.takeIf { name ->
+                !name.contains("smart", ignoreCase = true) && !name.contains("router", ignoreCase = true)
             }
-            if (id.isNotBlank() && !id.startsWith("MODEL_", ignoreCase = true)) {
+            if (!sanitizedFallback.isNullOrBlank()) {
+                return fromApi(id.ifBlank { "gemini" }, sanitizedFallback)
+            }
+            if (id.isNotBlank() && !id.startsWith("MODEL_", ignoreCase = true) && !id.contains("smart", ignoreCase = true)) {
                 return fromApi(id, null)
             }
-            return if (models.isNotEmpty()) models.first() else AiModel("gemini", "Gemini")
+            return if (models.isNotEmpty()) models.first() else AiModel("gemini", "Gemini 2.5 Pro")
         }
     }
 }

@@ -34,6 +34,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         return;
     }
 
+    // Send initial hub status so client receives immediate status rather than timing out
+    let hub_status = json!({
+        "type": "hub_status",
+        "status": "stopped",
+        "port": state.hub_port.to_string(),
+        "csrf_token": "",
+        "logs": []
+    });
+    let _ = sender.send(Message::Text(hub_status.to_string())).await;
+
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if sender.send(Message::Text(msg)).await.is_err() {
