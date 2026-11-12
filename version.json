@@ -1,6 +1,6 @@
 {
-  "version_code": 261,
-  "version_name": "2.4.141",
+  "version_code": 262,
+  "version_name": "2.4.142",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udee0\ufe0f Terminal Environment & Startup Fixes: Resolved Permission Denied when opening dpkg configuration directory and missing zsh function definitions (add-zsh-hook, vcs_info, is-at-least) by injecting LD_PRELOAD (libtermux-exec.so), DPKG_ADMINDIR, and dynamic FPATH discovery into terminal and command execution sessions under com.antibot.",
