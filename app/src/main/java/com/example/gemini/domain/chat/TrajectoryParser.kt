@@ -28,6 +28,7 @@ object TrajectoryParser {
         "find", "find_by_name" -> "find"
         "grep_search", "code_search" -> "grep_search"
         "generate_image", "generateimage" -> "generate_image"
+        "invoke_subagent", "subagent", "dispatch_subagent" -> "invoke_subagent"
         else -> name.lowercase().trim()
     }
 

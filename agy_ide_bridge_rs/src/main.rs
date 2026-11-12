@@ -312,6 +312,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/subagents/invoke", post(handlers::subagents::subagent_invoke_handler))
         .route("/api/subagents/list", get(handlers::subagents::subagent_list_handler))
         .route("/api/subagents/:id/cancel", post(handlers::subagents::subagent_cancel_handler))
+        // DeepSeek Harness Goal Loop & Milestone Ledger
+        .route("/api/goal/start", post(handlers::goal::goal_start_handler))
+        .route("/api/goal/list", get(handlers::goal::goal_list_handler))
+        .route("/api/goal/:id", get(handlers::goal::goal_get_handler))
+        .route("/api/goal/:id/step", post(handlers::goal::goal_step_handler))
+        .route("/api/goal/:id/pause", post(handlers::goal::goal_pause_handler))
+        .route("/api/goal/:id/resume", post(handlers::goal::goal_resume_handler))
+        .route("/api/goal/:id/cancel", post(handlers::goal::goal_cancel_handler))
         // Fast Semantic Vector Index, RAG Cache & Tokenizer
         .route("/api/ai/similarity", post(handlers::ai::similarity_handler))
         .route("/api/ai/rag/search", post(handlers::ai::rag_search_handler))

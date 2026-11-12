@@ -15,7 +15,8 @@ enum class WorkStepType {
     FILE_CHECK,
     COMMAND_EXEC,
     WEB_SEARCH,
-    TOOL_GENERIC
+    TOOL_GENERIC,
+    SUBAGENT_EXEC
 }
 
 enum class WorkStepStatus {
@@ -223,6 +224,24 @@ object ClaudeWorkSummaryParser {
                         durationMs = tool.durationMs
                     )
                 }
+                tool.name == "invoke_subagent" || tool.name.contains("subagent", ignoreCase = true) -> {
+                    val role = extractSubagentRole(tool)
+                    val engine = extractSubagentEngine(tool)
+                    val title = when {
+                        role.isNotBlank() && engine.isNotBlank() -> "Subagent: $role ($engine)"
+                        role.isNotBlank() -> "Subagent: $role"
+                        engine.isNotBlank() -> "Subagent ($engine)"
+                        else -> "Subagent Delegated Task"
+                    }
+                    WorkSummaryStep(
+                        id = tool.id,
+                        type = WorkStepType.SUBAGENT_EXEC,
+                        title = if (toolStatus == WorkStepStatus.FAILED) "$title ⚠️" else title,
+                        detailText = "Subagent Spec:\n${tool.command}\n\nExecution Result:\n${tool.output}",
+                        status = toolStatus,
+                        durationMs = tool.durationMs
+                    )
+                }
                 else -> {
                     WorkSummaryStep(
                         id = tool.id,
@@ -276,6 +295,26 @@ object ClaudeWorkSummaryParser {
         if (outputMatch != null) {
             return outputMatch.groupValues[1].trim()
         }
+        return ""
+    }
+
+    private fun extractSubagentRole(tool: ToolCall): String {
+        val cmd = tool.command
+        val roleMatch = Regex("""Role[:=\s]+["']?([^"'\n,]+)""").find(cmd)
+        if (roleMatch != null) return roleMatch.groupValues[1].trim()
+        val typeMatch = Regex("""TypeName[:=\s]+["']?([^"'\n,]+)""").find(cmd)
+        if (typeMatch != null) return typeMatch.groupValues[1].trim()
+        val jsonRole = Regex(""""(?:role|type_name)"\s*:\s*"([^"]+)"""").find(cmd)
+        if (jsonRole != null) return jsonRole.groupValues[1].trim()
+        return ""
+    }
+
+    private fun extractSubagentEngine(tool: ToolCall): String {
+        val cmd = tool.command
+        val engineMatch = Regex("""(?:target_engine|engine|cli)[:=\s]+["']?([a-zA-Z0-9_\-]+)""").find(cmd)
+        if (engineMatch != null) return engineMatch.groupValues[1].trim().uppercase()
+        val modelMatch = Regex("""(?:model|model_tier)[:=\s]+["']?([a-zA-Z0-9_\-.]+)""").find(cmd)
+        if (modelMatch != null) return modelMatch.groupValues[1].trim()
         return ""
     }
 

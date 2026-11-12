@@ -83,6 +83,7 @@ pub fn normalize_tool_name(name: &str) -> String {
         "find" | "find_by_name" => "find".to_string(),
         "grep_search" | "code_search" => "grep_search".to_string(),
         "generate_image" | "generateimage" => "generate_image".to_string(),
+        "invoke_subagent" | "subagent" | "dispatch_subagent" => "invoke_subagent".to_string(),
         _ => lower,
     }
 }
@@ -1133,6 +1134,8 @@ mod tests {
         assert_eq!(normalize_tool_name("run_command"), "bash");
         assert_eq!(normalize_tool_name("write_to_file"), "edit_file");
         assert_eq!(normalize_tool_name("search_web"), "web_search");
+        assert_eq!(normalize_tool_name("invoke_subagent"), "invoke_subagent");
+        assert_eq!(normalize_tool_name("dispatch_subagent"), "invoke_subagent");
         assert_eq!(normalize_tool_name("custom_tool"), "custom_tool");
     }
 

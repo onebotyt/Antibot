@@ -105,6 +105,72 @@ fn get_registry() -> &'static SubagentRegistry {
     REGISTRY.get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
 }
 
+type CooldownMap = Arc<RwLock<HashMap<String, u64>>>;
+
+fn get_cooldowns() -> &'static CooldownMap {
+    static COOLDOWNS: OnceLock<CooldownMap> = OnceLock::new();
+    COOLDOWNS.get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+}
+
+pub fn record_rate_limit(engine: &str, cooldown_secs: u64) {
+    if let Ok(mut map) = get_cooldowns().write() {
+        let expire_at = now_millis() + (cooldown_secs * 1000);
+        map.insert(engine.to_lowercase(), expire_at);
+    }
+}
+
+#[allow(dead_code)]
+pub fn clear_rate_limit(engine: &str) {
+    if let Ok(mut map) = get_cooldowns().write() {
+        map.remove(&engine.to_lowercase());
+    }
+}
+
+pub fn is_rate_limited(engine: &str) -> bool {
+    if let Ok(map) = get_cooldowns().read() {
+        if let Some(&expire_at) = map.get(&engine.to_lowercase()) {
+            if now_millis() < expire_at {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn check_cli_binary(bin: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(bin)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn check_engine_installed(engine: &str) -> bool {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/data/data/com.termux/files/home".to_string());
+    match engine {
+        "gemini" => {
+            std::path::Path::new(&format!("{}/.gemini/jetski-standalone-oauth-token", home)).exists()
+                || std::path::Path::new(&format!("{}/.gemini/antigravity-cli", home)).exists()
+                || check_cli_binary("agy")
+                || check_cli_binary("gemini")
+        }
+        "claude" => {
+            std::path::Path::new(&format!("{}/.claude.json", home)).exists()
+                || std::path::Path::new(&format!("{}/.claude", home)).exists()
+                || check_cli_binary("claude")
+        }
+        "codex" => {
+            std::path::Path::new(&format!("{}/.codex", home)).exists()
+                || check_cli_binary("codex")
+        }
+        "opencode" => {
+            check_cli_binary("opencode")
+        }
+        "local" => true,
+        _ => false,
+    }
+}
+
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -117,13 +183,22 @@ fn now_millis() -> u64 {
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub fn build_engine_roster() -> SubagentRosterResponse {
+    let gemini_limited = is_rate_limited("gemini") || is_rate_limited("agy");
+    let gemini_installed = check_engine_installed("gemini");
+    let claude_limited = is_rate_limited("claude");
+    let claude_installed = check_engine_installed("claude");
+    let codex_limited = is_rate_limited("codex");
+    let codex_installed = check_engine_installed("codex");
+    let opencode_limited = is_rate_limited("opencode");
+    let opencode_installed = check_engine_installed("opencode");
+
     let engines = vec![
         EngineRosterItem {
             engine: "gemini".to_string(),
             display_name: "Antigravity (Gemini)".to_string(),
             icon_color: "#3B82F6".to_string(),
-            is_installed: true,
-            quota_available: true,
+            is_installed: gemini_installed,
+            quota_available: !gemini_limited,
             models: vec![
                 ModelSpecInfo {
                     id: "gemini-2.5-flash".to_string(),
@@ -131,7 +206,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "High-speed multimodal with adjustable thinking budget".to_string(),
                     context_window: 1_000_000,
                     supports_tools: true,
-                    quota_percentage: 95,
+                    quota_percentage: if gemini_limited { 0 } else { 95 },
                 },
                 ModelSpecInfo {
                     id: "gemini-2.5-pro".to_string(),
@@ -139,7 +214,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Deep reasoning, code comprehension, and architectural synthesis".to_string(),
                     context_window: 2_000_000,
                     supports_tools: true,
-                    quota_percentage: 80,
+                    quota_percentage: if gemini_limited { 0 } else { 80 },
                 },
             ],
         },
@@ -147,8 +222,8 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
             engine: "claude".to_string(),
             display_name: "Claude Code CLI".to_string(),
             icon_color: "#CC785C".to_string(),
-            is_installed: true,
-            quota_available: true,
+            is_installed: claude_installed,
+            quota_available: !claude_limited,
             models: vec![
                 ModelSpecInfo {
                     id: "claude-3-5-sonnet".to_string(),
@@ -156,7 +231,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Gold standard for refactoring, complex bug fixing, and terminal tool use".to_string(),
                     context_window: 200_000,
                     supports_tools: true,
-                    quota_percentage: 75,
+                    quota_percentage: if claude_limited { 0 } else { 75 },
                 },
                 ModelSpecInfo {
                     id: "claude-3-5-haiku".to_string(),
@@ -164,7 +239,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Near-instantaneous subtask generation and fast code scanning".to_string(),
                     context_window: 200_000,
                     supports_tools: true,
-                    quota_percentage: 90,
+                    quota_percentage: if claude_limited { 0 } else { 90 },
                 },
                 ModelSpecInfo {
                     id: "claude-3-opus".to_string(),
@@ -172,7 +247,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Deep context comprehension and strategic architecture".to_string(),
                     context_window: 200_000,
                     supports_tools: true,
-                    quota_percentage: 60,
+                    quota_percentage: if claude_limited { 0 } else { 60 },
                 },
             ],
         },
@@ -180,8 +255,8 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
             engine: "codex".to_string(),
             display_name: "Codex CLI".to_string(),
             icon_color: "#10A37F".to_string(),
-            is_installed: true,
-            quota_available: true,
+            is_installed: codex_installed,
+            quota_available: !codex_limited,
             models: vec![
                 ModelSpecInfo {
                     id: "gpt-4o".to_string(),
@@ -189,7 +264,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "High-intelligence flagship omni model for general coding and analysis".to_string(),
                     context_window: 128_000,
                     supports_tools: true,
-                    quota_percentage: 85,
+                    quota_percentage: if codex_limited { 0 } else { 85 },
                 },
                 ModelSpecInfo {
                     id: "o1-preview".to_string(),
@@ -197,7 +272,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Step-by-step mathematical and algorithmic reasoning".to_string(),
                     context_window: 128_000,
                     supports_tools: false,
-                    quota_percentage: 70,
+                    quota_percentage: if codex_limited { 0 } else { 70 },
                 },
                 ModelSpecInfo {
                     id: "o1-mini".to_string(),
@@ -205,7 +280,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Fast reasoning model specialized in STEM and coding".to_string(),
                     context_window: 128_000,
                     supports_tools: false,
-                    quota_percentage: 90,
+                    quota_percentage: if codex_limited { 0 } else { 90 },
                 },
             ],
         },
@@ -246,8 +321,8 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
             engine: "opencode".to_string(),
             display_name: "OpenCode CLI".to_string(),
             icon_color: "#3B82F6".to_string(),
-            is_installed: true,
-            quota_available: true,
+            is_installed: opencode_installed,
+            quota_available: !opencode_limited,
             models: vec![
                 ModelSpecInfo {
                     id: "opencode-default".to_string(),
@@ -255,7 +330,7 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
                     description: "Connected provider models".to_string(),
                     context_window: 64_000,
                     supports_tools: true,
-                    quota_percentage: 80,
+                    quota_percentage: if opencode_limited { 0 } else { 80 },
                 },
             ],
         },
@@ -474,6 +549,10 @@ pub async fn subagent_invoke_handler(
                 || err_msg.contains("quota")
                 || err_msg.contains("ResourceExhausted");
 
+            if is_rate_limit {
+                record_rate_limit(&executing_engine, 120);
+            }
+
             if is_rate_limit && payload.allow_failover {
                 // Failover election
                 if let Some((succ_engine, succ_model)) =
@@ -647,5 +726,29 @@ mod tests {
             subagent_cancel_handler(AxumPath("sub-cancel-id".to_string())).await;
         assert_eq!(cancel_st, StatusCode::OK);
         assert_eq!(cancel_res["status"], "cancelled");
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_tracking_and_roster_update() {
+        clear_rate_limit("claude");
+        assert!(!is_rate_limited("claude"));
+
+        record_rate_limit("claude", 60);
+        assert!(is_rate_limited("claude"));
+
+        let (status, Json(roster)) = subagent_roster_handler().await;
+        assert_eq!(status, StatusCode::OK);
+        let claude = roster.engines.iter().find(|e| e.engine == "claude").unwrap();
+        assert!(!claude.quota_available);
+        for m in &claude.models {
+            assert_eq!(m.quota_percentage, 0);
+        }
+
+        clear_rate_limit("claude");
+        assert!(!is_rate_limited("claude"));
+        let (_, Json(roster_cleared)) = subagent_roster_handler().await;
+        let claude_cleared = roster_cleared.engines.iter().find(|e| e.engine == "claude").unwrap();
+        assert!(claude_cleared.quota_available);
+        assert!(claude_cleared.models[0].quota_percentage > 0);
     }
 }

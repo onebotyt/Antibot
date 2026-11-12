@@ -19,3 +19,4 @@ pub mod opencode;
 pub mod rea;
 pub mod skills;
 pub mod subagents;
+pub mod goal;

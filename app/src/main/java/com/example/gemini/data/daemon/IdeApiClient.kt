@@ -842,4 +842,152 @@ object IdeApiClient {
         }
         null
     }
+
+    /**
+     * DeepSeek Harness Goal Loop: Starts an autonomous goal workflow with milestone ledger.
+     */
+    suspend fun startGoal(
+        prompt: String,
+        preferredEngine: String? = null,
+        conversationId: String? = null
+    ): GoalInfo? = withContext(Dispatchers.IO) {
+        try {
+            val bodyObj = JSONObject().apply {
+                put("prompt", prompt)
+                preferredEngine?.let { put("preferred_engine", it) }
+                conversationId?.let { put("conversation_id", it) }
+            }
+            val req = Request.Builder()
+                .url("$baseUrl/api/goal/start")
+                .post(bodyObj.toString().toRequestBody(JSON))
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val str = resp.body?.string().orEmpty()
+                    val json = JSONObject(str).optJSONObject("goal") ?: return@withContext null
+                    return@withContext parseGoalJson(json)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "startGoal failed: ${e.message}")
+        }
+        null
+    }
+
+    /**
+     * Executes the next milestone in an autonomous goal workflow.
+     */
+    suspend fun stepGoal(goalId: String): Pair<String, Boolean>? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/goal/$goalId/step")
+                .post("{}".toRequestBody(JSON))
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val json = JSONObject(resp.body?.string().orEmpty())
+                    val status = json.optString("milestone_status", "verified")
+                    val isComplete = json.optBoolean("is_goal_complete", false)
+                    return@withContext Pair(status, isComplete)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "stepGoal failed: ${e.message}")
+        }
+        null
+    }
+
+    suspend fun pauseGoal(goalId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/goal/$goalId/pause")
+                .post("{}".toRequestBody(JSON))
+                .build()
+            client.newCall(req).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun resumeGoal(goalId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/goal/$goalId/resume")
+                .post("{}".toRequestBody(JSON))
+                .build()
+            client.newCall(req).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun getGoal(goalId: String): GoalInfo? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/goal/$goalId")
+                .get()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val json = JSONObject(resp.body?.string().orEmpty()).optJSONObject("goal") ?: return@withContext null
+                    return@withContext parseGoalJson(json)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "getGoal failed: ${e.message}")
+        }
+        null
+    }
+
+    private fun parseGoalJson(json: JSONObject): GoalInfo {
+        val milestonesArr = json.optJSONArray("milestones") ?: JSONArray()
+        val milestonesList = mutableListOf<GoalMilestone>()
+        for (i in 0 until milestonesArr.length()) {
+            val m = milestonesArr.optJSONObject(i) ?: continue
+            milestonesList.add(
+                GoalMilestone(
+                    id = m.optString("id", "M${i + 1}"),
+                    title = m.optString("title", ""),
+                    description = m.optString("description", ""),
+                    assignedEngine = m.optString("assigned_engine", "gemini"),
+                    assignedModel = m.optString("assigned_model", "gemini-2.5-flash"),
+                    verifierRule = m.optString("verifier_rule", ""),
+                    status = m.optString("status", "pending"),
+                    attempts = m.optInt("attempts", 0),
+                    evidence = m.optString("evidence").takeIf { it.isNotBlank() }
+                )
+            )
+        }
+        return GoalInfo(
+            id = json.optString("id", ""),
+            conversationId = json.optString("conversation_id", ""),
+            prompt = json.optString("prompt", ""),
+            workspaceDir = json.optString("workspace_dir", ""),
+            status = json.optString("status", "in_progress"),
+            milestones = milestonesList,
+            activeMilestoneIndex = json.optInt("active_milestone_index", 0)
+        )
+    }
 }
+
+data class GoalMilestone(
+    val id: String,
+    val title: String,
+    val description: String,
+    val assignedEngine: String,
+    val assignedModel: String,
+    val verifierRule: String,
+    val status: String,
+    val attempts: Int = 0,
+    val evidence: String? = null
+)
+
+data class GoalInfo(
+    val id: String,
+    val conversationId: String,
+    val prompt: String,
+    val workspaceDir: String,
+    val status: String,
+    val milestones: List<GoalMilestone>,
+    val activeMilestoneIndex: Int
+)

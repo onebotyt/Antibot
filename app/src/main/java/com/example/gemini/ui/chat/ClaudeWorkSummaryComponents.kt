@@ -437,6 +437,14 @@ private fun TimelineStepNode(
                             modifier = Modifier.size(16.dp)
                         )
                     }
+                    step.type == WorkStepType.SUBAGENT_EXEC -> {
+                        Icon(
+                            imageVector = Icons.Outlined.Widgets,
+                            contentDescription = null,
+                            tint = Color(0xFFA855F7),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                     else -> {
                         // Standard gray timeline bullet dot
                         Box(
