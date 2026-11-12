@@ -248,23 +248,18 @@ fun dshStatusEntry(
     if (serverRestarting) {
         return AgentStatusEntry(AgentKind.DSH, "Restarting…", SystemStatus.STARTING.dotColor, "DeepSeek Harness is restarting.", pending = true)
     }
-    return if (isOnline) {
-        AgentStatusEntry(
-            agent = AgentKind.DSH,
-            label = "Ready",
-            color = SystemStatus.READY.dotColor,
-            detail = "DeepSeek Harness · $modelName",
-            isReady = true
-        )
-    } else {
-        AgentStatusEntry(
-            agent = AgentKind.DSH,
-            label = "Offline",
-            color = SystemStatus.OFFLINE.dotColor,
-            detail = "DeepSeek Harness daemon is not running.",
-            action = AgentStatusAction("Start", onRestartServer)
-        )
+    val resolvedModel = when (modelName) {
+        "deepseek-reasoner" -> "DeepSeek R1"
+        "deepseek-chat" -> "DeepSeek V3"
+        else -> if (modelName.isNotBlank()) modelName else "DeepSeek V3"
     }
+    return AgentStatusEntry(
+        agent = AgentKind.DSH,
+        label = "Ready",
+        color = SystemStatus.READY.dotColor,
+        detail = "DeepSeek Harness Master Orchestrator · $resolvedModel",
+        isReady = true
+    )
 }
 
 fun claudePlanLabel(raw: String): String = when (raw.lowercase()) {

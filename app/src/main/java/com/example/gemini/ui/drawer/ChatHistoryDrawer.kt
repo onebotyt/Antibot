@@ -743,6 +743,9 @@ fun ChatHistoryDrawer(
                 val activeAgents = if (enabledAgents.isNotEmpty()) enabledAgents else setOf(
                     com.example.gemini.domain.model.AgentKind.AGY
                 )
+                if (com.example.gemini.domain.model.AgentKind.DSH in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.DSH to "DeepSeek")
+                }
                 if (com.example.gemini.domain.model.AgentKind.AGY in activeAgents) {
                     add(com.example.gemini.domain.model.AgentKind.AGY to "Antigravity")
                 }
@@ -754,9 +757,6 @@ fun ChatHistoryDrawer(
                 }
                 if (com.example.gemini.domain.model.AgentKind.CODEX in activeAgents) {
                     add(com.example.gemini.domain.model.AgentKind.CODEX to "Codex")
-                }
-                if (com.example.gemini.domain.model.AgentKind.DSH in activeAgents) {
-                    add(com.example.gemini.domain.model.AgentKind.DSH to "DeepSeek")
                 }
             }
             Row(

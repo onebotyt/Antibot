@@ -512,7 +512,7 @@ fun ChatScreen(
             }
         )
     } else null
-    val agentEntries = listOfNotNull(agyEntry, claudeEntry, openCodeEntry, codexEntry, dshEntry)
+    val agentEntries = listOfNotNull(dshEntry, agyEntry, claudeEntry, openCodeEntry, codexEntry)
     var showAccountsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -1661,24 +1661,47 @@ fun ChatScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = {
-                                    val convId = currentConv?.id
-                                    if (!convId.isNullOrBlank()) {
-                                        viewModel.selectConversation(convId)
-                                    } else {
-                                        viewModel.retryConnections()
-                                    }
-                                },
-                                shape = RoundedCornerShape(10.dp)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Retry", fontSize = 13.5.sp)
+                                Button(
+                                    onClick = {
+                                        val convId = currentConv?.id
+                                        if (!convId.isNullOrBlank()) {
+                                            viewModel.selectConversation(convId)
+                                        } else {
+                                            viewModel.retryConnections()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retry", fontSize = 13.5.sp)
+                                }
+
+                                if (isDshChat) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
+                                            showSettingsDialog = true
+                                        },
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("DeepSeek Settings", fontSize = 13.5.sp)
+                                    }
+                                }
                             }
                         }
                     } else if (isExistingChat) {
@@ -1776,6 +1799,60 @@ fun ChatScreen(
                                             textAlign = TextAlign.Center,
                                             modifier = Modifier.padding(horizontal = 20.dp)
                                         )
+
+                                        if (isDshChat && dshBackend.prefs.apiKey.value.isBlank()) {
+                                            Spacer(modifier = Modifier.height(18.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                                border = BorderStroke(1.dp, com.example.gemini.ui.components.DshAccent.copy(alpha = 0.35f)),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp)
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(16.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Text("🐋", fontSize = 18.sp)
+                                                        Text(
+                                                            text = "DeepSeek Harness Orchestrator",
+                                                            fontSize = 14.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = "AntiBot master orchestrator active. Configure your API key to run DeepSeek-V3 & R1 deep reasoning, or dispatch to subagents using @gemini, @claude, @opencode.",
+                                                        fontSize = 12.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                    Spacer(modifier = Modifier.height(12.dp))
+                                                    Button(
+                                                        onClick = {
+                                                            requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
+                                                            showSettingsDialog = true
+                                                        },
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = com.example.gemini.ui.components.DshAccent)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Settings,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text("Configure DeepSeek API Key", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -2378,9 +2455,9 @@ fun ChatScreen(
                     )
                 }
 
-                val pendingQuestion = remember(messages) {
+                val pendingQuestion = remember(messages, effectiveAgent) {
                     com.example.gemini.ui.agents.findPendingQuestion(
-                        com.example.gemini.domain.model.AgentKind.AGY,
+                        effectiveAgent,
                         messages
                     )
                 }

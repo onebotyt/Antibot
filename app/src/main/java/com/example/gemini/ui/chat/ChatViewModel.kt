@@ -117,7 +117,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val before = enabledAgents.value
         val firstChoice = !hasChosenAgents.value
         agentPrefs.setEnabled(agents)
-        if (newChatAgent.value !in agents) agentPrefs.setNewChatAgent(if (AgentKind.AGY in agents) AgentKind.AGY else agents.first())
+        if (newChatAgent.value !in agents) agentPrefs.setNewChatAgent(if (AgentKind.DSH in agents) AgentKind.DSH else if (AgentKind.AGY in agents) AgentKind.AGY else agents.first())
         val cur = store.currentConversation.value
         if (cur == null || cur.agent !in agents) startNewChat()
         if (firstChoice) {
@@ -140,7 +140,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun agentOf(conversationId: String): AgentKind =
         conversations.value.find { it.id == conversationId }?.agent
             ?: store.currentConversation.value?.takeIf { it.id == conversationId }?.agent
-            ?: AgentKind.AGY
+            ?: newChatAgent.value
 
     fun setNewChatAgent(agent: AgentKind) {
         agentPrefs.setNewChatAgent(agent)
@@ -342,7 +342,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun onUserStartedTyping() = agyBackend.onUserStartedTyping()
     fun startNewChat() = startNewChat(
         newChatAgent.value.takeIf { it in enabledAgents.value }
-            ?: AgentKind.AGY
+            ?: (if (AgentKind.DSH in enabledAgents.value) AgentKind.DSH else AgentKind.AGY)
     )
 
     /** New chat with [agent], without changing the new-chat default. */

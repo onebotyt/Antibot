@@ -173,7 +173,7 @@ object LocalServerManager {
             if (bridgeFile.exists() && bridgeFile.length() > 0) {
                 bridgeFile.copyTo(destFile, overwrite = true)
             } else {
-                context.assets.open("bin/agy_ide_bridge").use { input ->
+                openBinAsset(context, BRIDGE_ASSET).use { input ->
                     destFile.outputStream().use { output ->
                         input.copyTo(output)
                     }

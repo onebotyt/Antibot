@@ -235,6 +235,8 @@ func (m *Manager) ResolveBinary() (string, error) {
 		filepath.Join(m.HomeDir, ".local", "bin", "codex"),
 		filepath.Join(m.HomeDir, ".codex", "packages", "standalone", "current", "bin", "codex"),
 		filepath.Join(m.HomeDir, ".npm-global", "bin", "codex"),
+		filepath.Join(m.HomeDir, ".local", "share", "pnpm", "codex"),
+		filepath.Join(m.HomeDir, ".local", "share", "pnpm", "bin", "codex"),
 		"/usr/local/bin/codex",
 		"/usr/bin/codex",
 	)

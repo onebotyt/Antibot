@@ -18,7 +18,7 @@ class AgentPreferences(context: Context) {
     private val _hasChosen = MutableStateFlow(prefs.getBoolean(KEY_CHOSEN, false))
     val hasChosen: StateFlow<Boolean> = _hasChosen.asStateFlow()
     private val _newChatAgent = MutableStateFlow(
-        runCatching { AgentKind.valueOf(prefs.getString(KEY_NEW_CHAT_AGENT, AgentKind.AGY.name)!!) }.getOrDefault(AgentKind.AGY)
+        runCatching { AgentKind.valueOf(prefs.getString(KEY_NEW_CHAT_AGENT, AgentKind.DSH.name)!!) }.getOrDefault(AgentKind.DSH)
     )
     val newChatAgent: StateFlow<AgentKind> = _newChatAgent.asStateFlow()
 

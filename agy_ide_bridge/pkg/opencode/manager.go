@@ -96,6 +96,8 @@ func (m *Manager) ResolveBinary() (string, error) {
 		filepath.Join(m.HomeDir, ".local", "bin", "opencode"),
 		filepath.Join(m.HomeDir, ".bun", "bin", "opencode"),
 		filepath.Join(m.HomeDir, ".npm-global", "bin", "opencode"),
+		filepath.Join(m.HomeDir, ".local", "share", "pnpm", "opencode"),
+		filepath.Join(m.HomeDir, ".local", "share", "pnpm", "bin", "opencode"),
 		"/usr/local/bin/opencode",
 		"/usr/bin/opencode",
 	)

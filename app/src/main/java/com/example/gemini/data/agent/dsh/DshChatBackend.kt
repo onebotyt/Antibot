@@ -55,10 +55,11 @@ class DshChatBackend(
     }
 
     fun detach() {
-        // Disconnect or unhook listeners without killing conversation state
+        _conversationError.value = null
     }
 
     override fun startNewChat() {
+        _conversationError.value = null
         val newConv = Conversation(
             id = UUID.randomUUID().toString(),
             title = "New Chat",
@@ -74,6 +75,7 @@ class DshChatBackend(
 
     override fun selectConversation(id: String) {
         val conv = _conversations.value.find { it.id == id } ?: return
+        _conversationError.value = null
         store.currentConversation.value = conv
     }
 
@@ -150,7 +152,6 @@ class DshChatBackend(
                             updateAssistant(conv.id, assistantMsgId, finalContent, thoughtAcc.toString(), toolCallsAcc, false, duration)
                         }
                         is DshStreamEvent.Error -> {
-                            _conversationError.value = event.error
                             Log.e("DshChatBackend", "[DSH Turn Error]: ${event.error}")
                             updateAssistant(conv.id, assistantMsgId, textAcc.toString() + "\n\n⚠️ Error: ${event.error}", thoughtAcc.toString(), toolCallsAcc, false)
                         }
@@ -163,7 +164,7 @@ class DshChatBackend(
                 Log.d("DshChatBackend", "[DSH Turn Cancelled]")
             } catch (e: Exception) {
                 Log.e("DshChatBackend", "[DSH Turn Exception]", e)
-                _conversationError.value = e.message
+                updateAssistant(conv.id, assistantMsgId, textAcc.toString() + "\n\n⚠️ Error: ${e.message}", thoughtAcc.toString(), toolCallsAcc, false)
             } finally {
                 _isStreaming.value = false
             }

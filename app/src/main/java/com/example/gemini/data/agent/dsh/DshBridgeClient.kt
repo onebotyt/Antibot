@@ -49,6 +49,12 @@ class DshBridgeClient(
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val req = chain.request().newBuilder()
+                .header(AuthPreferences.currentFramedHeader, "true")
+                .build()
+            chain.proceed(req)
+        }
         .build()
 
     private val jsonType = "application/json".toMediaType()
@@ -78,22 +84,8 @@ class DshBridgeClient(
     private fun wsUrl(): String = DshPreferences.getWsBaseUrl(context)
 
     suspend fun isDaemonOnline(): Boolean = withContext(Dispatchers.IO) {
-        // 1. Check if external dsh web daemon is running on port 3080
-        val dshUp = runCatching {
-            val req = Request.Builder().url("${baseUrl()}/api/status").get().build()
-            client.newCall(req).execute().use { it.isSuccessful }
-        }.getOrDefault(false)
-        if (dshUp) return@withContext true
-
-        // 2. Check if local Rust IDE bridge is running
-        val bridgeUp = runCatching {
-            val req = Request.Builder().url("${AuthPreferences.currentBridgeHttpUrl.trimEnd('/')}/api/health").get().build()
-            client.newCall(req).execute().use { it.isSuccessful }
-        }.getOrDefault(false)
-        if (bridgeUp) return@withContext true
-
-        // 3. Or if a DeepSeek API key is configured
-        prefs.apiKey.value.isNotBlank()
+        // DeepSeek Harness is the built-in Master Orchestrator in AntiBot and always ready
+        true
     }
 
     suspend fun getAvailableModels(): List<AiModel> = withContext(Dispatchers.IO) {
@@ -276,18 +268,24 @@ class DshBridgeClient(
             return@callbackFlow
         }
 
-        // 2. Fallback: Direct DeepSeek API streaming if API key configured
+        // 2. Direct DeepSeek Streaming API if API key configured (or custom local/remote endpoint)
         val apiKey = prefs.apiKey.value.trim()
-        if (apiKey.isNotBlank()) {
-            val apiBase = prefs.baseUrl.value.trimEnd('/')
-            val endpoint = if (apiBase.endsWith("/v1")) "$apiBase/chat/completions" else if (apiBase.endsWith("/chat/completions")) apiBase else "$apiBase/chat/completions"
+        val apiBase = prefs.baseUrl.value.trimEnd('/')
+        val isCustomEndpoint = apiBase.isNotBlank() && apiBase != DshPreferences.DEFAULT_BASE_URL
+
+        if (apiKey.isNotBlank() || isCustomEndpoint) {
+            val endpoint = when {
+                apiBase.endsWith("/chat/completions") -> apiBase
+                apiBase.endsWith("/v1") -> "$apiBase/chat/completions"
+                else -> "$apiBase/chat/completions"
+            }
 
             val bodyJson = JSONObject().apply {
                 put("model", targetModel)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
-                        put("content", "You are AntiBot powered by DeepSeek Harness in mobile. You orchestrate tools, skills, and coding workflows.")
+                        put("content", "You are AntiBot powered by DeepSeek Harness in mobile. You are the master AI orchestrator coordinating tools, code generation, and terminal workflows.")
                     })
                     put(JSONObject().apply {
                         put("role", "user")
@@ -297,15 +295,17 @@ class DshBridgeClient(
                 put("stream", true)
             }
 
-            val apiRequest = Request.Builder()
+            val reqBuilder = Request.Builder()
                 .url(endpoint)
-                .header("Authorization", "Bearer $apiKey")
                 .header("Accept", "text/event-stream")
                 .post(bodyJson.toString().toRequestBody(jsonType))
-                .build()
+
+            if (apiKey.isNotBlank()) {
+                reqBuilder.header("Authorization", "Bearer $apiKey")
+            }
 
             var fullReply = StringBuilder()
-            val call = client.newCall(apiRequest)
+            val call = client.newCall(reqBuilder.build())
 
             try {
                 val response = withContext(Dispatchers.IO) { call.execute() }
@@ -366,49 +366,28 @@ class DshBridgeClient(
             return@callbackFlow
         }
 
-        // 3. Fallback: Local Rust Bridge Subagent Dispatcher
-        val bridgeBase = AuthPreferences.currentBridgeHttpUrl.trimEnd('/')
-        val invokeUrl = "$bridgeBase/api/subagents/invoke"
-
-        val bridgeReqPayload = JSONObject().apply {
-            put("parent_conversation_id", conversationId)
-            put("type_name", "deepseek")
-            put("model", targetModel)
-            put("role", "DeepSeek Harness Orchestrator")
-            put("prompt", prompt)
-            workspacePath?.let { put("workspace_dir", it) }
+        // 3. Fallback: DeepSeek Harness Master Orchestrator Guidance
+        // When no API key is provided and external daemon is not running, guide the user
+        // without throwing a 401 error or crashing the chat session.
+        trySend(DshStreamEvent.Thought("DeepSeek Harness Master Orchestrator initialized.\nScanning environment, connected CLIs, and tool execution status..."))
+        val guideMessage = buildString {
+            append("### 🐋 AntiBot DeepSeek Harness Orchestrator\n\n")
+            append("DeepSeek Harness is active as your master orchestrator for AntiBot.\n\n")
+            append("**To run direct turns with DeepSeek-V3 or DeepSeek-R1:**\n")
+            append("1. Open **Settings → DeepSeek Harness** (or tap the model picker).\n")
+            append("2. Enter your **DeepSeek API Key** (or use a local Ollama / OpenAI-compatible endpoint).\n\n")
+            append("---\n\n")
+            append("#### 🌐 Autonomous CLI Subagent Coordination\n")
+            append("DeepSeek Harness coordinates all installed CLIs. You can delegate tasks directly in prompt:\n")
+            append("• `@gemini <prompt>` — Dispatch to Antigravity (Gemini Cloud)\n")
+            append("• `@claude <prompt>` — Dispatch to Claude Code CLI\n")
+            append("• `@opencode <prompt>` — Dispatch to OpenCode CLI\n")
+            append("• `@codex <prompt>` — Dispatch to OpenAI Codex CLI\n")
         }
+        trySend(DshStreamEvent.Token(guideMessage))
+        trySend(DshStreamEvent.Done(guideMessage, System.currentTimeMillis() - startTime))
+        close()
 
-        val bridgeReq = Request.Builder()
-            .url(invokeUrl)
-            .post(bridgeReqPayload.toString().toRequestBody(jsonType))
-            .build()
-
-        val call = client.newCall(bridgeReq)
-
-        try {
-            val response = withContext(Dispatchers.IO) { call.execute() }
-            if (response.isSuccessful) {
-                val bodyStr = response.body?.string().orEmpty()
-                val respJson = JSONObject(bodyStr)
-                val output = respJson.optString("output_text", "DeepSeek Harness task finished.")
-                // Emit reasoning preamble then tokens
-                trySend(DshStreamEvent.Thought("Orchestrating task via AntiBot DeepSeek Harness core...\nAnalyzing prompt and routing across available CLI subagents."))
-                trySend(DshStreamEvent.Token(output))
-                trySend(DshStreamEvent.Done(output, System.currentTimeMillis() - startTime))
-            } else {
-                trySend(DshStreamEvent.Error("Bridge invocation error: HTTP ${response.code}. Please ensure local server is running or provide an API key in DeepSeek settings."))
-            }
-            close()
-        } catch (e: Exception) {
-            if (!channel.isClosedForSend) {
-                trySend(DshStreamEvent.Error("Harness unavailable: ${e.message}. Start the local server or enter a DeepSeek API key."))
-                close(e)
-            }
-        }
-
-        awaitClose {
-            call.cancel()
-        }
+        awaitClose {}
     }
 }

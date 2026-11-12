@@ -106,6 +106,9 @@ func (m *Manager) ResolveBinary() (string, error) {
 	candidates = append(candidates,
 		filepath.Join(m.HomeDir, ".local", "bin", "claude"),
 		filepath.Join(m.HomeDir, ".claude", "local", "claude"),
+		filepath.Join(m.HomeDir, ".local", "share", "pnpm", "claude"),
+		filepath.Join(m.HomeDir, ".local", "share", "pnpm", "bin", "claude"),
+		filepath.Join(m.HomeDir, ".npm-global", "bin", "claude"),
 		"/usr/local/bin/claude",
 		"/usr/bin/claude",
 	)

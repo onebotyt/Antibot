@@ -112,7 +112,62 @@ fun ModelSelectorBottomSheet(
     ) {
         val sections = mutableListOf<EngineSection>()
 
-        // 1. ⚡ Antigravity (Gemini) Engine
+        // 1. 🐋 DeepSeek Harness (Primary Master Engine & Orchestrator)
+        if (AgentKind.DSH in enabledAgents) {
+            val dshList = mutableListOf<ModelItemEntry>()
+            val dshModels = dshBackend?.client?.cachedModels?.value ?: emptyList()
+            if (dshModels.isNotEmpty()) {
+                dshModels.forEach { model ->
+                    val isReasoning = model.supportsThinking || model.id.contains("reasoner")
+                    dshList.add(
+                        ModelItemEntry.Single(
+                            id = model.id,
+                            title = model.displayName.ifBlank { model.id },
+                            badge = if (isReasoning) "Deep Reasoning" else "Master Engine",
+                            badgeColor = DshAccent,
+                            subtitle = model.description.ifBlank {
+                                if (isReasoning) "DeepSeek R1 deep chain-of-thought (<think>) architectural reasoning"
+                                else "DeepSeek V3 master orchestrator · Coordinates subagents and executes tools"
+                            },
+                            agentKind = AgentKind.DSH
+                        )
+                    )
+                }
+            } else {
+                dshList.add(
+                    ModelItemEntry.Single(
+                        id = "deepseek-chat",
+                        title = "DeepSeek V3 (Master Orchestrator)",
+                        badge = "Master Engine",
+                        badgeColor = DshAccent,
+                        subtitle = "Master app orchestrator · Controls & coordinates subagents, tools and coding workflows",
+                        agentKind = AgentKind.DSH
+                    )
+                )
+                dshList.add(
+                    ModelItemEntry.Single(
+                        id = "deepseek-reasoner",
+                        title = "DeepSeek R1 (Deep Reasoning)",
+                        badge = "Deep Reasoning",
+                        badgeColor = DshAccent,
+                        subtitle = "Architectural planning, chain-of-thought (<think>) & verification",
+                        agentKind = AgentKind.DSH
+                    )
+                )
+            }
+
+            sections.add(
+                EngineSection(
+                    agentKind = AgentKind.DSH,
+                    title = "DeepSeek Harness (Master Engine)",
+                    badge = "🐋 Primary Orchestrator",
+                    accentColor = DshAccent,
+                    entries = dshList
+                )
+            )
+        }
+
+        // 2. ⚡ Antigravity (Gemini) Engine
         if (AgentKind.AGY in enabledAgents) {
             val agyList = mutableListOf<ModelItemEntry>()
 
@@ -326,57 +381,6 @@ fun ModelSelectorBottomSheet(
             )
         }
 
-        // 5. 🐋 DeepSeek Harness Engine
-        if (AgentKind.DSH in enabledAgents) {
-            val dshList = mutableListOf<ModelItemEntry>()
-            val dshModels = dshBackend?.client?.cachedModels?.value ?: emptyList()
-            if (dshModels.isNotEmpty()) {
-                dshModels.forEach { model ->
-                    dshList.add(
-                        ModelItemEntry.Single(
-                            id = model.id,
-                            title = model.displayName.ifBlank { model.id },
-                            badge = if (model.supportsThinking) "Reasoning" else "Agentic",
-                            badgeColor = DshAccent,
-                            subtitle = model.description.ifBlank { null },
-                            agentKind = AgentKind.DSH
-                        )
-                    )
-                }
-            } else {
-                dshList.add(
-                    ModelItemEntry.Single(
-                        id = "deepseek-reasoner",
-                        title = "DeepSeek R1 (Reasoner)",
-                        badge = "Reasoning",
-                        badgeColor = DshAccent,
-                        subtitle = "DeepSeek R1 with deep Chain-of-Thought reasoning (<think>)",
-                        agentKind = AgentKind.DSH
-                    )
-                )
-                dshList.add(
-                    ModelItemEntry.Single(
-                        id = "deepseek-chat",
-                        title = "DeepSeek V3 (Chat)",
-                        badge = "Agentic",
-                        badgeColor = DshAccent,
-                        subtitle = "High-speed DeepSeek-V3 agentic coding and Cordis plugins",
-                        agentKind = AgentKind.DSH
-                    )
-                )
-            }
-
-            sections.add(
-                EngineSection(
-                    agentKind = AgentKind.DSH,
-                    title = "DeepSeek Harness",
-                    badge = "🐋 Ready",
-                    accentColor = DshAccent,
-                    entries = dshList
-                )
-            )
-        }
-
         sections
     }
 
@@ -455,13 +459,20 @@ fun ModelSelectorBottomSheet(
                     )
                 }
 
-                Text(
-                    text = "Select Model",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 17.sp
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Model & Orchestrator",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 16.5.sp
+                    )
+                    Text(
+                        text = "DeepSeek Master Engine & Autonomous CLI Subagents",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             // Quick Filter Pills Row across all active CLIs
@@ -572,7 +583,7 @@ fun ModelSelectorBottomSheet(
                                                     openCodeSelModelId == entry.id
                                                 )
                                                 AgentKind.DSH -> currentAgent == AgentKind.DSH && (
-                                                    dshBackend?.selectedModelId?.value == entry.id || selectedModelId == entry.id
+                                                    dshBackend?.selectedModelId?.value == entry.id || selectedModelId == entry.id || (dshBackend?.selectedModelId?.value.isNullOrBlank() && entry.id == "deepseek-chat")
                                                 )
                                                 else -> false
                                             }
@@ -599,7 +610,10 @@ fun ModelSelectorBottomSheet(
                                                                 style = MaterialTheme.typography.bodyLarge,
                                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                                                 color = MaterialTheme.colorScheme.onSurface,
-                                                                fontSize = 15.sp
+                                                                fontSize = 15.sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                modifier = Modifier.weight(1f, fill = false)
                                                             )
 
                                                             Box(
@@ -612,7 +626,9 @@ fun ModelSelectorBottomSheet(
                                                                     text = entry.badge,
                                                                     fontSize = 10.5.sp,
                                                                     fontWeight = FontWeight.Bold,
-                                                                    color = entry.badgeColor
+                                                                    color = entry.badgeColor,
+                                                                    maxLines = 1,
+                                                                    softWrap = false
                                                                 )
                                                             }
 
@@ -627,7 +643,9 @@ fun ModelSelectorBottomSheet(
                                                                         text = "Active",
                                                                         fontSize = 10.5.sp,
                                                                         fontWeight = FontWeight.Bold,
-                                                                        color = Color(0xFF10B981)
+                                                                        color = Color(0xFF10B981),
+                                                                        maxLines = 1,
+                                                                        softWrap = false
                                                                     )
                                                                 }
                                                             }
@@ -638,7 +656,9 @@ fun ModelSelectorBottomSheet(
                                                             Text(
                                                                 text = entry.subtitle,
                                                                 fontSize = 11.5.sp,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                maxLines = 2,
+                                                                overflow = TextOverflow.Ellipsis
                                                             )
                                                         }
                                                     }
@@ -681,7 +701,10 @@ fun ModelSelectorBottomSheet(
                                                             style = MaterialTheme.typography.bodyLarge,
                                                             fontWeight = FontWeight.Bold,
                                                             color = MaterialTheme.colorScheme.onSurface,
-                                                            fontSize = 15.5.sp
+                                                            fontSize = 15.5.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f, fill = false)
                                                         )
 
                                                         if (isGroupActive) {
@@ -695,7 +718,9 @@ fun ModelSelectorBottomSheet(
                                                                     text = "Active",
                                                                     fontSize = 11.sp,
                                                                     fontWeight = FontWeight.Bold,
-                                                                    color = Color(0xFF60A5FA)
+                                                                    color = Color(0xFF60A5FA),
+                                                                    maxLines = 1,
+                                                                    softWrap = false
                                                                 )
                                                             }
                                                         }

@@ -383,17 +383,11 @@ private fun DshAccountSection(entry: AgentStatusEntry, onSettings: () -> Unit, o
     AccountSection(
         entry = entry,
         avatar = { AccountAvatar(AgentKind.DSH, entry, null, size = 44.dp) },
-        title = AgentKind.DSH.label(),
-        subtitle = if (entry.isReady) "DeepSeek Harness daemon running in Termux with Cordis plugins & tools." else entry.detail,
-        facts = listOf("Meta-Framework: Cordis", "Daemon Port: 3080", "Modes: Agentic, Reasoner (<think>)")
+        title = "DeepSeek Harness (Master Engine)",
+        subtitle = "Master app orchestrator controlling CLI subagents, tools & deep reasoning.",
+        facts = listOf("Role: Master App Orchestrator", "Models: DeepSeek-V3, DeepSeek-R1 (<think>)", "Subagents: Gemini, Claude, OpenCode, Codex")
     ) {
-        if (!entry.isReady) entry.action?.let {
-            SectionButton(it.label, primary = AgentKind.DSH.accent()) {
-                it.onClick()
-                onDismiss()
-            }
-        }
-        SectionButton("Harness settings", Icons.Outlined.Settings) {
+        SectionButton("DeepSeek settings", Icons.Outlined.Settings) {
             onSettings()
             onDismiss()
         }

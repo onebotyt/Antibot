@@ -52,11 +52,11 @@ func (j *installJob) snapshot() map[string]interface{} {
 
 func (m *Manager) install(ctx context.Context, j *installJob, update bool) error {
 	if m.termuxNative() {
-		if err := m.installTermuxPackage(ctx, j); err != nil {
-			return err
+		if err := m.installTermuxPackage(ctx, j); err == nil {
+			m.afterInstall(j)
+			return nil
 		}
-		m.afterInstall(j)
-		return nil
+		j.logf("Termux package 'codex' not available via apt/pkg; fetching official release binary…")
 	}
 	if update {
 		if bin, err := m.ResolveBinary(); err == nil {
