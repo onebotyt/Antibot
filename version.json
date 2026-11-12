@@ -1,6 +1,6 @@
 {
-  "version_code": 251,
-  "version_name": "2.4.131",
+  "version_code": 252,
+  "version_name": "2.4.132",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83e\uddf9 Codebase Modernization, CI Fixes & Legacy Bloat Removal: Fixed CI compilation issues (destructuring component6 in LocalIntelligenceEngine, JSON_MEDIA_TYPE in IdeApiClient, and Collection<AgentKind> in ModelSelectorBottomSheet / ChatScreen). Streamlined codebase by removing obsolete legacy UI components (AgentTopBarDropdown, ClaudeModelSheet, OpenCodeModelSheet, SummaryModelPickerDialog, SpeechToTextModeDialog, FloatingTerminalInspector), completely eliminating the 1,484-line video player subsystem in favor of lightweight native video intents, and retiring the legacy Go bridge directory (agy_ide_bridge/) in full transition to the high-performance native Rust daemon (agy_ide_bridge_rs) with 67/67 passing tests.",
