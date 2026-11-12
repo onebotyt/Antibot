@@ -27,7 +27,6 @@ import com.example.gemini.data.files.OpenChoice
 import com.example.gemini.data.preferences.AuthPreferences
 import com.example.gemini.ui.components.AppToastHelper
 import com.example.gemini.ui.components.ChatToastType
-import com.example.gemini.ui.components.FullscreenVideo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -99,7 +98,7 @@ class FileLinkOpener internal constructor(private val context: Context, private 
             OpenChoice.EXTERNAL -> openExternal(f)
             OpenChoice.PREVIEW -> when (FileKinds.of(f.name)) {
                 FileKind.MARKDOWN -> onPreviewMarkdown(f.path)
-                FileKind.VIDEO -> FullscreenVideo.play(context, f.path, f.name)
+                FileKind.VIDEO -> openExternal(f)
                 else -> archive = f
             }
         }

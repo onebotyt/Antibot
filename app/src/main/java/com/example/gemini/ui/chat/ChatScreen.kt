@@ -87,7 +87,6 @@ import com.example.gemini.ui.components.ChatTelemetryDialog
 import com.example.gemini.ui.components.LiveSummarizingCard
 import com.example.gemini.ui.components.MessageBubble
 import com.example.gemini.ui.components.RawPayloadDialog
-import com.example.gemini.ui.components.TerminalInspectorDialog
 import com.example.gemini.ui.components.LocalTerminalDialog
 import com.example.gemini.ui.components.LocalTerminalContent
 import com.example.gemini.ui.settings.LocalToolsInstallDialog
@@ -284,7 +283,6 @@ fun ChatScreen(
     }
 
     var showModelSelector by remember { mutableStateOf(false) }
-    var showTerminalInspector by remember { mutableStateOf(false) }
     var showLocalTerminalDialog by rememberSaveable { mutableStateOf(false) }
     var showLocalToolsInstallDialog by remember { mutableStateOf(false) }
     var showLocalServerOutputDialog by remember { mutableStateOf(false) }
@@ -3071,16 +3069,6 @@ fun ChatScreen(
         )
     }
 
-
-
-
-    // Termux Terminal Inspector Dialog
-    if (showTerminalInspector) {
-        TerminalInspectorDialog(
-            authPreferences = viewModel.authPreferences,
-            onDismiss = { showTerminalInspector = false }
-        )
-    }
 
 
 
