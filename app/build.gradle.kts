@@ -18,6 +18,8 @@ val syncBridgeVersion by tasks.registering(Copy::class) {
     into(rootProject.file("agy_ide_bridge/pkg/buildinfo"))
 }
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(syncBridgeVersion) }
+
+plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
