@@ -999,10 +999,9 @@ fun ChatScreen(
         }
         isDshChat -> {
             val dshSelId = dshBackend.selectedModelId.collectAsState().value
-            val modelObj = dshBackend.availableModels.collectAsState().value.find { it.id == dshSelId }
             AiModel(
                 id = dshSelId.ifBlank { "deepseek-reasoner" },
-                displayName = modelObj?.displayName ?: when (dshSelId) {
+                displayName = when (dshSelId) {
                     "deepseek-reasoner" -> "DeepSeek R1"
                     "deepseek-chat" -> "DeepSeek V3"
                     else -> if (dshSelId.isNotBlank()) dshSelId else "DeepSeek R1"
