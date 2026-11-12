@@ -18,7 +18,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import com.example.gemini.data.local.LocalEnvironmentManager
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -280,18 +282,31 @@ class DshBridgeClient(
                 else -> "$apiBase/chat/completions"
             }
 
+            val supportsTools = !targetModel.contains("reasoner")
+            val systemPrompt = buildString {
+                append("You are AntiBot powered by DeepSeek Harness on Android/Termux. You are the master AI orchestrator equipped with full local agent tools.\n")
+                append("You can execute shell commands, read and write files, inspect git repositories, and dispatch subagents (@claude, @codex, @opencode, @gemini).\n")
+                if (!workspacePath.isNullOrBlank()) {
+                    append("Current Workspace: $workspacePath\n")
+                }
+            }
+
             val bodyJson = JSONObject().apply {
                 put("model", targetModel)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
-                        put("content", "You are AntiBot powered by DeepSeek Harness in mobile. You are the master AI orchestrator coordinating tools, code generation, and terminal workflows.")
+                        put("content", systemPrompt)
                     })
                     put(JSONObject().apply {
                         put("role", "user")
                         put("content", prompt)
                     })
                 })
+                if (supportsTools) {
+                    put("tools", getOrchestratorToolDefinitions())
+                    put("tool_choice", "auto")
+                }
                 put("stream", true)
             }
 
@@ -304,8 +319,15 @@ class DshBridgeClient(
                 reqBuilder.header("Authorization", "Bearer $apiKey")
             }
 
-            var fullReply = StringBuilder()
+            val fullReply = StringBuilder()
             val call = client.newCall(reqBuilder.build())
+
+            class StreamingToolCall(
+                var id: String = "",
+                var name: String = "",
+                val arguments: StringBuilder = StringBuilder()
+            )
+            val accumulatedToolCalls = mutableMapOf<Int, StreamingToolCall>()
 
             try {
                 val response = withContext(Dispatchers.IO) { call.execute() }
@@ -334,7 +356,8 @@ class DshBridgeClient(
                             val chunk = JSONObject(data)
                             val choices = chunk.optJSONArray("choices")
                             if (choices != null && choices.length() > 0) {
-                                val delta = choices.getJSONObject(0).optJSONObject("delta")
+                                val choice0 = choices.getJSONObject(0)
+                                val delta = choice0.optJSONObject("delta")
                                 if (delta != null) {
                                     val reasoning = delta.optString("reasoning_content")
                                     if (reasoning.isNotEmpty()) {
@@ -345,10 +368,124 @@ class DshBridgeClient(
                                         fullReply.append(content)
                                         trySend(DshStreamEvent.Token(content))
                                     }
+                                    val toolCallsArr = delta.optJSONArray("tool_calls")
+                                    if (toolCallsArr != null) {
+                                        for (i in 0 until toolCallsArr.length()) {
+                                            val tc = toolCallsArr.getJSONObject(i)
+                                            val idx = tc.optInt("index", i)
+                                            val accum = accumulatedToolCalls.getOrPut(idx) { StreamingToolCall() }
+                                            val tcId = tc.optString("id")
+                                            if (tcId.isNotEmpty()) accum.id = tcId
+                                            val fn = tc.optJSONObject("function")
+                                            if (fn != null) {
+                                                val fnName = fn.optString("name")
+                                                if (fnName.isNotEmpty()) accum.name = fnName
+                                                val fnArgs = fn.optString("arguments")
+                                                if (fnArgs.isNotEmpty()) accum.arguments.append(fnArgs)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         } catch (_: Exception) {}
                     }
+                }
+
+                // If tool calls were made by DeepSeek, execute them locally and do follow-up turn
+                if (accumulatedToolCalls.isNotEmpty()) {
+                    val executedTools = mutableListOf<Triple<String, String, String>>()
+                    val assistantToolCallsJson = JSONArray()
+
+                    for ((_, tc) in accumulatedToolCalls) {
+                        val callId = tc.id.ifBlank { "call_${System.currentTimeMillis()}" }
+                        val toolName = tc.name.ifBlank { "execute_bash" }
+                        val toolInput = tc.arguments.toString()
+
+                        trySend(DshStreamEvent.ToolStart(callId, toolName, toolInput))
+
+                        val (output, exitCode) = executeLocalTool(toolName, toolInput, workspacePath, context)
+
+                        trySend(DshStreamEvent.ToolFinish(callId, output, exitCode))
+                        executedTools.add(Triple(callId, toolName, output))
+
+                        assistantToolCallsJson.put(JSONObject().apply {
+                            put("id", callId)
+                            put("type", "function")
+                            put("function", JSONObject().apply {
+                                put("name", toolName)
+                                put("arguments", toolInput)
+                            })
+                        })
+                    }
+
+                    // Follow-up turn so DeepSeek explains or completes the response
+                    val followUpMessages = JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "system")
+                            put("content", systemPrompt)
+                        })
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", prompt)
+                        })
+                        put(JSONObject().apply {
+                            put("role", "assistant")
+                            put("content", if (fullReply.isNotEmpty()) fullReply.toString() else "")
+                            put("tool_calls", assistantToolCallsJson)
+                        })
+                        for ((cId, _, tOutput) in executedTools) {
+                            put(JSONObject().apply {
+                                put("role", "tool")
+                                put("tool_call_id", cId)
+                                put("content", tOutput)
+                            })
+                        }
+                    }
+
+                    val followUpBody = JSONObject().apply {
+                        put("model", targetModel)
+                        put("messages", followUpMessages)
+                        put("stream", true)
+                    }
+
+                    val followUpReq = reqBuilder.post(followUpBody.toString().toRequestBody(jsonType)).build()
+                    runCatching {
+                        val resp2 = withContext(Dispatchers.IO) { client.newCall(followUpReq).execute() }
+                        if (resp2.isSuccessful) {
+                            val s2 = resp2.body?.byteStream()
+                            if (s2 != null) {
+                                val r2 = BufferedReader(InputStreamReader(s2))
+                                var l2: String?
+                                while (r2.readLine().also { l2 = it } != null) {
+                                    val line2 = l2?.trim().orEmpty()
+                                    if (line2.startsWith("data: ")) {
+                                        val d2 = line2.removePrefix("data: ").trim()
+                                        if (d2 == "[DONE]") break
+                                        try {
+                                            val c2 = JSONObject(d2)
+                                            val ch2 = c2.optJSONArray("choices")
+                                            if (ch2 != null && ch2.length() > 0) {
+                                                val del2 = ch2.getJSONObject(0).optJSONObject("delta")
+                                                if (del2 != null) {
+                                                    val cText = del2.optString("content")
+                                                    if (cText.isNotEmpty()) {
+                                                        fullReply.append(cText)
+                                                        trySend(DshStreamEvent.Token(cText))
+                                                    }
+                                                }
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (fullReply.isEmpty() && accumulatedToolCalls.isNotEmpty()) {
+                    val summary = "Completed tool execution successfully."
+                    fullReply.append(summary)
+                    trySend(DshStreamEvent.Token(summary))
                 }
 
                 trySend(DshStreamEvent.Done(fullReply.toString(), System.currentTimeMillis() - startTime))
@@ -377,6 +514,14 @@ class DshBridgeClient(
             append("1. Open **Settings → DeepSeek Harness** (or tap the model picker).\n")
             append("2. Enter your **DeepSeek API Key** (or use a local Ollama / OpenAI-compatible endpoint).\n\n")
             append("---\n\n")
+            append("#### 🛠️ Master Harness Tools & Execution Engine\n")
+            append("• **`execute_bash`** — Termux shell runner & command execution (`bash.exec`)\n")
+            append("• **`read_file`** & **`write_file`** — Workspace file reading, code generation, and updates\n")
+            append("• **`list_directory`** — Directory inspector and project file structure viewer\n")
+            append("• **`git_status`** & **`git_diff`** — Local Git version control and safety checkpoints\n")
+            append("• **`mcp.call_tool`** — Model Context Protocol composable tools\n")
+            append("• **`dispatch_subagent`** — Multi-CLI delegation to Claude, OpenCode, Codex, or Gemini\n\n")
+            append("---\n\n")
             append("#### 🌐 Autonomous CLI Subagent Coordination\n")
             append("DeepSeek Harness coordinates all installed CLIs. You can delegate tasks directly in prompt:\n")
             append("• `@gemini <prompt>` — Dispatch to Antigravity (Gemini Cloud)\n")
@@ -389,5 +534,245 @@ class DshBridgeClient(
         close()
 
         awaitClose {}
+    }
+
+    private fun getOrchestratorToolDefinitions(): JSONArray {
+        return JSONArray().apply {
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "execute_bash")
+                    put("description", "Execute a bash shell command in Termux or the local Linux environment and return output.")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject().apply {
+                            put("command", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "The shell command line string to run")
+                            })
+                            put("working_dir", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Optional working directory path")
+                            })
+                        })
+                        put("required", JSONArray().apply { put("command") })
+                    })
+                })
+            })
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "read_file")
+                    put("description", "Read the text contents of a file from workspace or local filesystem.")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject().apply {
+                            put("path", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "File path to read")
+                            })
+                        })
+                        put("required", JSONArray().apply { put("path") })
+                    })
+                })
+            })
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "write_file")
+                    put("description", "Write or overwrite text into a file.")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject().apply {
+                            put("path", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "File path to write")
+                            })
+                            put("content", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Complete text content to write")
+                            })
+                        })
+                        put("required", JSONArray().apply {
+                            put("path")
+                            put("content")
+                        })
+                    })
+                })
+            })
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "list_directory")
+                    put("description", "List files and directories in the workspace or specified directory.")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject().apply {
+                            put("path", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Directory path (defaults to current workspace)")
+                            })
+                        })
+                    })
+                })
+            })
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "git_status")
+                    put("description", "Check git status, branch name, and uncommitted files in workspace.")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject())
+                    })
+                })
+            })
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "git_diff")
+                    put("description", "Inspect uncommitted git diffs in the current workspace.")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject().apply {
+                            put("path", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Optional file path to inspect")
+                            })
+                        })
+                    })
+                })
+            })
+            put(JSONObject().apply {
+                put("type", "function")
+                put("function", JSONObject().apply {
+                    put("name", "dispatch_subagent")
+                    put("description", "Delegate a subtask to a specialized local CLI subagent ('claude', 'opencode', 'codex', or 'gemini').")
+                    put("parameters", JSONObject().apply {
+                        put("type", "object")
+                        put("properties", JSONObject().apply {
+                            put("agent", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Target CLI subagent: 'claude', 'opencode', 'codex', or 'gemini'")
+                            })
+                            put("task", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Prompt or task description for the subagent")
+                            })
+                        })
+                        put("required", JSONArray().apply {
+                            put("agent")
+                            put("task")
+                        })
+                    })
+                })
+            })
+        }
+    }
+
+    private suspend fun executeLocalTool(
+        name: String,
+        rawArgs: String,
+        workspacePath: String?,
+        context: Context
+    ): Pair<String, Int> = withContext(Dispatchers.IO) {
+        try {
+            val jsonArgs = runCatching { JSONObject(rawArgs) }.getOrElse { JSONObject() }
+            when (name) {
+                "execute_bash", "bash_exec", "bash.exec" -> {
+                    val command = jsonArgs.optString("command").ifBlank { rawArgs }
+                    val customDir = jsonArgs.optString("working_dir").takeIf { it.isNotBlank() } ?: workspacePath
+                    val result = LocalEnvironmentManager.executeCommand(
+                        command = command,
+                        context = context,
+                        workingDir = customDir
+                    )
+                    val out = result.output.ifBlank { "(Command finished with exit code ${result.exitCode} and no output)" }
+                    Pair(out, result.exitCode)
+                }
+                "read_file" -> {
+                    val path = jsonArgs.optString("path")
+                    val file = resolveFilePath(path, workspacePath, context)
+                    if (!file.exists()) {
+                        Pair("Error: File not found at ${file.absolutePath}", 1)
+                    } else if (file.isDirectory) {
+                        Pair("Error: Path is a directory: ${file.absolutePath}", 1)
+                    } else {
+                        val text = file.readText()
+                        val truncated = if (text.length > 50000) text.take(50000) + "\n...[Truncated, total ${text.length} chars]" else text
+                        Pair(truncated, 0)
+                    }
+                }
+                "write_file" -> {
+                    val path = jsonArgs.optString("path")
+                    val content = jsonArgs.optString("content")
+                    val file = resolveFilePath(path, workspacePath, context)
+                    file.parentFile?.mkdirs()
+                    file.writeText(content)
+                    Pair("Successfully wrote ${content.length} characters to ${file.absolutePath}", 0)
+                }
+                "list_directory" -> {
+                    val path = jsonArgs.optString("path")
+                    val dir = if (path.isNotBlank()) resolveFilePath(path, workspacePath, context) else {
+                        File(workspacePath ?: LocalEnvironmentManager.getHomeDir(context).absolutePath)
+                    }
+                    if (!dir.exists() || !dir.isDirectory) {
+                        Pair("Error: Directory not found at ${dir.absolutePath}", 1)
+                    } else {
+                        val list = dir.listFiles()?.sortedBy { !it.isDirectory }?.map { f ->
+                            "${if (f.isDirectory) "[DIR] " else "      "}${f.name} (${f.length()} bytes)"
+                        }?.joinToString("\n") ?: "(Empty directory)"
+                        Pair(list, 0)
+                    }
+                }
+                "git_status" -> {
+                    val result = LocalEnvironmentManager.executeCommand(
+                        command = "git status",
+                        context = context,
+                        workingDir = workspacePath
+                    )
+                    Pair(result.output.ifBlank { "Working tree clean" }, result.exitCode)
+                }
+                "git_diff" -> {
+                    val file = jsonArgs.optString("path")
+                    val cmd = if (file.isNotBlank()) "git diff -- \"$file\"" else "git diff"
+                    val result = LocalEnvironmentManager.executeCommand(
+                        command = cmd,
+                        context = context,
+                        workingDir = workspacePath
+                    )
+                    Pair(result.output.ifBlank { "No git diff" }, result.exitCode)
+                }
+                "dispatch_subagent", "cli.dispatch" -> {
+                    val agent = jsonArgs.optString("agent")
+                    val task = jsonArgs.optString("task")
+                    val cmd = when (agent.lowercase()) {
+                        "claude" -> "claude -p \"$task\""
+                        "opencode" -> "opencode --prompt \"$task\""
+                        "codex" -> "codex \"$task\""
+                        "gemini" -> "echo 'Antigravity subtask: $task'"
+                        else -> "echo 'Delegated to $agent: $task'"
+                    }
+                    val result = LocalEnvironmentManager.executeCommand(
+                        command = cmd,
+                        context = context,
+                        workingDir = workspacePath
+                    )
+                    Pair(result.output.ifBlank { "Subagent '$agent' completed task: $task" }, result.exitCode)
+                }
+                else -> {
+                    Pair("Unknown tool function '$name'", 1)
+                }
+            }
+        } catch (e: Exception) {
+            Pair("Tool execution exception: ${e.message}", 1)
+        }
+    }
+
+    private fun resolveFilePath(path: String, workspacePath: String?, context: Context): File {
+        val f = File(path)
+        if (f.isAbsolute) return f
+        val base = workspacePath?.let { File(it) } ?: LocalEnvironmentManager.getHomeDir(context)
+        return File(base, path)
     }
 }

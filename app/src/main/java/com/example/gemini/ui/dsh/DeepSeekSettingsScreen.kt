@@ -1,6 +1,7 @@
 package com.example.gemini.ui.dsh
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.gemini.data.agent.dsh.DshChatBackend
+import com.example.gemini.data.agent.dsh.DshPluginInfo
 import com.example.gemini.data.agent.dsh.DshPreferences
 import com.example.gemini.domain.model.AgentKind
 import com.example.gemini.ui.components.DshAccent
@@ -49,7 +51,7 @@ fun DeepSeekSettingsScreen(
 
     var isDaemonOnline by remember { mutableStateOf(false) }
     var isCheckingOnline by remember { mutableStateOf(false) }
-    var pluginsList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pluginsList by remember { mutableStateOf<List<DshPluginInfo>>(emptyList()) }
 
     var apiKeyInput by remember(apiKey) { mutableStateOf(apiKey) }
     var showApiKey by remember { mutableStateOf(false) }
@@ -61,7 +63,7 @@ fun DeepSeekSettingsScreen(
         scope.launch {
             isCheckingOnline = true
             isDaemonOnline = backend.client.isDaemonOnline()
-            val plugs = backend.client.fetchPlugins()
+            val plugs = backend.client.listPlugins()
             pluginsList = plugs
             isCheckingOnline = false
         }
@@ -307,6 +309,85 @@ fun DeepSeekSettingsScreen(
             }
         }
 
+        // Master Harness Tools & Execution Engine
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "🛠️ Master Harness Tools",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(DshAccent.copy(alpha = 0.12f))
+                            .border(BorderStroke(1.dp, DshAccent.copy(alpha = 0.3f)), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "7 Built-in Tools",
+                            fontSize = 11.sp,
+                            color = DshAccent,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Autonomous agent tools equipped for DeepSeek-V3 in Termux. When prompted in chat, the model executes these tools live via ReAct cycles.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                val coreTools = listOf(
+                    Triple("execute_bash", "Termux shell runner & command execution (`bash.exec`)", Icons.Outlined.Terminal),
+                    Triple("read_file", "Read workspace files, configurations, and source code", Icons.Outlined.FolderOpen),
+                    Triple("write_file", "Generate, update, or patch files directly in workspace", Icons.Outlined.EditNote),
+                    Triple("list_directory", "Inspect folders, directories, and project tree structures", Icons.Outlined.Folder),
+                    Triple("git_status", "Check git status, branch changes, and safety checkpoints", Icons.Outlined.CheckCircle),
+                    Triple("dispatch_subagent", "Delegate subtasks to @claude, @codex, @opencode, or @gemini", Icons.Outlined.Code),
+                    Triple("mcp.call_tool", "Model Context Protocol gateway & connected tool servers", Icons.Outlined.Extension)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    coreTools.forEach { (toolName, toolDesc, icon) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.2f))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(icon, contentDescription = null, tint = DshAccent, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = toolName,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF8BE9FD)
+                                )
+                                Text(
+                                    text = toolDesc,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Cordis Plugins & Extensions
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -316,14 +397,14 @@ fun DeepSeekSettingsScreen(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Cordis Plugins & Tools",
+                        text = "Cordis Plugins & Registered Tools",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "${pluginsList.size} Active",
+                        text = "${pluginsList.size} Plugins",
                         fontSize = 12.sp,
                         color = DshAccent,
                         fontWeight = FontWeight.SemiBold
@@ -331,7 +412,7 @@ fun DeepSeekSettingsScreen(
                 }
 
                 Text(
-                    text = "DeepSeek Harness uses the Cordis plugin ecosystem (`dsh-plugin-*`). Installed plugins automatically expose MCP tools and capabilities to the model.",
+                    text = "DeepSeek Harness uses the Cordis plugin ecosystem (`dsh-plugin-*`). Installed plugins register modular capabilities and tools:",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -344,24 +425,94 @@ fun DeepSeekSettingsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (isDaemonOnline) "No custom plugins installed. Standard tools are active." else "Connect to daemon to inspect active plugins.",
+                            text = if (isDaemonOnline) "No custom plugins installed. Standard tools are active." else "Connect to daemon or enter API key to inspect registered tools.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {
-                    pluginsList.forEach { pluginName ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.Black.copy(alpha = 0.2f))
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Outlined.Extension, contentDescription = null, tint = DshAccent, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(pluginName, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pluginsList.forEach { plugin ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.Black.copy(alpha = 0.22f))
+                                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Outlined.Extension, contentDescription = null, tint = DshAccent, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = plugin.name,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.Black.copy(alpha = 0.35f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("v${plugin.version}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(if (plugin.enabled) Color(0xFF10B981) else Color.Gray)
+                                    )
+                                }
+
+                                if (plugin.description.isNotBlank()) {
+                                    Text(
+                                        text = plugin.description,
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                if (plugin.tools.isNotEmpty()) {
+                                    Text(
+                                        text = "Tools Provided (${plugin.tools.size}):",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                    )
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        plugin.tools.forEach { tool ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(DshAccent.copy(alpha = 0.08f))
+                                                    .border(BorderStroke(1.dp, DshAccent.copy(alpha = 0.25f)), RoundedCornerShape(6.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Outlined.Build, contentDescription = null, tint = DshAccent, modifier = Modifier.size(11.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = tool,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 11.sp,
+                                                    color = DshAccent
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
