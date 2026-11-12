@@ -11,13 +11,7 @@ val parsedVersion = if (versionFile.exists()) {
 val appVersionCode = (parsedVersion["version_code"] as? Number)?.toInt() ?: 1
 val appVersionName = (parsedVersion["version_name"] as? String) ?: "1.0.0"
 
-// The IDE bridge (Go) reports the same version as the app: its build embeds a copy of version.json, refreshed here on
-// every Gradle build so the two can never differ and nobody has to remember it.
-val syncBridgeVersion by tasks.registering(Copy::class) {
-    from(versionFile)
-    into(rootProject.file("agy_ide_bridge/pkg/buildinfo"))
-}
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(syncBridgeVersion) }
+
 
 plugins {
   alias(libs.plugins.android.application)
@@ -245,8 +239,6 @@ wire {
 // needs little memory.
 val agyIdeBridgeRaw = layout.buildDirectory.file("intermediates/agyIdeBridge/agy_ide_bridge")
 val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
-  dependsOn(syncBridgeVersion) // the bridge embeds the app's version
-  val bridgeSourceDir = layout.projectDirectory.dir("../agy_ide_bridge")
   val rawFile = agyIdeBridgeRaw.get().asFile
   val rustBin = layout.projectDirectory.file("../agy_ide_bridge_rs/target/release/agy_ide_bridge_rs").asFile
 
@@ -254,21 +246,18 @@ val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
     rawFile.parentFile.mkdirs()
   }
 
-  workingDir = bridgeSourceDir.asFile
+  workingDir = layout.projectDirectory.asFile
   commandLine(
     "sh", "-c",
     """
     if [ -f "$1" ]; then
       echo "⚡ Using high-performance Rust IDE daemon binary ($1)"
       cp "$1" "$2"
-    elif command -v go >/dev/null 2>&1; then
-      echo "⚙️ Compiling Go IDE bridge fallback..."
-      GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "$2" main.go
-    elif [ -f "../app/src/main/assets/bin/agy_ide_bridge.xz" ]; then
+    elif [ -f "src/main/assets/bin/agy_ide_bridge.xz" ]; then
       echo "📦 Using pre-compressed asset bridge..."
       touch "$2"
     else
-      echo "❌ Neither Rust binary nor Go compiler found!"
+      echo "❌ Neither Rust binary nor asset bridge found!"
       exit 1
     fi
     """.trimIndent(),

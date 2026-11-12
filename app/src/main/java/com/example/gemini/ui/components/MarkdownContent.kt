@@ -1722,8 +1722,8 @@ fun MarkdownImageView(
 }
 
 /**
- * Renders a local or remote video file (mp4/webm/mov) inline with play/pause and a seek bar.
- * Uses MediaPlayer + TextureView so the video scrolls and clips correctly inside the chat list.
+ * Renders a video attachment with title, file info, play button (launching system player),
+ * and download button.
  */
 @Composable
 fun MarkdownVideoView(
@@ -1732,260 +1732,86 @@ fun MarkdownVideoView(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val videoUri = remember(video.url) {
-        val raw = video.url.trim()
-        if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("content://") || raw.startsWith("file://")) {
-            Uri.parse(raw)
-        } else {
-            Uri.fromFile(java.io.File(raw))
-        }
-    }
-    var aspectRatio by remember(video.url) { mutableFloatStateOf(16f / 9f) }
-    var playbackRequested by remember(video.url) { mutableStateOf(false) }
-    var thumbnail by remember(video.url) {
-        mutableStateOf(VideoThumbnailCache.peek(video.url))
-    }
-    LaunchedEffect(video.url) {
-        val stream = HubMediaResolver.mediaStreamFor(video.url)
-        thumbnail = VideoThumbnailCache.load(context.applicationContext, video.url, stream)
-    }
-    var isPrepared by remember(video.url) { mutableStateOf(false) }
-    var isPlaying by remember(video.url) { mutableStateOf(false) }
-    var hasError by remember(video.url) { mutableStateOf(false) }
-    var durationMs by remember(video.url) { mutableIntStateOf(0) }
-    var positionMs by remember(video.url) { mutableIntStateOf(0) }
-    var isSeeking by remember(video.url) { mutableStateOf(false) }
-
-    val player = remember(video.url, playbackRequested) {
-        if (playbackRequested) android.media.MediaPlayer() else null
-    }
-
-    if (player != null) {
-        DisposableEffect(player) {
-            try {
-                player.setDataSource(context, videoUri)
-                player.setOnPreparedListener { mp ->
-                    if (mp.videoWidth > 0 && mp.videoHeight > 0) {
-                        aspectRatio = mp.videoWidth.toFloat() / mp.videoHeight
-                    }
-                    durationMs = mp.duration.coerceAtLeast(0)
-                    isPrepared = true
-                    mp.start()
-                    isPlaying = true
-                }
-                player.setOnCompletionListener {
-                    isPlaying = false
-                    positionMs = durationMs
-                }
-                player.setOnErrorListener { _, _, _ ->
-                    hasError = true
-                    isPlaying = false
-                    true
-                }
-                player.prepareAsync()
-            } catch (e: Exception) {
-                Log.e("MarkdownVideoView", "Failed to open video ${video.url}: ${e.message}")
-                hasError = true
-            }
-            onDispose {
-                try { player.release() } catch (_: Exception) {}
-            }
-        }
-    }
-
-    LaunchedEffect(player, isPlaying) {
-        while (isPlaying && player != null) {
-            if (!isSeeking) {
-                positionMs = try { player.currentPosition } catch (_: Exception) { positionMs }
-            }
-            delay(250)
-        }
-    }
-
-    val togglePlayback: () -> Unit = {
-        if (player == null) {
-            playbackRequested = true
-        } else if (isPrepared) try {
-            if (isPlaying) {
-                player.pause()
-                isPlaying = false
-            } else {
-                if (durationMs > 0 && positionMs >= durationMs - 200) player.seekTo(0)
-                player.start()
-                isPlaying = true
-            }
-        } catch (_: Exception) {}
-    }
-
-    Column(
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(vertical = 6.dp)
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
+        Row(
             modifier = Modifier
-                .heightIn(max = 420.dp)
-                .aspectRatio(aspectRatio)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black)
-                .clickable(enabled = !hasError && (!playbackRequested || isPrepared)) { togglePlayback() }
-        ) {
-            if (hasError) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ErrorOutline,
-                        contentDescription = "Failed to load video",
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = video.alt.ifBlank { "Video could not be loaded" },
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                }
-            } else {
-                if (player == null) {
-                    thumbnail?.bitmap?.let { bitmap ->
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = video.alt.ifBlank { "Video preview" },
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                } else {
-                    AndroidView(
-                        factory = { ctx ->
-                            android.view.TextureView(ctx).apply {
-                                surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
-                                    private var surface: android.view.Surface? = null
-
-                                    override fun onSurfaceTextureAvailable(texture: android.graphics.SurfaceTexture, width: Int, height: Int) {
-                                        surface = android.view.Surface(texture)
-                                        try {
-                                            player.setSurface(surface)
-                                            if (isPrepared && !isPlaying) player.seekTo(positionMs.coerceAtLeast(1))
-                                        } catch (_: Exception) {}
-                                    }
-
-                                    override fun onSurfaceTextureSizeChanged(texture: android.graphics.SurfaceTexture, width: Int, height: Int) {}
-
-                                    override fun onSurfaceTextureDestroyed(texture: android.graphics.SurfaceTexture): Boolean {
-                                        try {
-                                            if (player.isPlaying) player.pause()
-                                            player.setSurface(null)
-                                        } catch (_: Exception) {}
-                                        isPlaying = false
-                                        surface?.release()
-                                        surface = null
-                                        return true
-                                    }
-
-                                    override fun onSurfaceTextureUpdated(texture: android.graphics.SurfaceTexture) {}
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                if (!isPlaying) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color.Black.copy(alpha = 0.55f),
-                        modifier = Modifier.size(52.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (!playbackRequested || isPrepared) {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayArrow,
-                                    contentDescription = "Play",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            } else {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(22.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color.White
-                                )
-                            }
+                .clickable {
+                    try {
+                        val uri = if (video.url.startsWith("http://") || video.url.startsWith("https://") || video.url.startsWith("content://") || video.url.startsWith("file://")) {
+                            Uri.parse(video.url)
+                        } else {
+                            Uri.fromFile(java.io.File(video.url))
                         }
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "video/*")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        try {
+                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(video.url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(browserIntent)
+                        } catch (_: Exception) {}
                     }
                 }
-            }
-        }
-
-        if (isPrepared && !hasError && durationMs > 0) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
             ) {
-                IconButton(onClick = togglePlayback, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Slider(
-                    value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
-                    onValueChange = {
-                        isSeeking = true
-                        positionMs = it.toInt()
-                    },
-                    onValueChangeFinished = {
-                        try { player?.seekTo(positionMs) } catch (_: Exception) {}
-                        isSeeking = false
-                    },
-                    valueRange = 0f..durationMs.toFloat(),
-                    modifier = Modifier.weight(1f)
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Play video",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = video.alt.ifBlank { video.url.substringAfterLast('/') },
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${formatVideoTime(positionMs)} / ${formatVideoTime(durationMs)}",
-                    fontSize = 10.5.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(start = 6.dp)
+                    text = video.url,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                IconButton(
-                    onClick = { ImageDownloadHelper.downloadVideo(context, video.url, video.alt, coroutineScope) },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Download,
-                        contentDescription = "Download video",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = { ImageDownloadHelper.downloadVideo(context, video.url, video.alt, coroutineScope) },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Download,
+                    contentDescription = "Download video",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
-
-        if (video.alt.isNotBlank()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = video.alt,
-                fontSize = 11.5.sp,
-                fontStyle = FontStyle.Italic,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                textAlign = TextAlign.Center
-            )
-        }
     }
-}
-
-private fun formatVideoTime(ms: Int): String {
-    val totalSec = (ms / 1000).coerceAtLeast(0)
-    return "%d:%02d".format(totalSec / 60, totalSec % 60)
 }
 
 private val YOUTUBE_EXTRACT_REGEX = Regex(

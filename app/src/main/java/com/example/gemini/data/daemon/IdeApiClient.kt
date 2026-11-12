@@ -859,7 +859,7 @@ object IdeApiClient {
             }
             val req = Request.Builder()
                 .url("$baseUrl/api/goal/start")
-                .post(bodyObj.toString().toRequestBody(JSON))
+                .post(bodyObj.toString().toRequestBody(JSON_MEDIA_TYPE))
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -881,7 +881,7 @@ object IdeApiClient {
         try {
             val req = Request.Builder()
                 .url("$baseUrl/api/goal/$goalId/step")
-                .post("{}".toRequestBody(JSON))
+                .post("{}".toRequestBody(JSON_MEDIA_TYPE))
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
@@ -901,7 +901,7 @@ object IdeApiClient {
         try {
             val req = Request.Builder()
                 .url("$baseUrl/api/goal/$goalId/pause")
-                .post("{}".toRequestBody(JSON))
+                .post("{}".toRequestBody(JSON_MEDIA_TYPE))
                 .build()
             client.newCall(req).execute().use { it.isSuccessful }
         } catch (e: Exception) {
@@ -913,7 +913,7 @@ object IdeApiClient {
         try {
             val req = Request.Builder()
                 .url("$baseUrl/api/goal/$goalId/resume")
-                .post("{}".toRequestBody(JSON))
+                .post("{}".toRequestBody(JSON_MEDIA_TYPE))
                 .build()
             client.newCall(req).execute().use { it.isSuccessful }
         } catch (e: Exception) {

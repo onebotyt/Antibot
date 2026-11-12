@@ -2471,7 +2471,7 @@ object LocalIntelligenceEngine {
 
     private fun generate3DModernPortfolioHtml(prompt: String, projectName: String): String {
         val lower = prompt.lowercase(Locale.ROOT)
-        val (accentColor, secColor, tertColor, bgColor, surfColor, cardColor) = when {
+        val palette = when {
             lower.contains("neon") || lower.contains("cyberpunk") || lower.contains("pink") ->
                 listOf("#00f2fe", "#ff007f", "#7928ca", "#060714", "#0d1024", "#151833")
             lower.contains("emerald") || lower.contains("matrix") || lower.contains("green") ->
@@ -2483,6 +2483,12 @@ object LocalIntelligenceEngine {
             else ->
                 listOf("#00f2fe", "#3b82f6", "#7928ca", "#07090e", "#0e131f", "#141c2e")
         }
+        val accentColor = palette[0]
+        val secColor = palette[1]
+        val tertColor = palette[2]
+        val bgColor = palette[3]
+        val surfColor = palette[4]
+        val cardColor = palette[5]
 
         val roleTitle = when {
             lower.contains("game") -> "Game Developer & Spatial Engine Programmer"

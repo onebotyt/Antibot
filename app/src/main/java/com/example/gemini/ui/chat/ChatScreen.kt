@@ -2532,7 +2532,7 @@ fun ChatScreen(
             isRefreshing = isRefreshingModels,
             onRefresh = { viewModel.refreshQuotas(force = true, showToastFeedback = true) },
             currentAgent = effectiveAgent,
-            enabledAgents = enabledAgents,
+            enabledAgents = enabledAgents.toList(),
             claudeBackend = claudeBackend,
             claudeAccount = viewModel.claudeAccount,
             codexBackend = codexBackend,

@@ -86,7 +86,7 @@ fun ModelSelectorBottomSheet(
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     currentAgent: AgentKind = AgentKind.AGY,
-    enabledAgents: List<AgentKind> = listOf(AgentKind.AGY, AgentKind.LOCAL, AgentKind.CLAUDE, AgentKind.CODEX),
+    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.LOCAL, AgentKind.CLAUDE, AgentKind.CODEX),
     claudeBackend: com.example.gemini.data.agent.claude.ClaudeChatBackend? = null,
     claudeAccount: com.example.gemini.data.agent.claude.ClaudeAccountManager? = null,
     codexBackend: com.example.gemini.data.agent.codex.CodexChatBackend? = null,
