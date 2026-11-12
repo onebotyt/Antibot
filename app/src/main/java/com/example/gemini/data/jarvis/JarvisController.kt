@@ -1329,7 +1329,7 @@ object JarvisController {
             val steps = hub.getCascadeTrajectorySteps(id).getOrNull().orEmpty()
             com.example.gemini.domain.chat.TrajectoryEngine().ingestStepsDirect(steps, id)
         }
-        else -> vm.allMessages.value.filter { it.conversationId == id }
+        else -> vm.messages.value.filter { it.conversationId == id }
     }
 
     // ------------------------------------------------------------------ speaking and asking
