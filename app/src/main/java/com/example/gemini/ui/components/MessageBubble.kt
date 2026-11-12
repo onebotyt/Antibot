@@ -47,6 +47,7 @@ import coil.compose.AsyncImage
 import android.net.Uri
 import android.content.Intent
 import java.io.File
+import com.example.gemini.domain.model.AgentKind
 import com.example.gemini.data.remote.HubMediaResolver
 import com.example.gemini.ui.chat.WebPreviewHelper
 import com.example.gemini.ui.chat.WebPreviewCard

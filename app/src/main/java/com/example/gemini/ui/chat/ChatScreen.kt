@@ -2146,7 +2146,7 @@ fun ChatScreen(
                                         )
                                     }
                                     items(agentSuggestions, key = { it.first }) { (tag, name, agentKind) ->
-                                        val accent = com.example.gemini.ui.components.accent(agentKind)
+                                        val accent = agentKind.accent()
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
