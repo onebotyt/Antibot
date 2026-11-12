@@ -5132,7 +5132,7 @@ object LocalIntelligenceEngine {
 
             #### What I can do right now:
             - **Code & Fullstack Generation**: Ask me to write scripts, components, or entire apps (Python, Kotlin, JavaScript, Rust, Bash, HTML/CSS).
-            - **Shell & Tool Execution**: Prefix commands with `$` to run directly in your local environment (e.g. `$ git status`, `$ pnpm test`, `$ ls`).
+            - **Shell & Tool Execution**: Prefix commands with `${'$'}` to run directly in your local environment (e.g. `${'$'} git status`, `${'$'} pnpm test`, `${'$'} ls`).
             - **Software Architecture & Planning**: Type `/plan <goal>` to create atomic implementation checklists.
             - **Security & Bug Auditing**: Ask me to review code for OWASP vulnerabilities or debug errors.
             - **File & Workspace Inspection**: Read and manipulate files directly in your current workspace (`${projectDir.name}`).
@@ -5169,7 +5169,7 @@ object LocalIntelligenceEngine {
             }
             appendLine("\n#### 🛠️ Immediate Next Steps:")
             appendLine("- To generate complete code: Ask *\"Write a script/function to...\"*")
-            appendLine("- To run terminal verification: Type `$ <command>` (e.g. `$ git status` or `$ cargo check`)")
+            appendLine("- To run terminal verification: Type `${'$'} <command>` (e.g. `${'$'} git status` or `${'$'} cargo check`)")
             appendLine("- To inspect workspace files: Type `ls` or `read <filename>`")
             appendLine("\n---")
             appendLine("*Executed on-device via ${spec.displayName} (${spec.parameterCount}). 0 cloud tokens consumed.*")
