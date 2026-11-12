@@ -2480,9 +2480,11 @@ All files created here persist inside the application.
             val tmp = getTmpDir(context)
 
             env["LD_LIBRARY_PATH"] = getLdLibraryPath(context)
+            val pnpmHome = "${home.absolutePath}/.local/share/pnpm"
+            env["PNPM_HOME"] = pnpmHome
             env["PREFIX"] = prefix.absolutePath
             env["HOME"] = home.absolutePath
-            env["PATH"] = "${home.absolutePath}/.local/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
+            env["PATH"] = "$pnpmHome/bin:$pnpmHome:${home.absolutePath}/.local/bin:${home.absolutePath}/.npm-global/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
             env["TMPDIR"] = tmp.absolutePath
             env["OPENSSL_CONF"] = getOpenSslConf(context)
             env["SSL_CERT_FILE"] = getSslCertFile(context)

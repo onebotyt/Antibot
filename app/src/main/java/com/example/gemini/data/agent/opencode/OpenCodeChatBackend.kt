@@ -295,7 +295,23 @@ class OpenCodeChatBackend(
                         }
                     }
                 }
-                .onFailure { _toasts.tryEmit("Could not start the $action: ${it.message}") }
+                .onFailure {
+                    _toasts.tryEmit("Starting direct installer via local terminal...")
+                    val script = if (action == "update") {
+                        "export PNPM_HOME=\"\$HOME/.local/share/pnpm\"; export PATH=\"\$PNPM_HOME/bin:\$PNPM_HOME:\$PATH\"; pnpm update -g @opencode/cli || npm update -g @opencode/cli || curl -fsSL https://opencode.ai/v2/install | bash"
+                    } else {
+                        "export PNPM_HOME=\"\$HOME/.local/share/pnpm\"; export PATH=\"\$PNPM_HOME/bin:\$PNPM_HOME:\$PATH\"; mkdir -p \"\$PNPM_HOME/bin\"; pnpm add -g @opencode/cli || npm install -g @opencode/cli || curl -fsSL https://opencode.ai/v2/install | bash"
+                    }
+                    val res = com.example.gemini.data.local.LocalEnvironmentManager.executeCommand(script, timeoutSeconds = 180)
+                    val ok = res.exitCode == 0
+                    _toasts.tryEmit(if (ok) "OpenCode ${if (action == "install") "installed" else "is up to date"}" else "OpenCode $action failed: ${res.output.takeLast(120)}")
+                    refreshStatus()
+                    if (ok) {
+                        refreshModels()
+                        refreshAgents()
+                        refreshSessions()
+                    }
+                }
         }
     }
 

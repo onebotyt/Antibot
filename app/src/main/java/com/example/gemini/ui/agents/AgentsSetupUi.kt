@@ -75,17 +75,12 @@ private val AGENT_OPTIONS = listOf(
         AgentKind.CODEX,
         "Codex",
         "OpenAI's Codex CLI on this device: sign in with your ChatGPT account (or an API key)."
-    ),
-    AgentOption(
-        AgentKind.DSH,
-        "DeepSeek Harness",
-        "DeepSeek's official Harness meta-framework in Termux: R1 reasoning, Cordis plugins, and local daemon tools."
     )
 )
 
 /**
- * The agents to run: tap to turn each on or off (at least one stays on). With several on, the new-chat screen
- * lets you pick the agent per chat; they share the chat list, status and accounts.
+ * The agents to run: tap to turn each on or off (at least one stays on).
+ * DeepSeek Harness acts as the core master engine and controls all enabled CLIs.
  */
 @Composable
 fun AgentSelector(
@@ -95,13 +90,64 @@ fun AgentSelector(
     allowEmpty: Boolean = false
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Core Platform Card: DeepSeek Harness Master Orchestrator
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF4D6BFE).copy(alpha = 0.10f),
+            border = BorderStroke(1.5.dp, Color(0xFF4D6BFE).copy(alpha = 0.85f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🐋", fontSize = 28.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("DeepSeek Harness Core", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF4D6BFE).copy(alpha = 0.25f),
+                            contentColor = Color(0xFF4D6BFE)
+                        ) {
+                            Text("MASTER ENGINE", fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                    }
+                    Text(
+                        "AntiBot's central orchestrator. Powers the unified multi-model chat, Cordis plugins, MCP tools, deep reasoning (<think>), and coordinates all CLI workers below.",
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    Modifier
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF4D6BFE)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Text(
+            "CLI AGENTS CONTROLLED BY HARNESS",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        )
+
         AGENT_OPTIONS.forEach { option ->
             val isOn = option.agent in selected
             val accent = option.agent.accent()
             Surface(
                 onClick = {
                     val next = if (isOn) selected - option.agent else selected + option.agent
-                    if (allowEmpty || next.isNotEmpty()) onSelect(next)
+                    val finalSet = (if (allowEmpty || next.isNotEmpty()) next else selected) + AgentKind.DSH
+                    onSelect(finalSet)
                 },
                 shape = RoundedCornerShape(16.dp),
                 color = if (isOn) accent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
@@ -129,14 +175,12 @@ fun AgentSelector(
                 }
             }
         }
-        if (selected.size > 1) {
-            Text(
-                "With several agents on, pick the agent for each new chat on the empty chat screen.",
-                fontSize = 11.5.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-        }
+        Text(
+            "DeepSeek Harness controls all enabled agents in a single unified chat. Tag @claude, @codex, @opencode, or @gemini anytime to route tasks.",
+            fontSize = 11.5.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
     }
 }
 

@@ -179,7 +179,8 @@ fun ChatScreen(
             viewModel.setNewChatAgent(agent)
             viewModel.startNewChat(agent)
         } else {
-            pendingAgentSwitch = agent
+            // DeepSeek Harness Unified Chat: seamlessly switch active model/agent for subsequent turns in the same chat
+            viewModel.switchOngoingChatAgent(agent)
         }
     }
     val artifacts by viewModel.artifacts.collectAsState()

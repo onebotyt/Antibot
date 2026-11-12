@@ -21,3 +21,4 @@ pub mod rea;
 pub mod skills;
 pub mod subagents;
 pub mod goal;
+pub mod cli_runner;

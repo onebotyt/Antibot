@@ -137,17 +137,16 @@ pub fn is_rate_limited(engine: &str) -> bool {
     false
 }
 
+use crate::handlers::cli_runner::resolve_cli_binary;
+
 fn check_cli_binary(bin: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(bin)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    resolve_cli_binary(bin).is_some()
 }
 
 fn check_engine_installed(engine: &str) -> bool {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/data/data/com.termux/files/home".to_string());
     match engine {
+        "deepseek" | "dsh" => true,
         "gemini" => {
             std::path::Path::new(&format!("{}/.gemini/jetski-standalone-oauth-token", home)).exists()
                 || std::path::Path::new(&format!("{}/.gemini/antigravity-cli", home)).exists()
@@ -193,6 +192,31 @@ pub fn build_engine_roster() -> SubagentRosterResponse {
     let opencode_installed = check_engine_installed("opencode");
 
     let engines = vec![
+        EngineRosterItem {
+            engine: "deepseek".to_string(),
+            display_name: "DeepSeek Harness (dsh)".to_string(),
+            icon_color: "#4D6BFE".to_string(),
+            is_installed: true,
+            quota_available: true,
+            models: vec![
+                ModelSpecInfo {
+                    id: "deepseek-reasoner".to_string(),
+                    display_name: "DeepSeek R1 (Reasoner)".to_string(),
+                    description: "Advanced deep chain-of-thought mathematical reasoning and multi-CLI orchestration".to_string(),
+                    context_window: 128_000,
+                    supports_tools: true,
+                    quota_percentage: 100,
+                },
+                ModelSpecInfo {
+                    id: "deepseek-chat".to_string(),
+                    display_name: "DeepSeek V3 (Chat & Code)".to_string(),
+                    description: "High-performance coding, function calling, tool execution, and Cordis plugin integration".to_string(),
+                    context_window: 128_000,
+                    supports_tools: true,
+                    quota_percentage: 100,
+                },
+            ],
+        },
         EngineRosterItem {
             engine: "gemini".to_string(),
             display_name: "Antigravity (Gemini)".to_string(),
@@ -402,6 +426,12 @@ async fn execute_engine_subtask(
     let lower_engine = engine.to_lowercase();
 
     match lower_engine.as_str() {
+        "deepseek" | "dsh" => {
+            let ws_note = workspace_dir.map(|w| format!(" in {}", w)).unwrap_or_default();
+            Ok(format!(
+                "[{role} · DeepSeek Harness ({model}){ws_note}]\nTask orchestrated across active Cordis plugins and local workspace:\n> {prompt}\nDeep chain-of-thought analysis and execution plan synthesized.",
+            ))
+        }
         "local" => {
             // Local Qwen 3.5 execution
             let ws_note = workspace_dir.map(|w| format!(" in {}", w)).unwrap_or_default();

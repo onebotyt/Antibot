@@ -94,17 +94,14 @@ pub async fn abort_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 }
 
 pub async fn agy_cli_handler() -> impl IntoResponse {
-    let which = Command::new("which").arg("agy").output();
-    let (installed, path) = match which {
-        Ok(out) if out.status.success() => {
-            let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            (true, p)
-        }
-        _ => (false, String::new()),
+    let bin_path = crate::handlers::cli_runner::resolve_cli_binary("agy");
+    let (installed, path) = match bin_path {
+        Some(p) => (true, p),
+        None => (false, String::new()),
     };
 
     let version = if installed {
-        Command::new("agy")
+        Command::new(if path.is_empty() { "agy" } else { &path })
             .arg("--version")
             .output()
             .ok()

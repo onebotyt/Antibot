@@ -64,50 +64,62 @@ pub struct BridgeSimpleResponse {
     pub error: Option<String>,
 }
 
+use axum::extract::Path as AxumPath;
+use crate::handlers::cli_runner::{resolve_cli_binary, spawn_cli_job, CliJobState};
+use std::sync::{Arc, OnceLock, RwLock};
+
+#[allow(dead_code)]
+pub type ClaudeCliJob = CliJobState;
+
+pub struct ClaudeManager {
+    pub active_job: Arc<RwLock<Option<CliJobState>>>,
+}
+
+impl Default for ClaudeManager {
+    fn default() -> Self {
+        Self {
+            active_job: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+static CLAUDE_MGR: OnceLock<ClaudeManager> = OnceLock::new();
+
+pub fn get_claude_mgr() -> &'static ClaudeManager {
+    CLAUDE_MGR.get_or_init(ClaudeManager::default)
+}
+
 fn locate_claude_bin() -> Option<String> {
-    let candidates = [
-        "/data/data/com.termux/files/usr/bin/claude",
-        "/data/data/com.termux/files/home/.local/bin/claude",
-        "/data/data/com.termux/files/home/.npm-global/bin/claude",
-        "/usr/local/bin/claude",
-        "/usr/bin/claude",
-    ];
-
-    for path in &candidates {
-        if PathBuf::from(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in path_var.split(':') {
-            let p = PathBuf::from(dir).join("claude");
-            if p.exists() {
-                return Some(p.to_string_lossy().to_string());
-            }
-        }
-    }
-
-    None
+    resolve_cli_binary("claude")
 }
 
 fn read_claude_auth() -> ClaudeAuthStatus {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/data/user/0/com.termux/files/home".to_string());
-    let config_path = PathBuf::from(&home).join(".claude.json");
-    if config_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&config_path) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                let oauth_email = json.get("oauthAccount").and_then(|a| a.get("email")).and_then(|e| e.as_str());
-                let has_key = json.get("primaryApiKey").is_some() || json.get("apiKey").is_some() || json.get("oauthAccount").is_some();
-                let sub_type = json.get("oauthAccount").and_then(|a| a.get("subscriptionType")).and_then(|s| s.as_str());
+    let mut candidate_homes = Vec::new();
+    if let Ok(h) = std::env::var("HOME") {
+        candidate_homes.push(PathBuf::from(h));
+    }
+    candidate_homes.push(PathBuf::from("/data/data/com.antibot/files/home"));
+    candidate_homes.push(PathBuf::from("/data/user/0/com.antibot/files/home"));
+    candidate_homes.push(PathBuf::from("/data/data/com.termux/files/home"));
+    candidate_homes.push(PathBuf::from("/data/user/0/com.termux/files/home"));
 
-                if has_key || oauth_email.is_some() {
-                    return ClaudeAuthStatus {
-                        logged_in: true,
-                        auth_method: Some("claude_oauth".to_string()),
-                        email: oauth_email.map(|s| s.to_string()),
-                        subscription_type: sub_type.map(|s| s.to_string()),
-                    };
+    for home in candidate_homes {
+        let config_path = home.join(".claude.json");
+        if config_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&config_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    let oauth_email = json.get("oauthAccount").and_then(|a| a.get("email")).and_then(|e| e.as_str());
+                    let has_key = json.get("primaryApiKey").is_some() || json.get("apiKey").is_some() || json.get("oauthAccount").is_some();
+                    let sub_type = json.get("oauthAccount").and_then(|a| a.get("subscriptionType")).and_then(|s| s.as_str());
+
+                    if has_key || oauth_email.is_some() {
+                        return ClaudeAuthStatus {
+                            logged_in: true,
+                            auth_method: Some("claude_oauth".to_string()),
+                            email: oauth_email.map(|s| s.to_string()),
+                            subscription_type: sub_type.map(|s| s.to_string()),
+                        };
+                    }
                 }
             }
         }
@@ -119,6 +131,33 @@ fn read_claude_auth() -> ClaudeAuthStatus {
         email: None,
         subscription_type: None,
     }
+}
+
+pub async fn claude_cli_job_handler() -> Json<serde_json::Value> {
+    let mgr = get_claude_mgr();
+    let job = mgr.active_job.read().unwrap().clone();
+    Json(serde_json::json!({
+        "success": true,
+        "job": job
+    }))
+}
+
+pub async fn claude_cli_start_handler(
+    AxumPath(action): AxumPath<String>,
+) -> Json<serde_json::Value> {
+    let mgr = get_claude_mgr();
+    let script = match action.as_str() {
+        "update" => "pnpm update -g @anthropic-ai/claude-code || npm update -g @anthropic-ai/claude-code".to_string(),
+        _ => "pnpm add -g @anthropic-ai/claude-code || npm install -g @anthropic-ai/claude-code".to_string(),
+    };
+
+    spawn_cli_job("Claude Code".to_string(), action.clone(), script, mgr.active_job.clone());
+
+    let job = mgr.active_job.read().unwrap().clone();
+    Json(serde_json::json!({
+        "success": true,
+        "job": job
+    }))
 }
 
 pub async fn claude_status_handler() -> Json<ClaudeCliStatus> {

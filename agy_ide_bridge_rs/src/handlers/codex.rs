@@ -9,7 +9,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         OnceLock, RwLock,
@@ -37,14 +36,10 @@ pub struct CodexStatus {
     pub termux_package: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodexCliJob {
-    pub kind: String,
-    pub running: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub exit_code: Option<i32>,
-    pub log: String,
-}
+use crate::handlers::cli_runner::{resolve_cli_binary, spawn_cli_job, CliJobState};
+
+#[allow(dead_code)]
+pub type CodexCliJob = CliJobState;
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -72,12 +67,14 @@ pub struct CodexReplyRequest {
     pub result: serde_json::Value,
 }
 
+use std::sync::Arc;
+
 pub struct CodexManager {
     pub running: AtomicBool,
     pub starting: AtomicBool,
     pub start_time: RwLock<Option<Instant>>,
     pub logs: RwLock<Vec<String>>,
-    pub active_job: RwLock<Option<CodexCliJob>>,
+    pub active_job: Arc<RwLock<Option<CliJobState>>>,
     pub pending_requests: RwLock<HashMap<String, serde_json::Value>>,
 }
 
@@ -88,7 +85,7 @@ impl Default for CodexManager {
             starting: AtomicBool::new(false),
             start_time: RwLock::new(None),
             logs: RwLock::new(Vec::new()),
-            active_job: RwLock::new(None),
+            active_job: Arc::new(RwLock::new(None)),
             pending_requests: RwLock::new(HashMap::new()),
         }
     }
@@ -101,32 +98,9 @@ pub fn get_codex_mgr() -> &'static CodexManager {
 }
 
 fn locate_codex_bin() -> (Option<String>, bool) {
-    let candidates = [
-        "/data/data/com.termux/files/usr/bin/codex",
-        "/data/data/com.termux/files/home/.local/bin/codex",
-        "/data/data/com.termux/files/home/.cargo/bin/codex",
-        "/usr/local/bin/codex",
-        "/usr/bin/codex",
-    ];
-
-    for path in &candidates {
-        if PathBuf::from(path).exists() {
-            let is_termux = path.starts_with("/data/data/com.termux/files/usr/bin");
-            return (Some(path.to_string()), is_termux);
-        }
-    }
-
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in path_var.split(':') {
-            let p = PathBuf::from(dir).join("codex");
-            if p.exists() {
-                let is_termux = dir.contains("com.termux");
-                return (Some(p.to_string_lossy().to_string()), is_termux);
-            }
-        }
-    }
-
-    (None, false)
+    let bin = resolve_cli_binary("codex");
+    let is_termux = bin.as_ref().map(|p| p.contains("com.antibot") || p.contains("com.termux")).unwrap_or(false);
+    (bin, is_termux)
 }
 
 pub async fn codex_status_handler() -> Json<CodexStatus> {
@@ -350,28 +324,14 @@ pub async fn codex_cli_job_handler() -> Json<serde_json::Value> {
 
 pub async fn codex_cli_start_handler(AxumPath(action): AxumPath<String>) -> Json<serde_json::Value> {
     let mgr = get_codex_mgr();
-    let job = CodexCliJob {
-        kind: action.clone(),
-        running: true,
-        exit_code: None,
-        log: format!("Started Codex {} in background...\n", action),
+    let script = match action.as_str() {
+        "update" => "pnpm update -g @openai/codex || npm update -g @openai/codex".to_string(),
+        _ => "pnpm add -g @openai/codex || npm install -g @openai/codex".to_string(),
     };
 
-    *mgr.active_job.write().unwrap() = Some(job.clone());
+    spawn_cli_job("Codex".to_string(), action.clone(), script, mgr.active_job.clone());
 
-    // Spawn async background task
-    let action_clone = action.clone();
-    tokio::spawn(async move {
-        sleep(Duration::from_millis(1500)).await;
-        let mgr = get_codex_mgr();
-        let mut j = mgr.active_job.write().unwrap();
-        if let Some(ref mut current) = *j {
-            current.running = false;
-            current.exit_code = Some(0);
-            current.log.push_str(&format!("Codex {} completed successfully.\n", action_clone));
-        }
-    });
-
+    let job = mgr.active_job.read().unwrap().clone();
     Json(serde_json::json!({
         "success": true,
         "job": job

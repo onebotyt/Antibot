@@ -45,15 +45,16 @@ class AgentPreferences(context: Context) {
 
         private fun key(agent: AgentKind) = "enabled_" + agent.name.lowercase()
 
-        private fun default(agent: AgentKind) = agent == AgentKind.AGY
+        private fun default(agent: AgentKind) = agent == AgentKind.AGY || agent == AgentKind.DSH
 
         private fun read(prefs: android.content.SharedPreferences): Set<AgentKind> {
             val chosen = prefs.getBoolean(KEY_CHOSEN, false)
-            if (!chosen) {
-                return AgentKind.entries.filter { default(it) }.toSet()
+            val set = if (!chosen) {
+                AgentKind.entries.filter { default(it) }.toSet()
+            } else {
+                AgentKind.entries.filter { prefs.getBoolean(key(it), default(it)) }.toSet()
             }
-            val set = AgentKind.entries.filter { prefs.getBoolean(key(it), default(it)) }.toSet()
-            return if (set.isEmpty()) setOf(AgentKind.AGY) else set
+            return set + AgentKind.DSH
         }
 
         /** The first-launch agent choice was made, read synchronously (the server does not start before it). */

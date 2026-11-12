@@ -8,10 +8,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        OnceLock, RwLock,
+        Arc, OnceLock, RwLock,
     },
     time::{Duration, Instant},
 };
@@ -37,14 +36,10 @@ pub struct OpenCodeStatus {
     pub port: Option<u16>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenCodeCliJob {
-    pub kind: String,
-    pub running: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub exit_code: Option<i32>,
-    pub log: String,
-}
+use crate::handlers::cli_runner::{resolve_cli_binary, spawn_cli_job, CliJobState};
+
+#[allow(dead_code)]
+pub type OpenCodeCliJob = CliJobState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenCodeCustomModel {
@@ -87,7 +82,7 @@ pub struct OpenCodeManager {
     pub port: u16,
     pub start_time: RwLock<Option<Instant>>,
     pub logs: RwLock<Vec<String>>,
-    pub active_job: RwLock<Option<OpenCodeCliJob>>,
+    pub active_job: Arc<RwLock<Option<CliJobState>>>,
     pub custom_providers: RwLock<Vec<OpenCodeCustomProvider>>,
     pub mcp_servers: RwLock<HashMap<String, serde_json::Value>>,
 }
@@ -100,7 +95,7 @@ impl Default for OpenCodeManager {
             port: 4096,
             start_time: RwLock::new(None),
             logs: RwLock::new(Vec::new()),
-            active_job: RwLock::new(None),
+            active_job: Arc::new(RwLock::new(None)),
             custom_providers: RwLock::new(Vec::new()),
             mcp_servers: RwLock::new(HashMap::new()),
         }
@@ -114,30 +109,7 @@ pub fn get_opencode_mgr() -> &'static OpenCodeManager {
 }
 
 fn locate_opencode_bin() -> Option<String> {
-    let candidates = [
-        "/data/data/com.termux/files/usr/bin/opencode",
-        "/data/data/com.termux/files/home/.opencode/bin/opencode",
-        "/data/data/com.termux/files/home/.local/bin/opencode",
-        "/usr/local/bin/opencode",
-        "/usr/bin/opencode",
-    ];
-
-    for path in &candidates {
-        if PathBuf::from(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in path_var.split(':') {
-            let p = PathBuf::from(dir).join("opencode");
-            if p.exists() {
-                return Some(p.to_string_lossy().to_string());
-            }
-        }
-    }
-
-    None
+    resolve_cli_binary("opencode")
 }
 
 pub async fn opencode_status_handler() -> Json<OpenCodeStatus> {
@@ -355,27 +327,14 @@ pub async fn opencode_cli_start_handler(
     AxumPath(action): AxumPath<String>,
 ) -> Json<serde_json::Value> {
     let mgr = get_opencode_mgr();
-    let job = OpenCodeCliJob {
-        kind: action.clone(),
-        running: true,
-        exit_code: None,
-        log: format!("Started OpenCode {} in background...\n", action),
+    let script = match action.as_str() {
+        "update" => "curl -fsSL https://opencode.ai/v2/install | bash || pnpm update -g opencode-ai || npm update -g opencode-ai".to_string(),
+        _ => "curl -fsSL https://opencode.ai/v2/install | bash || pnpm add -g opencode-ai || npm install -g opencode-ai".to_string(),
     };
 
-    *mgr.active_job.write().unwrap() = Some(job.clone());
+    spawn_cli_job("OpenCode".to_string(), action.clone(), script, mgr.active_job.clone());
 
-    let action_clone = action.clone();
-    tokio::spawn(async move {
-        sleep(Duration::from_millis(1500)).await;
-        let mgr = get_opencode_mgr();
-        let mut j = mgr.active_job.write().unwrap();
-        if let Some(ref mut current) = *j {
-            current.running = false;
-            current.exit_code = Some(0);
-            current.log.push_str(&format!("OpenCode {} completed successfully.\n", action_clone));
-        }
-    });
-
+    let job = mgr.active_job.read().unwrap().clone();
     Json(serde_json::json!({
         "success": true,
         "job": job

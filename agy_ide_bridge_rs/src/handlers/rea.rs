@@ -33,6 +33,21 @@ pub struct ReaRunResponse {
     pub stderr: String,
 }
 
+fn get_termux_root() -> String {
+    if let Ok(prefix) = std::env::var("PREFIX") {
+        if let Some(parent) = Path::new(&prefix).parent() {
+            return parent.to_string_lossy().to_string();
+        }
+    }
+    if Path::new("/data/data/com.antibot/files").exists() {
+        "/data/data/com.antibot/files".to_string()
+    } else if Path::new("/data/user/0/com.antibot/files").exists() {
+        "/data/user/0/com.antibot/files".to_string()
+    } else {
+        "/data/data/com.termux/files".to_string()
+    }
+}
+
 fn resolve_ubuntu_dir(termux_root: &str) -> String {
     let candidates = [
         format!("{}/usr/var/lib/proot-distro/containers/ubuntu/rootfs", termux_root),
@@ -44,7 +59,8 @@ fn resolve_ubuntu_dir(termux_root: &str) -> String {
 pub async fn rea_status_handler() -> Json<ReaStatus> {
     let mut components = HashMap::new();
 
-    let termux_root = "/data/data/com.termux/files";
+    let root_str = get_termux_root();
+    let termux_root = root_str.as_str();
     let ubuntu_dir = resolve_ubuntu_dir(termux_root);
     let container_installed = Path::new(&ubuntu_dir).exists();
     components.insert("container".to_string(), container_installed);
@@ -187,7 +203,8 @@ pub struct GhidraDecompileResponse {
 pub async fn rea_ghidra_decompile_handler(
     Json(payload): Json<GhidraDecompileRequest>,
 ) -> Json<GhidraDecompileResponse> {
-    let termux_root = "/data/data/com.termux/files";
+    let root_str = get_termux_root();
+    let termux_root = root_str.as_str();
     let ubuntu_dir = resolve_ubuntu_dir(termux_root);
     let headless_path = format!("{}/root/tools/ghidra/support/analyzeHeadless", ubuntu_dir);
     let is_installed = Path::new(&headless_path).exists()

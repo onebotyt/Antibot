@@ -353,7 +353,21 @@ class ClaudeConfigManager(
                         }
                     }
                 }
-                .onFailure { _messages.tryEmit("$action failed: ${it.message}") }
+                .onFailure {
+                    _messages.tryEmit("Starting direct installer via local terminal...")
+                    val script = if (action == "update") {
+                        "export PNPM_HOME=\"\$HOME/.local/share/pnpm\"; export PATH=\"\$PNPM_HOME/bin:\$PNPM_HOME:\$PATH\"; pnpm update -g @anthropic-ai/claude-code || npm update -g @anthropic-ai/claude-code"
+                    } else {
+                        "export PNPM_HOME=\"\$HOME/.local/share/pnpm\"; export PATH=\"\$PNPM_HOME/bin:\$PNPM_HOME:\$PATH\"; mkdir -p \"\$PNPM_HOME/bin\"; pnpm add -g @anthropic-ai/claude-code || npm install -g @anthropic-ai/claude-code"
+                    }
+                    val res = com.example.gemini.data.local.LocalEnvironmentManager.executeCommand(script, timeoutSeconds = 180)
+                    if (res.exitCode == 0) {
+                        _messages.tryEmit("Claude Code $action succeeded")
+                        onCliChanged()
+                    } else {
+                        _messages.tryEmit("Claude Code $action failed (exit ${res.exitCode}): ${res.output.takeLast(120)}")
+                    }
+                }
         }
     }
 }

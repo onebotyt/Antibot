@@ -346,6 +346,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/claude/providers", get(handlers::claude::claude_providers_handler))
         .route("/api/claude/usage", get(handlers::claude::claude_usage_handler))
         .route("/api/claude/auth/logout", post(handlers::claude::claude_logout_handler))
+        .route("/api/claude/cli/job", get(handlers::claude::claude_cli_job_handler))
+        .route("/api/claude/cli/:action", post(handlers::claude::claude_cli_start_handler))
         // OpenAI Codex Protocol & App-Server Daemon
         .route("/api/codex/status", get(handlers::codex::codex_status_handler))
         .route("/api/codex/start", post(handlers::codex::codex_start_handler))
