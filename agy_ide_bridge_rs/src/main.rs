@@ -307,6 +307,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Multi-Agent Consensus, DAG Scheduling & Task Delegation
         .route("/api/agents/dag", post(handlers::agents::dag_schedule_handler))
         .route("/api/agents/consensus", post(handlers::agents::consensus_handler))
+        // Cross-CLI Subagent Dispatcher & Self-Healing Failover
+        .route("/api/subagents/roster", get(handlers::subagents::subagent_roster_handler))
+        .route("/api/subagents/invoke", post(handlers::subagents::subagent_invoke_handler))
+        .route("/api/subagents/list", get(handlers::subagents::subagent_list_handler))
+        .route("/api/subagents/:id/cancel", post(handlers::subagents::subagent_cancel_handler))
         // Fast Semantic Vector Index, RAG Cache & Tokenizer
         .route("/api/ai/similarity", post(handlers::ai::similarity_handler))
         .route("/api/ai/rag/search", post(handlers::ai::rag_search_handler))

@@ -956,6 +956,41 @@ fun ChatScreen(
     val showWorkingRow = workingAnimationEnabled && (isRunningOrStreaming || holdingTail) && !waitingForUser && !footerShown
 
     val currentModel = when {
+        isClaudeChat -> {
+            val claudeSelId = claudeBackend.selectedModelId.collectAsState().value
+            val claudeActive = claudeBackend.activeModel.collectAsState().value ?: claudeSelId
+            val modelObj = claudeBackend.availableModels.collectAsState().value.find { it.id == claudeActive }
+            AiModel(
+                id = claudeActive.ifBlank { "claude-3-5-sonnet" },
+                displayName = modelObj?.displayName ?: when {
+                    claudeActive.contains("haiku", ignoreCase = true) -> "Claude 3.5 Haiku"
+                    claudeActive.contains("opus", ignoreCase = true) -> "Claude 3 Opus"
+                    else -> "Claude 3.5 Sonnet"
+                },
+                description = "Claude Code CLI",
+                family = com.example.gemini.domain.model.ModelFamily.CLAUDE
+            )
+        }
+        isCodexChat -> {
+            val codexSelId = codexBackend.selectedModelId.collectAsState().value
+            val modelObj = codexBackend.availableModels.collectAsState().value.find { it.id == codexSelId }
+            AiModel(
+                id = codexSelId.ifBlank { "gpt-4o" },
+                displayName = modelObj?.displayName ?: if (codexSelId.isNotBlank()) codexSelId else "Codex (GPT-4o)",
+                description = "Codex CLI",
+                family = com.example.gemini.domain.model.ModelFamily.OTHER
+            )
+        }
+        isOpenCodeChat -> {
+            val ocSelId = openCodeBackend.selectedModelId.collectAsState().value
+            val modelObj = openCodeBackend.availableModels.collectAsState().value.find { it.id == ocSelId }
+            AiModel(
+                id = ocSelId.ifBlank { "opencode" },
+                displayName = modelObj?.displayName ?: if (ocSelId.isNotBlank()) ocSelId else "OpenCode",
+                description = "OpenCode CLI",
+                family = com.example.gemini.domain.model.ModelFamily.OTHER
+            )
+        }
         isAutoModel -> AiModel(
             id = com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
             displayName = com.example.gemini.domain.model.SmartModelRouter.AUTO_DISPLAY_NAME,
@@ -1473,13 +1508,6 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        com.example.gemini.ui.components.AgentTopBarDropdown(
-                            selected = effectiveAgent,
-                            onSelect = pickAgent,
-                            agents = enabledAgents,
-                            statusColors = agentEntries.associate { it.agent to it.color }
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
                         IconButton(
                             onClick = { showLocalVersionControlDialog = true },
                             modifier = Modifier.size(34.dp)
@@ -2494,20 +2522,8 @@ fun ChatScreen(
         }
     }
 
-    // Model Selector Bottom Sheet (Active Model at Top & Expandable Categories)
-    if (showModelSelector && isClaudeChat) {
-        com.example.gemini.ui.claude.ClaudeModelSheet(claudeBackend, viewModel.claudeAccount) { showModelSelector = false }
-    } else if (showModelSelector && isCodexChat) {
-        com.example.gemini.ui.codex.CodexModelSheet(
-            backend = codexBackend,
-            onOpenSettings = { codexSettingsPage = com.example.gemini.ui.codex.CodexSettingsPage.ACCOUNT; showSettingsDialog = true }
-        ) { showModelSelector = false }
-    } else if (showModelSelector && isOpenCodeChat) {
-        com.example.gemini.ui.opencode.OpenCodeModelSheet(
-            backend = openCodeBackend,
-            onOpenSettings = { openCodeSettingsPage = com.example.gemini.ui.opencode.OpenCodeSettingsPage.PROVIDERS; showSettingsDialog = true }
-        ) { showModelSelector = false }
-    } else if (showModelSelector) {
+    // Unified Multi-CLI Model Selector Bottom Sheet
+    if (showModelSelector) {
         ModelSelectorBottomSheet(
             selectedModelId = selectedModelId,
             availableModels = enabledModels,
@@ -2515,6 +2531,31 @@ fun ChatScreen(
             quotaSummary = quotaSummary,
             isRefreshing = isRefreshingModels,
             onRefresh = { viewModel.refreshQuotas(force = true, showToastFeedback = true) },
+            currentAgent = effectiveAgent,
+            enabledAgents = enabledAgents,
+            claudeBackend = claudeBackend,
+            claudeAccount = viewModel.claudeAccount,
+            codexBackend = codexBackend,
+            openCodeBackend = openCodeBackend,
+            onSelectAgentAndModel = { targetAgent, modelId ->
+                if (targetAgent != effectiveAgent) {
+                    when (targetAgent) {
+                        com.example.gemini.domain.model.AgentKind.CLAUDE -> claudeBackend.selectModel(modelId)
+                        com.example.gemini.domain.model.AgentKind.CODEX -> codexBackend.selectModel(modelId)
+                        com.example.gemini.domain.model.AgentKind.OPENCODE -> openCodeBackend.selectModel(modelId)
+                        else -> viewModel.selectModel(modelId)
+                    }
+                    pickAgent(targetAgent)
+                } else {
+                    when (targetAgent) {
+                        com.example.gemini.domain.model.AgentKind.CLAUDE -> claudeBackend.selectModel(modelId)
+                        com.example.gemini.domain.model.AgentKind.CODEX -> codexBackend.selectModel(modelId)
+                        com.example.gemini.domain.model.AgentKind.OPENCODE -> openCodeBackend.selectModel(modelId)
+                        else -> viewModel.selectModel(modelId)
+                    }
+                }
+                showModelSelector = false
+            },
             onSelectModel = { modelId -> viewModel.selectModel(modelId) },
             onDismiss = { showModelSelector = false }
         )

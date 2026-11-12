@@ -780,4 +780,66 @@ object IdeApiClient {
             emptyList()
         }
     }
+
+    data class SubagentInvokeResult(
+        val subagentId: String,
+        val status: String,
+        val outputText: String,
+        val executingAgent: String,
+        val modelUsed: String,
+        val failedOver: Boolean = false,
+        val failoverHistory: List<String> = emptyList()
+    )
+
+    suspend fun invokeSubagent(
+        parentConversationId: String,
+        typeName: String,
+        model: String? = null,
+        role: String,
+        prompt: String,
+        timeoutSeconds: Long = 120
+    ): SubagentInvokeResult? = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("parent_conversation_id", parentConversationId)
+                put("type_name", typeName)
+                if (!model.isNullOrBlank()) put("model", model)
+                put("role", role)
+                put("prompt", prompt)
+                put("timeout_seconds", timeoutSeconds)
+                put("allow_failover", true)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/subagents/invoke")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val json = JSONObject(response.body?.string().orEmpty())
+                    val historyArr = json.optJSONArray("failover_history") ?: JSONArray()
+                    val history = mutableListOf<String>()
+                    for (i in 0 until historyArr.length()) {
+                        val ev = historyArr.optJSONObject(i)
+                        if (ev != null) {
+                            history.add("${ev.optString("from_engine")} -> ${ev.optString("to_engine")}: ${ev.optString("reason")}")
+                        }
+                    }
+                    return@withContext SubagentInvokeResult(
+                        subagentId = json.optString("subagent_id", ""),
+                        status = json.optString("status", "completed"),
+                        outputText = json.optString("output_text", ""),
+                        executingAgent = json.optString("executing_agent", typeName),
+                        modelUsed = json.optString("model_used", model.orEmpty()),
+                        failedOver = history.isNotEmpty(),
+                        failoverHistory = history
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "invokeSubagent failed: ${e.message}")
+        }
+        null
+    }
 }

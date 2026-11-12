@@ -624,7 +624,15 @@ fun ChatInputBar(
     val canSend = hasText || attachments.isNotEmpty()
     // attachments still being prepared or copied must be ready first (they go with the message)
     val attachmentsBusy = isUploadingAttachment || attachmentProgress.isNotEmpty()
-    val familyColor = if (selectedModel.family == ModelFamily.CLAUDE) ClaudeTerracotta else GeminiBlue
+    val familyColor = when (selectedModel.family) {
+        ModelFamily.CLAUDE -> ClaudeAccent
+        ModelFamily.LOCAL -> Color(0xFF8B5CF6)
+        else -> when {
+            selectedModel.id.startsWith("codex") || selectedModel.description?.contains("Codex", ignoreCase = true) == true -> CodexAccent
+            selectedModel.description?.contains("OpenCode", ignoreCase = true) == true -> OpenCodeAccent
+            else -> AgyAccent
+        }
+    }
     val fileLinkHandler = LocalFileLinkHandler.current
     var previewImageUrl by remember { mutableStateOf<String?>(null) }
 
