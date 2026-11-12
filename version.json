@@ -1,6 +1,6 @@
 {
-  "version_code": 265,
-  "version_name": "2.4.145",
+  "version_code": 266,
+  "version_name": "2.4.146",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udc0b DeepSeek Harness Core Engine & Multi-CLI Unified Chat: Refactored DeepSeek Harness from a separate toggleable CLI agent into AntiBot's core master orchestrator. DeepSeek Harness now permanently coordinates all CLI engines (Claude Code, OpenAI Codex, OpenCode, Antigravity) within a single continuous chat with zero conversation switching and instant multi-turn routing. Enhanced CLI installation across the app with pnpm environment bootstrapping, real background job execution, and direct terminal fallback. Upgraded DeepSeek streaming with local bridge subagent delegation, SSE direct API streaming, and resilient offline handling.",
