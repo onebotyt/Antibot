@@ -202,8 +202,10 @@ fun ModelSelectorBottomSheet(
         }
 
         // 2. 🟣 Claude Code CLI Engine
+        // 2. 🟣 Claude Code CLI Engine
         if (AgentKind.CLAUDE in enabledAgents) {
             val claudeList = mutableListOf<ModelItemEntry>()
+            val isClaudeLoggedIn = claudeAccount?.isLoggedIn == true
             if (claudeBackendModels.isNotEmpty()) {
                 claudeBackendModels.forEach { model ->
                     claudeList.add(
@@ -217,35 +219,25 @@ fun ModelSelectorBottomSheet(
                         )
                     )
                 }
+            } else if (isClaudeLoggedIn) {
+                claudeList.add(
+                    ModelItemEntry.Single(
+                        id = "claude-sync",
+                        title = "Sync Claude Models",
+                        badge = "Connected",
+                        badgeColor = ClaudeTerracotta,
+                        subtitle = "Claude CLI authenticated. Tap to fetch installed models.",
+                        agentKind = AgentKind.CLAUDE
+                    )
+                )
             } else {
-                // High-grade fallback roster
                 claudeList.add(
                     ModelItemEntry.Single(
-                        id = "claude-3-5-sonnet",
-                        title = "Claude 3.5 Sonnet",
-                        badge = "Flagship",
+                        id = "claude-signin",
+                        title = "Not signed in",
+                        badge = "Sign In Required",
                         badgeColor = ClaudeTerracotta,
-                        subtitle = "State-of-the-art coding and architectural reasoning",
-                        agentKind = AgentKind.CLAUDE
-                    )
-                )
-                claudeList.add(
-                    ModelItemEntry.Single(
-                        id = "claude-3-5-haiku",
-                        title = "Claude 3.5 Haiku",
-                        badge = "Fast",
-                        badgeColor = ClaudeTerracotta,
-                        subtitle = "Rapid subtask execution and quick refactoring",
-                        agentKind = AgentKind.CLAUDE
-                    )
-                )
-                claudeList.add(
-                    ModelItemEntry.Single(
-                        id = "claude-3-opus",
-                        title = "Claude 3 Opus",
-                        badge = "Deep Logic",
-                        badgeColor = ClaudeTerracotta,
-                        subtitle = "Complex system design and multi-layered analysis",
+                        subtitle = "Sign in to your Anthropic account in the Agents drawer to access Claude models.",
                         agentKind = AgentKind.CLAUDE
                     )
                 )
@@ -255,7 +247,7 @@ fun ModelSelectorBottomSheet(
                 EngineSection(
                     agentKind = AgentKind.CLAUDE,
                     title = "Claude Code CLI",
-                    badge = "🟣 Anthropic",
+                    badge = if (isClaudeLoggedIn) "🟣 Connected" else "🟣 Not Signed In",
                     accentColor = ClaudeTerracotta,
                     entries = claudeList
                 )
@@ -265,6 +257,7 @@ fun ModelSelectorBottomSheet(
         // 3. 🟢 Codex CLI Engine
         if (AgentKind.CODEX in enabledAgents) {
             val codexList = mutableListOf<ModelItemEntry>()
+            val isCodexReady = codexBackend?.state?.value == com.example.gemini.data.agent.codex.CodexState.READY
             if (codexBackendModels.isNotEmpty()) {
                 codexBackendModels.forEach { model ->
                     codexList.add(
@@ -278,34 +271,25 @@ fun ModelSelectorBottomSheet(
                         )
                     )
                 }
+            } else if (isCodexReady) {
+                codexList.add(
+                    ModelItemEntry.Single(
+                        id = "codex-sync",
+                        title = "Sync Codex Models",
+                        badge = "Connected",
+                        badgeColor = CodexAccent,
+                        subtitle = "Codex CLI authenticated. Tap to fetch models.",
+                        agentKind = AgentKind.CODEX
+                    )
+                )
             } else {
                 codexList.add(
                     ModelItemEntry.Single(
-                        id = "gpt-4o",
-                        title = "GPT-4o",
-                        badge = "Omni",
+                        id = "codex-signin",
+                        title = "Not signed in",
+                        badge = "Sign In Required",
                         badgeColor = CodexAccent,
-                        subtitle = "Versatile high-speed coding and analysis",
-                        agentKind = AgentKind.CODEX
-                    )
-                )
-                codexList.add(
-                    ModelItemEntry.Single(
-                        id = "o1-preview",
-                        title = "o1-preview",
-                        badge = "Reasoning",
-                        badgeColor = CodexAccent,
-                        subtitle = "Deep step-by-step problem solver",
-                        agentKind = AgentKind.CODEX
-                    )
-                )
-                codexList.add(
-                    ModelItemEntry.Single(
-                        id = "o1-mini",
-                        title = "o1-mini",
-                        badge = "Fast Math",
-                        badgeColor = CodexAccent,
-                        subtitle = "Efficient targeted code generation",
+                        subtitle = "Sign in with ChatGPT in the Agents drawer to access Codex models.",
                         agentKind = AgentKind.CODEX
                     )
                 )
@@ -315,7 +299,7 @@ fun ModelSelectorBottomSheet(
                 EngineSection(
                     agentKind = AgentKind.CODEX,
                     title = "Codex CLI",
-                    badge = "🟢 OpenAI Engine",
+                    badge = if (isCodexReady) "🟢 Connected" else "🟢 Not Signed In",
                     accentColor = CodexAccent,
                     entries = codexList
                 )
@@ -369,6 +353,7 @@ fun ModelSelectorBottomSheet(
         // 5. 🌐 OpenCode CLI Engine
         if (AgentKind.OPENCODE in enabledAgents) {
             val ocList = mutableListOf<ModelItemEntry>()
+            val isOpenCodeReady = openCodeBackend?.state?.value == com.example.gemini.data.agent.opencode.OpenCodeState.READY
             if (openCodeBackendModels.isNotEmpty()) {
                 openCodeBackendModels.forEach { model ->
                     ocList.add(
@@ -382,14 +367,25 @@ fun ModelSelectorBottomSheet(
                         )
                     )
                 }
+            } else if (isOpenCodeReady) {
+                ocList.add(
+                    ModelItemEntry.Single(
+                        id = "opencode-sync",
+                        title = "No OpenCode Providers",
+                        badge = "Configure",
+                        badgeColor = OpenCodeAccent,
+                        subtitle = "OpenCode is ready. Add provider API keys in Settings → OpenCode.",
+                        agentKind = AgentKind.OPENCODE
+                    )
+                )
             } else {
                 ocList.add(
                     ModelItemEntry.Single(
-                        id = "opencode-default",
-                        title = "OpenCode Default",
-                        badge = "Custom",
+                        id = "opencode-setup",
+                        title = "OpenCode Not Set Up",
+                        badge = "Setup Required",
                         badgeColor = OpenCodeAccent,
-                        subtitle = "Connected provider models",
+                        subtitle = "Install and start OpenCode CLI from the Agents drawer.",
                         agentKind = AgentKind.OPENCODE
                     )
                 )
@@ -399,7 +395,7 @@ fun ModelSelectorBottomSheet(
                 EngineSection(
                     agentKind = AgentKind.OPENCODE,
                     title = "OpenCode CLI",
-                    badge = "🌐 Multi-Provider",
+                    badge = if (isOpenCodeReady) "🌐 Ready" else "🌐 Not Set Up",
                     accentColor = OpenCodeAccent,
                     entries = ocList
                 )
@@ -415,12 +411,38 @@ fun ModelSelectorBottomSheet(
     }
 
     val selectModelAction = { agent: AgentKind, modelId: String ->
-        if (onSelectAgentAndModel != null) {
-            onSelectAgentAndModel(agent, modelId)
-        } else {
-            onSelectModel(modelId)
+        when (modelId) {
+            "claude-signin" -> {
+                android.widget.Toast.makeText(context, "Open Agents drawer (top-left) to sign in to Claude Code", android.widget.Toast.LENGTH_LONG).show()
+                onDismiss()
+            }
+            "claude-sync" -> {
+                claudeAccount?.refreshStatus()
+                coroutineScope.launch { claudeBackend?.refreshInfo(force = true) }
+            }
+            "codex-signin" -> {
+                android.widget.Toast.makeText(context, "Open Agents drawer (top-left) to sign in to Codex", android.widget.Toast.LENGTH_LONG).show()
+                onDismiss()
+            }
+            "codex-sync" -> {
+                coroutineScope.launch {
+                    codexBackend?.refreshStatus()
+                    codexBackend?.refreshModels()
+                }
+            }
+            "opencode-setup", "opencode-sync" -> {
+                android.widget.Toast.makeText(context, "Open Agents drawer or Settings to configure OpenCode", android.widget.Toast.LENGTH_LONG).show()
+                onDismiss()
+            }
+            else -> {
+                if (onSelectAgentAndModel != null) {
+                    onSelectAgentAndModel(agent, modelId)
+                } else {
+                    onSelectModel(modelId)
+                }
+                onDismiss()
+            }
         }
-        onDismiss()
     }
 
     ModalBottomSheet(

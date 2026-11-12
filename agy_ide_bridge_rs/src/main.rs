@@ -339,6 +339,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/cloud/ports/scan", post(handlers::cloud::cloud_scan_ports_handler))
         .route("/api/cloud/preview/:port", any(handlers::cloud::cloud_reverse_proxy_gateway))
         .route("/api/cloud/preview/:port/*path", any(handlers::cloud::cloud_reverse_proxy_gateway))
+        // Claude Code CLI Protocol & Daemon
+        .route("/api/claude/status", get(handlers::claude::claude_status_handler))
+        .route("/api/claude/info", get(handlers::claude::claude_info_handler))
+        .route("/api/claude/sessions", get(handlers::claude::claude_sessions_handler))
+        .route("/api/claude/providers", get(handlers::claude::claude_providers_handler))
+        .route("/api/claude/usage", get(handlers::claude::claude_usage_handler))
+        .route("/api/claude/auth/logout", post(handlers::claude::claude_logout_handler))
         // OpenAI Codex Protocol & App-Server Daemon
         .route("/api/codex/status", get(handlers::codex::codex_status_handler))
         .route("/api/codex/start", post(handlers::codex::codex_start_handler))

@@ -16,6 +16,7 @@ pub mod projects;
 pub mod cloud;
 pub mod codex;
 pub mod opencode;
+pub mod claude;
 pub mod rea;
 pub mod skills;
 pub mod subagents;

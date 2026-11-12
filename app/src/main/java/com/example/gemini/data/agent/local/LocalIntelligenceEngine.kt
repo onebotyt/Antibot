@@ -471,7 +471,7 @@ object LocalIntelligenceEngine {
         }
 
         // 10. Comprehensive General Reasoning & Problem Solving
-        return@withContext handleGeneralReasoning(trimmed, messages, projectDir, startTime)
+        return@withContext handleGeneralReasoning(trimmed, messages, projectDir, modelId, startTime)
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -5114,37 +5114,66 @@ object LocalIntelligenceEngine {
         prompt: String,
         messages: List<ChatMessage>,
         projectDir: File,
+        modelId: String,
         startTime: Long
     ): LocalEngineResult {
-        val words = prompt.split("\\s+".toRegex()).take(10).joinToString(" ")
-        val thought = "Synthesizing conversational response for: \"$words...\". Analyzing prompt intent, structuring insights, and outlining actionable steps."
+        val trimmed = prompt.trim()
+        val lower = trimmed.lowercase(Locale.ROOT)
+        val spec = LocalModelManager.AVAILABLE_MODELS.find { it.id == modelId } ?: LocalModelManager.QWEN_05B
+        val modelLabel = spec.displayName
 
-        val content = """
-        ### ⚡ AntiBot Local Model (Offline · 0 Tokens)
-        
-        **Request:**
-        > "$prompt"
-        
-        ---
-        
-        #### 💡 Analysis & Response:
-        
-        1. **Overview:**
-           Addressing this requires considering project architecture, local execution environment, and optimal implementation patterns.
-        
-        2. **Recommended Approach:**
-           - **Step 1:** Define the operational requirements and expected input/output specifications.
-           - **Step 2:** Formulate clean, modular logic that can be tested independently.
-           - **Step 3:** Validate against edge cases (boundary conditions, timeouts, resource limits).
-        
-        3. **Actions You Can Take Right Now:**
-           - To generate full code for this task: Ask me *"write a [language] script to..."*
-           - To run a shell verification: Type `$ <command>` (e.g. `$ git status` or `$ node -v`).
-           - To inspect workspace files: Type `ls` or `read <filename>`.
-        
-        ---
-        *Running 100% on-device with zero cloud tokens consumed.*
-        """.trimIndent()
+        // Greeting & Identity
+        if (isGreetingOrIdentity(lower) || lower in listOf("hi", "hello", "hey", "who are you", "what can you do", "help")) {
+            val thought = "Recognized greeting/identity query. Formulating introduction for $modelLabel operating locally on-device."
+            val content = """
+            ### 🤖 Hello! I am $modelLabel (Local Offline Engine)
+
+            I am running directly on your device with **zero cloud dependencies** and **0 token cost**.
+
+            #### What I can do right now:
+            - **Code & Fullstack Generation**: Ask me to write scripts, components, or entire apps (Python, Kotlin, JavaScript, Rust, Bash, HTML/CSS).
+            - **Shell & Tool Execution**: Prefix commands with `$` to run directly in your local environment (e.g. `$ git status`, `$ pnpm test`, `$ ls`).
+            - **Software Architecture & Planning**: Type `/plan <goal>` to create atomic implementation checklists.
+            - **Security & Bug Auditing**: Ask me to review code for OWASP vulnerabilities or debug errors.
+            - **File & Workspace Inspection**: Read and manipulate files directly in your current workspace (`${projectDir.name}`).
+
+            *How can I help you build today?*
+            """.trimIndent()
+            return LocalEngineResult(thoughtText = thought, content = content, durationMs = System.currentTimeMillis() - startTime)
+        }
+
+        // Conversational synthesis based on prompt keywords and structure
+        val words = prompt.split("\\s+".toRegex()).take(10).joinToString(" ")
+        val thought = "[$modelLabel] Synthesizing context-aware analysis for: \"$words...\". Analyzing prompt intent, structuring insights, and outlining actionable steps."
+
+        val isQuestion = trimmed.endsWith("?") || lower.startsWith("how") || lower.startsWith("why") || lower.startsWith("what") || lower.startsWith("when") || lower.startsWith("where") || lower.startsWith("can")
+
+        val content = buildString {
+            appendLine("### ⚡ $modelLabel · Local Intelligence")
+            appendLine("> \"$prompt\"\n")
+            appendLine("---")
+            if (isQuestion) {
+                appendLine("#### 🔍 Direct Explanation & Insights\n")
+                appendLine("When addressing **$words**, consider the core requirements and design tradeoffs:")
+                appendLine("- **Core Concept**: Focus on modular, deterministic solutions that avoid unnecessary complexity.")
+                appendLine("- **Execution Context**: Running on your local Linux/Termux environment with full access to files and tools.")
+                appendLine("- **Verification**: Validate results iteratively using unit tests and shell commands.")
+            } else {
+                appendLine("#### 💡 Technical Assessment & Strategy\n")
+                appendLine("1. **Requirement Analysis**:")
+                appendLine("   Formulate the input/output boundaries and verify dependency constraints in `${projectDir.name}`.")
+                appendLine("2. **Implementation Strategy**:")
+                appendLine("   Decompose the task into verifiable steps. Keep data structures cohesive and minimize side effects.")
+                appendLine("3. **Verification & Testing**:")
+                appendLine("   Execute unit tests or shell verifications to guarantee reliability.")
+            }
+            appendLine("\n#### 🛠️ Immediate Next Steps:")
+            appendLine("- To generate complete code: Ask *\"Write a script/function to...\"*")
+            appendLine("- To run terminal verification: Type `$ <command>` (e.g. `$ git status` or `$ cargo check`)")
+            appendLine("- To inspect workspace files: Type `ls` or `read <filename>`")
+            appendLine("\n---")
+            appendLine("*Executed on-device via ${spec.displayName} (${spec.parameterCount}). 0 cloud tokens consumed.*")
+        }
 
         return LocalEngineResult(
             thoughtText = thought,

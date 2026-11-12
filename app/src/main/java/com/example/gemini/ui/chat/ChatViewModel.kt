@@ -1811,6 +1811,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         agyBackend.start()
+        claudeAccount.refreshStatus()
+        claudeBackend.start()
+        codexBackend.start()
+        openCodeBackend.start()
+
+        // Also refresh agent statuses whenever local server comes online or restarts
+        viewModelScope.launch {
+            com.example.gemini.data.local.LocalServerManager.status.collect { status ->
+                if (status is com.example.gemini.data.local.LocalServerStatus.Running) {
+                    claudeAccount.refreshStatus()
+                    codexBackend.refreshStatus()
+                    openCodeBackend.refreshStatus()
+                }
+            }
+        }
 
         viewModelScope.launch {
             authPrefs.userEmail.collect { _userEmail.value = it }

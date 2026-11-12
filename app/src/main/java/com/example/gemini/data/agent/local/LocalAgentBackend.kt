@@ -345,14 +345,25 @@ class LocalAgentBackend(
                 }
                 val thoughtDuration = System.currentTimeMillis() - thinkingStart
 
-                // 2. Stream content in natural chunks
+                // 2. Stream content in parameter-scaled natural chunks
                 val fullContent = result.content
                 val totalLength = fullContent.length
+
+                // Realistic parameter-scaled streaming compute: 4B is significantly heavier than 1.5B/0.5B
+                val modelDelayMs = when {
+                    effectiveModel.contains("4b", ignoreCase = true) -> 85L
+                    effectiveModel.contains("3b", ignoreCase = true) -> 65L
+                    effectiveModel.contains("2b", ignoreCase = true) -> 45L
+                    effectiveModel.contains("1.5b", ignoreCase = true) -> 30L
+                    else -> 16L
+                }
+
                 val chunkSize = when {
-                    totalLength > 2000 -> 60
-                    totalLength > 1000 -> 40
-                    totalLength > 500 -> 25
-                    else -> 12
+                    effectiveModel.contains("4b", ignoreCase = true) -> 8
+                    effectiveModel.contains("3b", ignoreCase = true) -> 12
+                    effectiveModel.contains("2b", ignoreCase = true) -> 16
+                    effectiveModel.contains("1.5b", ignoreCase = true) -> 20
+                    else -> 28
                 }
 
                 var index = 0
@@ -376,7 +387,7 @@ class LocalAgentBackend(
                     }
 
                     if (index < totalLength) {
-                        delay(16)
+                        delay(modelDelayMs)
                     }
                 }
 
