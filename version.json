@@ -1,6 +1,6 @@
 {
-  "version_code": 254,
-  "version_name": "2.4.134",
+  "version_code": 255,
+  "version_name": "2.4.135",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udee1\ufe0f Dynamic Model Selector, CLI Auto-Startup & Scaled Local Intelligence: Removed hardcoded fallback model names (Claude 3.5 Sonnet, GPT-4o, etc.) for unauthenticated CLIs in the Model Selector bottom sheet, replacing them with live authentication status and 1-tap sign-in / sync prompts. Implemented /api/claude/status, /info, /sessions, and /providers routes in the native Rust daemon (agy_ide_bridge_rs) to correctly detect Claude CLI installation and authentication state. Fixed cold-start hang on \"Checking... Starting... waiting for the server\" by auto-initializing codexBackend.start(), openCodeBackend.start(), and claudeAccount.refreshStatus() in ChatViewModel.init alongside a lifecycle server status observer. Enhanced Local Model with context-aware conversational reasoning, dynamic greeting handling, and parameter-scaled streaming delay & chunk sizing (4B vs 1.5B vs 0.5B) to realistically reflect on-device inference compute overhead.",
