@@ -1,0 +1,9 @@
+{
+  "version_code": 129,
+  "version_name": "1.1.9",
+  "min_supported_version_code": 1,
+  "changelog": [
+    "Added antigem mini app support to create app and install inside antigem or share to other(in beta state)"
+  ],
+  "is_critical": false
+}

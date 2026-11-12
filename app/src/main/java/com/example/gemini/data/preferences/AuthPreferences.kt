@@ -86,6 +86,10 @@ class AuthPreferences(private val context: Context) {
         const val DEFAULT_UBUNTU_AGY_BINARY_PATH = "/root/.local/bin/agy"
         const val DEFAULT_CLAUDE_BINARY_PATH = "~/../usr/bin/claude"
         const val DEFAULT_UBUNTU_CLAUDE_BINARY_PATH = "/root/.local/bin/claude"
+        const val DEFAULT_OPENCODE_BINARY_PATH = "~/.opencode/bin/opencode"
+        const val DEFAULT_UBUNTU_OPENCODE_BINARY_PATH = "/root/.opencode/bin/opencode"
+        const val DEFAULT_CODEX_BINARY_PATH = "~/../usr/bin/codex"
+        const val DEFAULT_UBUNTU_CODEX_BINARY_PATH = "/root/.local/bin/codex"
 
         const val TOKEN_PREFIX = "x-ag"
         const val TOKEN_SUFFIX = "_9qx"
@@ -1048,6 +1052,26 @@ class AuthPreferences(private val context: Context) {
         val trimmed = path.trim().ifBlank { getDefaultClaudeBinaryPath() }
         syncPrefs.edit().putString("claude_binary_path", trimmed).apply()
         context.dataStore.edit { it[CLAUDE_BINARY_PATH] = trimmed }
+    }
+
+    fun getDefaultOpenCodeBinaryPath(): String =
+        if (com.example.gemini.data.local.LocalEnvironmentManager.isTermuxPackage(context)) DEFAULT_OPENCODE_BINARY_PATH else DEFAULT_UBUNTU_OPENCODE_BINARY_PATH
+
+    fun getOpenCodeBinaryPathSync(): String =
+        syncPrefs.getString("opencode_binary_path", getDefaultOpenCodeBinaryPath()) ?: getDefaultOpenCodeBinaryPath()
+
+    fun saveOpenCodeBinaryPath(path: String) {
+        syncPrefs.edit().putString("opencode_binary_path", path.trim().ifBlank { getDefaultOpenCodeBinaryPath() }).apply()
+    }
+
+    fun getDefaultCodexBinaryPath(): String =
+        if (com.example.gemini.data.local.LocalEnvironmentManager.isTermuxPackage(context)) DEFAULT_CODEX_BINARY_PATH else DEFAULT_UBUNTU_CODEX_BINARY_PATH
+
+    fun getCodexBinaryPathSync(): String =
+        syncPrefs.getString("codex_binary_path", getDefaultCodexBinaryPath()) ?: getDefaultCodexBinaryPath()
+
+    fun saveCodexBinaryPath(path: String) {
+        syncPrefs.edit().putString("codex_binary_path", path.trim().ifBlank { getDefaultCodexBinaryPath() }).apply()
     }
 
     val hasSeenTerminalLauncherOnboarding: Flow<Boolean> = context.dataStore.data.map {

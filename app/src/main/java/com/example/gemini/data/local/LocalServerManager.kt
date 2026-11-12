@@ -52,9 +52,10 @@ object LocalServerManager {
 
     fun hasServerScript(context: Context): Boolean {
         val binBridge = File(LocalEnvironmentManager.getBinDir(context), "agy_ide_bridge")
-        if (binBridge.exists()) return true
+        if (binBridge.exists() && binBridge.length() > 0) return true
         return try {
-            context.assets.list("bin")?.contains("agy_ide_bridge") == true
+            val list = context.assets.list("bin") ?: return false
+            list.contains(BRIDGE_ASSET) || list.contains("agy_ide_bridge")
         } catch (_: Exception) {
             false
         }
@@ -86,7 +87,12 @@ object LocalServerManager {
             if (targetFile.exists()) {
                 targetFile.delete()
             }
-            tempFile.renameTo(targetFile)
+            if (!tempFile.renameTo(targetFile)) {
+                try {
+                    tempFile.copyTo(targetFile, overwrite = true)
+                    tempFile.delete()
+                } catch (_: Exception) {}
+            }
             targetFile.setExecutable(true, false)
             targetFile.setReadable(true, false)
         }
@@ -95,13 +101,6 @@ object LocalServerManager {
     private fun ensureBridgeBinary(context: Context) {
         val binDir = LocalEnvironmentManager.getBinDir(context)
         val bridgeFile = File(binDir, "agy_ide_bridge")
-        val backupFile = File(binDir, "backup_bootstrap")
-        val backupChatsFile = File(binDir, "backup_chats")
-        val restoreChatsFile = File(binDir, "restore_chats")
-        val backupProjectsFile = File(binDir, "backup_projects")
-        val restoreProjectsFile = File(binDir, "restore_projects")
-        val backupProotUbuntuFile = File(binDir, "backup_proot_ubuntu")
-        val gitCloneFile = File(binDir, "git_clone")
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastSavedUpdate = prefs.getLong(KEY_BRIDGE_LAST_UPDATE_TIME, 0L)
@@ -121,7 +120,7 @@ object LocalServerManager {
         val currentAppUpdateTime = packageInfo?.lastUpdateTime ?: 0L
 
         val needsCopy =
-            !bridgeFile.exists() || !backupFile.exists() || !backupChatsFile.exists() || !restoreChatsFile.exists() || !backupProjectsFile.exists() || !restoreProjectsFile.exists() || !backupProotUbuntuFile.exists() || !gitCloneFile.exists() || (currentAppUpdateTime > 0L && currentAppUpdateTime != lastSavedUpdate)
+            !bridgeFile.exists() || bridgeFile.length() == 0L || (currentAppUpdateTime > 0L && currentAppUpdateTime != lastSavedUpdate)
 
         if (needsCopy) {
             try {
@@ -134,49 +133,26 @@ object LocalServerManager {
                 } catch (e: Exception) {
                     Log.w(TAG, "agy_ide_bridge asset not extracted", e)
                 }
-                try {
-                    extractAssetToBin(context, binDir, "backup_bootstrap")
-                } catch (e: Exception) {
-                    Log.w(TAG, "backup_bootstrap asset not extracted", e)
-                }
-                try {
-                    extractAssetToBin(context, binDir, "backup_chats")
-                } catch (e: Exception) {
-                    Log.w(TAG, "backup_chats asset not extracted", e)
-                }
-                try {
-                    extractAssetToBin(context, binDir, "restore_chats")
-                } catch (e: Exception) {
-                    Log.w(TAG, "restore_chats asset not extracted", e)
-                }
-                try {
-                    extractAssetToBin(context, binDir, "backup_projects")
-                } catch (e: Exception) {
-                    Log.w(TAG, "backup_projects asset not extracted", e)
-                }
-                try {
-                    extractAssetToBin(context, binDir, "restore_projects")
-                } catch (e: Exception) {
-                    Log.w(TAG, "restore_projects asset not extracted", e)
-                }
-                try {
-                    extractAssetToBin(context, binDir, "backup_proot_ubuntu")
-                } catch (e: Exception) {
-                    Log.w(TAG, "backup_proot_ubuntu asset not extracted", e)
-                }
-                try {
-                    extractAssetToBin(context, binDir, "git_clone")
-                } catch (e: Exception) {
-                    Log.w(TAG, "git_clone asset not extracted", e)
+
+                val helperScripts = listOf(
+                    "backup_bootstrap", "backup_chats", "restore_chats",
+                    "backup_projects", "restore_projects", "backup_proot_ubuntu", "git_clone"
+                )
+                for (script in helperScripts) {
+                    try {
+                        extractAssetToBin(context, binDir, script)
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Optional helper script $script not in assets")
+                    }
                 }
 
-                // Also copy agy_ide_bridge to public Downloads folder for user access
-                saveBridgeToDownloads(context)
+                try {
+                    saveBridgeToDownloads(context)
+                } catch (_: Exception) {}
 
                 if (currentAppUpdateTime > 0L) {
                     prefs.edit().putLong(KEY_BRIDGE_LAST_UPDATE_TIME, currentAppUpdateTime).apply()
                 }
-                Log.d(TAG, "[ServerManager] Successfully extracted assets to ${binDir.absolutePath}")
             } catch (e: Exception) {
                 Log.e(TAG, "[ServerManager] Failed to extract assets from bin/", e)
             }
@@ -248,17 +224,36 @@ object LocalServerManager {
         }
         val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000
 
-        // Only pass --bin if the binary actually exists on disk.
-        // If it doesn't exist yet, omit --bin so agy_ide_bridge can use auto-discovery
-        // and run gracefully without crashing.
-        val binParam = if (agyCmd.isNotBlank() && isBinaryAvailable(context, agyCmd)) {
+        val binParam = if (agyCmd.isNotBlank()) {
             " --bin \"$agyCmd\""
         } else {
             ""
         }
+        val claudeCmd = authPrefs.getClaudeBinaryPathSync().trim()
+        val claudeBinParam = if (claudeCmd.isNotBlank() && com.example.gemini.domain.model.AgentKind.CLAUDE in com.example.gemini.data.agent.AgentPreferences.enabledSync(context)) {
+            " --claude-bin \"$claudeCmd\""
+        } else {
+            ""
+        }
 
-        // Run bridge for Antigravity language server supervisor
-        return "$bridgeCmd -f --token $token -p $bridgePort --hub-port $hubPort --tz-offset $tzOffset$binParam"
+        val openCodeCmd = authPrefs.getOpenCodeBinaryPathSync().trim()
+        val openCodeBinParam = if (openCodeCmd.isNotBlank() && com.example.gemini.domain.model.AgentKind.OPENCODE in com.example.gemini.data.agent.AgentPreferences.enabledSync(context)) {
+            " --opencode-bin \"$openCodeCmd\""
+        } else {
+            ""
+        }
+
+        val codexCmd = authPrefs.getCodexBinaryPathSync().trim()
+        val codexBinParam = if (codexCmd.isNotBlank() && com.example.gemini.domain.model.AgentKind.CODEX in com.example.gemini.data.agent.AgentPreferences.enabledSync(context)) {
+            " --codex-bin \"$codexCmd\""
+        } else {
+            ""
+        }
+
+        // agents switched off in the app never run (no AGY hub / no Claude Code endpoints)
+        val agentFlags = com.example.gemini.data.agent.AgentPreferences.bridgeFlags(context)
+
+        return "$bridgeCmd -f --token $token -p $bridgePort --hub-port $hubPort --tz-offset $tzOffset$binParam$claudeBinParam$openCodeBinParam$codexBinParam$agentFlags"
     }
 
     /**
@@ -365,7 +360,9 @@ object LocalServerManager {
 
         val appContext = context.applicationContext
         ensureBridgeBinary(appContext)
+        // the bridge starts Claude Code through the app's launcher (--claude-bin)
         LocalEnvironmentManager.ensureGlibcEnvironment(appContext)
+        LocalEnvironmentManager.ensureClaudeWrapper(appContext)
 
         val command = resolveServerCommand(appContext)
         if (command == null) {
@@ -403,8 +400,6 @@ object LocalServerManager {
                 context = appContext,
                 isSsh = false,
                 initialCommand = command,
-                execShellAfterCommand = false,
-                forceShell = "bash",
                 initialCols = 80,
                 initialRows = 24
             )

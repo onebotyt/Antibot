@@ -15,6 +15,15 @@ fi
 # ==============================================================================
 set -euo pipefail
 
+# ⚡ Fast path: Use high-performance pure Rust backup engine if available
+if command -v agy_ide_bridge >/dev/null 2>&1; then
+    OUTPUT_PARAM=""
+    if [ -n "${1:-}" ]; then
+        OUTPUT_PARAM="--output $1"
+    fi
+    exec agy_ide_bridge backup-projects $OUTPUT_PARAM
+fi
+
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
 HOME_DIR="${HOME:-/data/data/com.termux/files/home}"
 TMP_ROOT="${TMPDIR:-${PREFIX_DIR}/tmp}"
