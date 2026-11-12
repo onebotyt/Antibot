@@ -97,7 +97,7 @@ object JarvisMcp {
             listOf("goal"),
             "goal" to prop("string", "Full instructions for the task's agent, as clear and complete as the user's intent allows"),
             "title" to prop("string", "Short name, 2-5 words (e.g. \"Release build\")"),
-            "agent" to prop("string", "agy or local (default: the app's new-chat agent)", listOf("agy", "local")),
+            "agent" to prop("string", "CLI agent: agy, claude, opencode, or codex (default: the app's new-chat agent)", listOf("agy", "claude", "opencode", "codex")),
             "model" to prop("string", "Model id or part of its name (default: the agent's default)"),
             "project" to prop("string", "Project name or path to work in (default: the active project)"),
             "open" to prop("boolean", "Also show the chat on screen (default false)")))
@@ -126,7 +126,7 @@ object JarvisMcp {
         put(tool("jarvis_cancel_timer", "Cancel a timer by id (from jarvis_list_timers), or all of them.", emptyList(),
             "id" to prop("integer", "Timer id"), "all" to prop("boolean", "Cancel every timer")))
         put(tool("jarvis_get_health",
-            "Is everything up? The IDE bridge, the Antigravity hub, the local engine, the file server and the Jarvis voice.",
+            "Is everything up? The IDE bridge, the Antigravity hub, the file server and the Jarvis voice.",
             emptyList()))
         put(tool("jarvis_open_url", "Open a web page in the in-app browser and show it. Use the browser tools afterwards to read or click on it.",
             listOf("url"), "url" to prop("string", "Address, e.g. https://example.com"),
@@ -153,9 +153,9 @@ object JarvisMcp {
             "refresh" to prop("boolean", "Fetch fresh numbers first (default true)")))
         // ---- chats
         put(tool("jarvis_list_chats",
-            "List chats of Antigravity and Local, newest first, with paging. Jarvis' own hidden chats are left out unless asked for.",
+            "List chats of AI agents, newest first, with paging. Jarvis' own hidden chats are left out unless asked for.",
             emptyList(),
-            "agent" to prop("string", "Only this agent", listOf("all", "agy", "local")),
+            "agent" to prop("string", "Only this agent", listOf("all", "agy", "claude", "opencode", "codex")),
             "running" to prop("boolean", "Only chats that are working right now"),
             "project" to prop("string", "Only chats of a project (part of its name or path)"),
             "query" to prop("string", "Words in the title"),
@@ -183,7 +183,7 @@ object JarvisMcp {
             "Start a new chat. With a message it runs as a watched task (same as jarvis_task_start); without one an empty chat opens on screen. " +
                 "Use it only when the user asked for a new chat; prefer jarvis_task_start for delegated work.",
             emptyList(),
-            "agent" to prop("string", "agy or local (default: the app's current new-chat agent)", listOf("agy", "local")),
+            "agent" to prop("string", "CLI agent: agy, claude, opencode, or codex (default: the app's current new-chat agent)", listOf("agy", "claude", "opencode", "codex")),
             "message" to prop("string", "The first message / task"),
             "model" to prop("string", "Model id or name (default: the agent's default)"),
             "project" to prop("string", "Project name or path to work in (default: the active project)"),
@@ -205,7 +205,7 @@ object JarvisMcp {
         // ---- models and chat settings
         put(tool("jarvis_list_models",
             "Models available to each agent, marking the selected one.",
-            emptyList(), "agent" to prop("string", "Which agent (default the chat on screen, or both)", listOf("all", "agy", "local"))))
+            emptyList(), "agent" to prop("string", "Which agent (default the chat on screen, or all)", listOf("all", "agy", "claude", "opencode", "codex"))))
         put(tool("jarvis_set_model",
             "Change the model. With id it changes that chat or task (also one that is not on screen); without id scope=screen changes the chat on screen, " +
                 "scope=jarvis the model of the Jarvis chat itself. The model can be a part of its name. Applies to the chat's next message.",
@@ -531,7 +531,6 @@ object JarvisMcp {
             put("ide_bridge", if (sys.isBridgeOnline) "online" else "offline")
             put("antigravity_hub", if (sys.isHubOnline) "online" else "offline")
             put("file_server", TermuxDaemonManager.status.value.name.lowercase())
-            put("local_agent", if (vm.isLocalActive) "active" else "idle")
             put("jarvis", JSONObject().put("agent", JarvisPreferences.agent.value.lowercase())
                 .put("voice_engine", JarvisPreferences.ttsEngine.value).put("mic_allowed", JarvisController.hasMic())
                 .put("quiet_mode", JarvisPreferences.quietMode.value))
@@ -623,7 +622,9 @@ object JarvisMcp {
     // ---------------- tasks
 
     private fun agentArg(raw: String): AgentKind = when (raw.lowercase()) {
-        "local" -> AgentKind.LOCAL
+        "claude" -> AgentKind.CLAUDE
+        "opencode" -> AgentKind.OPENCODE
+        "codex" -> AgentKind.CODEX
         else -> AgentKind.AGY
     }
 
@@ -1032,10 +1033,16 @@ object JarvisMcp {
             }),
             bool("group_chats_by_workspace", "Group the chat list by project", false, { vm.groupChatsByWorkspace.value }, { vm.setGroupChatsByWorkspace(it) }),
             bool("floating_bubble", "Floating chat bubble over other apps", false, { vm.isFloatingBubbleEnabled.value }, { vm.setFloatingBubbleEnabled(it) }),
-            Setting("new_chat_agent", "Agent of new chats", "agy|local", false, get = { vm.newChatAgent.value.name.lowercase() }, set = { v ->
-                val a = when (v.trim().lowercase()) { "local" -> AgentKind.LOCAL; "agy", "antigravity" -> AgentKind.AGY; else -> null }
+            Setting("new_chat_agent", "Agent of new chats", "agy|claude|opencode|codex", false, get = { vm.newChatAgent.value.name.lowercase() }, set = { v ->
+                val a = when (v.trim().lowercase()) {
+                    "agy", "antigravity" -> AgentKind.AGY
+                    "claude" -> AgentKind.CLAUDE
+                    "opencode" -> AgentKind.OPENCODE
+                    "codex" -> AgentKind.CODEX
+                    else -> null
+                }
                 when {
-                    a == null -> "Use agy or local."
+                    a == null -> "Use agy, claude, opencode, or codex."
                     a !in vm.enabledAgents.value -> "That agent is turned off (Settings → Agents)."
                     else -> { vm.setNewChatAgent(a); null }
                 }

@@ -13,8 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,17 +24,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.gemini.data.agent.local.LocalModelActivityState
-import com.example.gemini.data.agent.local.LocalModelManager
-import com.example.gemini.data.agent.local.LocalModelSpec
-import com.example.gemini.data.agent.local.ModelDownloadState
 import com.example.gemini.data.preferences.AuthPreferences
 import com.example.gemini.domain.model.AgentKind
 import com.example.gemini.domain.model.AiModel
-import com.example.gemini.domain.model.LocalCodingDomain
 import com.example.gemini.domain.model.ModelFamily
 import com.example.gemini.domain.model.ModelQuota
-import com.example.gemini.domain.model.SmartModelRouter
 import com.example.gemini.theme.*
 import com.example.gemini.ui.components.ClaudeAccent
 import com.example.gemini.ui.components.CodexAccent
@@ -52,10 +44,6 @@ sealed interface ModelItemEntry {
         val badge: String,
         val badgeColor: Color,
         val subtitle: String? = null,
-        val isLocal: Boolean = false,
-        val isAuto: Boolean = false,
-        val isDownloadable: Boolean = false,
-        val isDownloaded: Boolean = true,
         override val agentKind: AgentKind = AgentKind.AGY
     ) : ModelItemEntry
 
@@ -86,7 +74,7 @@ fun ModelSelectorBottomSheet(
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     currentAgent: AgentKind = AgentKind.AGY,
-    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.LOCAL, AgentKind.CLAUDE, AgentKind.CODEX),
+    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.CLAUDE, AgentKind.CODEX, AgentKind.OPENCODE),
     claudeBackend: com.example.gemini.data.agent.claude.ClaudeChatBackend? = null,
     claudeAccount: com.example.gemini.data.agent.claude.ClaudeAccountManager? = null,
     codexBackend: com.example.gemini.data.agent.codex.CodexChatBackend? = null,
@@ -102,14 +90,6 @@ fun ModelSelectorBottomSheet(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val downloadState by LocalModelManager.downloadState.collectAsState()
-    val localActivity by LocalModelManager.activityState.collectAsState()
-    val installedModelIds = remember(downloadState) {
-        LocalModelManager.AVAILABLE_MODELS.filter { LocalModelManager.isModelInstalled(context, it) }.map { it.id }.toSet()
-    }
-    var showDownloadDialogForModel by remember { mutableStateOf<LocalModelSpec?>(null) }
-    var showDeleteDialogForModel by remember { mutableStateOf<LocalModelSpec?>(null) }
-
     // External agent models from backends
     val claudeBackendModels by claudeBackend?.availableModels?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
     val claudeSelModelId by claudeBackend?.selectedModelId?.collectAsState() ?: remember { mutableStateOf("") }
@@ -123,8 +103,6 @@ fun ModelSelectorBottomSheet(
     // Build the clean unified list of models per engine
     val engineSections = remember(
         availableModels,
-        installedModelIds,
-        localActivity,
         claudeBackendModels,
         codexBackendModels,
         openCodeBackendModels,
@@ -135,21 +113,9 @@ fun ModelSelectorBottomSheet(
         // 1. ⚡ Antigravity (Gemini) Engine
         if (AgentKind.AGY in enabledAgents) {
             val agyList = mutableListOf<ModelItemEntry>()
-            // Smart LLM Manager (Auto Dynamic Routing)
-            agyList.add(
-                ModelItemEntry.Single(
-                    id = SmartModelRouter.AUTO_MODEL_ID,
-                    title = "Auto (Smart LLM Manager)",
-                    badge = "Smart Auto",
-                    badgeColor = GeminiBlue,
-                    subtitle = "Automatic dynamic engine selection",
-                    isAuto = true,
-                    agentKind = AgentKind.AGY
-                )
-            )
 
             // Cloud models grouped by baseName to consolidate High/Medium/Low into 1 card
-            val cloudModels = availableModels.filter { !LocalCodingDomain.isLocalModel(it.id) && !SmartModelRouter.isAuto(it.id) }
+            val cloudModels = availableModels
             val grouped = cloudModels.groupBy { it.baseName }
             grouped.forEach { (baseName, models) ->
                 val badgeColor = when (models.first().family) {
@@ -306,51 +272,7 @@ fun ModelSelectorBottomSheet(
             )
         }
 
-        // 4. 🧠 On-Device Local Qwen Engine
-        if (AgentKind.LOCAL in enabledAgents) {
-            val localList = mutableListOf<ModelItemEntry>()
-            val activeWorkingId = LocalModelManager.activeModelId.value
-            LocalModelManager.AVAILABLE_MODELS.forEach { spec ->
-                val isInstalled = spec.id in installedModelIds || spec.isDefault
-                val sizeMb = spec.approximateSizeBytes / (1024 * 1024)
-                val isActivelyRunning = activeWorkingId == spec.id && localActivity is LocalModelActivityState.Active
-                val subtitle = if (isInstalled) {
-                    if (isActivelyRunning) {
-                        "● Active Working (~${LocalModelManager.getActiveRamMb()}MB RAM)"
-                    } else {
-                        "💤 Inactive (0 MB RAM · Starts On-Demand)"
-                    }
-                } else {
-                    "~$sizeMb MB · 1-Click Install"
-                }
-
-                localList.add(
-                    ModelItemEntry.Single(
-                        id = spec.id,
-                        title = spec.displayName,
-                        badge = if (!isInstalled) "1-Click" else if (isActivelyRunning) "Active" else "0 MB Idle",
-                        badgeColor = if (!isInstalled) Color(0xFF8B5CF6) else if (isActivelyRunning) Color(0xFF10B981) else Color(0xFF6B7280),
-                        subtitle = subtitle,
-                        isLocal = true,
-                        isDownloadable = !spec.isDefault,
-                        isDownloaded = isInstalled,
-                        agentKind = AgentKind.LOCAL
-                    )
-                )
-            }
-
-            sections.add(
-                EngineSection(
-                    agentKind = AgentKind.LOCAL,
-                    title = "On-Device Local Qwen",
-                    badge = "🧠 100% Offline · 0 MB Idle",
-                    accentColor = Color(0xFF8B5CF6),
-                    entries = localList
-                )
-            )
-        }
-
-        // 5. 🌐 OpenCode CLI Engine
+        // 4. 🌐 OpenCode CLI Engine
         if (AgentKind.OPENCODE in enabledAgents) {
             val ocList = mutableListOf<ModelItemEntry>()
             val isOpenCodeReady = openCodeBackend?.state?.value == com.example.gemini.data.agent.opencode.OpenCodeState.READY
@@ -586,15 +508,7 @@ fun ModelSelectorBottomSheet(
                                     when (entry) {
                                         is ModelItemEntry.Single -> {
                                             val isSelected = when (entry.agentKind) {
-                                                AgentKind.AGY -> currentAgent == AgentKind.AGY && (
-                                                    if (entry.isAuto) SmartModelRouter.isAuto(selectedModelId)
-                                                    else !SmartModelRouter.isAuto(selectedModelId) && selectedModelId == entry.id
-                                                )
-                                                AgentKind.LOCAL -> currentAgent == AgentKind.LOCAL && (
-                                                    !SmartModelRouter.isAuto(selectedModelId) && (
-                                                        selectedModelId == entry.id || (entry.id == "local-qwen-coder-0.5b" && (selectedModelId == "local-qwen-coder" || selectedModelId == "cli:local"))
-                                                    )
-                                                )
+                                                AgentKind.AGY -> currentAgent == AgentKind.AGY && selectedModelId == entry.id
                                                 AgentKind.CLAUDE -> currentAgent == AgentKind.CLAUDE && (
                                                     claudeSelModelId == entry.id || (claudeSelModelId.isBlank() && entry.id.contains("sonnet"))
                                                 )
@@ -604,20 +518,14 @@ fun ModelSelectorBottomSheet(
                                                 AgentKind.OPENCODE -> currentAgent == AgentKind.OPENCODE && (
                                                     openCodeSelModelId == entry.id
                                                 )
+                                                else -> false
                                             }
-
-                                            val currentDownload = downloadState
-                                            val isThisDownloading = currentDownload is ModelDownloadState.Downloading && currentDownload.modelId == entry.id
 
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .clickable(enabled = !isThisDownloading) {
-                                                        if (entry.isDownloadable && !entry.isDownloaded) {
-                                                            showDownloadDialogForModel = LocalModelManager.AVAILABLE_MODELS.find { it.id == entry.id }
-                                                        } else {
-                                                            selectModelAction(entry.agentKind, entry.id)
-                                                        }
+                                                    .clickable {
+                                                        selectModelAction(entry.agentKind, entry.id)
                                                     }
                                                     .padding(horizontal = 16.dp, vertical = 12.dp)
                                             ) {
@@ -643,14 +551,14 @@ fun ModelSelectorBottomSheet(
                                                                     .clip(RoundedCornerShape(6.dp))
                                                                     .background(entry.badgeColor.copy(alpha = 0.16f))
                                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                                ) {
-                                                                    Text(
-                                                                        text = if (isThisDownloading) "Downloading..." else entry.badge,
-                                                                        fontSize = 10.5.sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = entry.badgeColor
-                                                                    )
-                                                                }
+                                                            ) {
+                                                                Text(
+                                                                    text = entry.badge,
+                                                                    fontSize = 10.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = entry.badgeColor
+                                                                )
+                                                            }
 
                                                             if (isSelected) {
                                                                 Box(
@@ -669,7 +577,7 @@ fun ModelSelectorBottomSheet(
                                                             }
                                                         }
 
-                                                        if (!entry.subtitle.isNullOrBlank() && !isThisDownloading) {
+                                                        if (!entry.subtitle.isNullOrBlank()) {
                                                             Spacer(modifier = Modifier.height(2.dp))
                                                             Text(
                                                                 text = entry.subtitle,
@@ -679,31 +587,7 @@ fun ModelSelectorBottomSheet(
                                                         }
                                                     }
 
-                                                    if (entry.isDownloadable && entry.isDownloaded) {
-                                                        IconButton(
-                                                            onClick = { showDeleteDialogForModel = LocalModelManager.AVAILABLE_MODELS.find { it.id == entry.id } },
-                                                            modifier = Modifier.size(32.dp)
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Delete,
-                                                                contentDescription = "Delete downloaded model",
-                                                                tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-                                                                modifier = Modifier.size(16.dp)
-                                                            )
-                                                        }
-                                                    } else if (entry.isDownloadable && !entry.isDownloaded && !isThisDownloading) {
-                                                        IconButton(
-                                                            onClick = { showDownloadDialogForModel = LocalModelManager.AVAILABLE_MODELS.find { it.id == entry.id } },
-                                                            modifier = Modifier.size(32.dp)
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Download,
-                                                                contentDescription = "Download model",
-                                                                tint = Color(0xFF8B5CF6),
-                                                                modifier = Modifier.size(18.dp)
-                                                            )
-                                                        }
-                                                    } else if (isSelected) {
+                                                    if (isSelected) {
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
                                                             contentDescription = "Selected",
@@ -712,48 +596,11 @@ fun ModelSelectorBottomSheet(
                                                         )
                                                     }
                                                 }
-
-                                                // Download progress indicator for local models
-                                                if (isThisDownloading) {
-                                                    val dl = currentDownload as ModelDownloadState.Downloading
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    LinearProgressIndicator(
-                                                        progress = { dl.progress },
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(6.dp)
-                                                            .clip(RoundedCornerShape(3.dp)),
-                                                        color = Color(0xFF8B5CF6),
-                                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                                    )
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            text = "${(dl.progress * 100).toInt()}% • ${dl.speedText} (${dl.downloadedBytes / (1024 * 1024)}MB / ${dl.totalBytes / (1024 * 1024)}MB)",
-                                                            fontSize = 11.sp,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                        Text(
-                                                            text = "Cancel",
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.Red,
-                                                            modifier = Modifier
-                                                                .clip(RoundedCornerShape(4.dp))
-                                                                .clickable { LocalModelManager.cancelDownload() }
-                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
                                             }
                                         }
 
                                         is ModelItemEntry.TierGroup -> {
-                                            val isGroupActive = currentAgent == AgentKind.AGY && !SmartModelRouter.isAuto(selectedModelId) && entry.tiers.any { it.id == selectedModelId }
+                                            val isGroupActive = currentAgent == AgentKind.AGY && entry.tiers.any { it.id == selectedModelId }
 
                                             Surface(
                                                 shape = RoundedCornerShape(14.dp),
@@ -806,7 +653,7 @@ fun ModelSelectorBottomSheet(
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
                                                         entry.tiers.forEach { tierModel ->
-                                                            val isTierSelected = currentAgent == AgentKind.AGY && !SmartModelRouter.isAuto(selectedModelId) && selectedModelId == tierModel.id
+                                                            val isTierSelected = currentAgent == AgentKind.AGY && selectedModelId == tierModel.id
                                                             val tierLabel = tierModel.tier ?: tierModel.displayName
 
                                                             Surface(
@@ -908,98 +755,5 @@ fun ModelSelectorBottomSheet(
                 }
             }
         }
-    }
-
-    if (showDownloadDialogForModel != null) {
-        val modelSpec = showDownloadDialogForModel!!
-        AlertDialog(
-            onDismissRequest = { showDownloadDialogForModel = null },
-            title = {
-                Text(
-                    text = "Install ${modelSpec.displayName}?",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = modelSpec.description,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "• Parameter Count: ${modelSpec.parameterCount}\n• Storage Needed: ~${modelSpec.approximateSizeBytes / (1024 * 1024)} MB\n• Runs 100% offline on Android with 0 cloud tokens",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val spec = modelSpec
-                        showDownloadDialogForModel = null
-                        coroutineScope.launch {
-                            Toast.makeText(context, "Starting download of ${spec.shortName}...", Toast.LENGTH_SHORT).show()
-                            val ok = LocalModelManager.startDownload(context, spec)
-                            if (ok) {
-                                Toast.makeText(context, "${spec.shortName} installed successfully!", Toast.LENGTH_LONG).show()
-                                selectModelAction(AgentKind.LOCAL, spec.id)
-                            } else {
-                                val err = (LocalModelManager.downloadState.value as? ModelDownloadState.Failed)?.error ?: "Download failed"
-                                Toast.makeText(context, "Download failed: $err", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
-                ) {
-                    Text("Download (1-Click)")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDownloadDialogForModel = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    if (showDeleteDialogForModel != null) {
-        val modelSpec = showDeleteDialogForModel!!
-        AlertDialog(
-            onDismissRequest = { showDeleteDialogForModel = null },
-            title = {
-                Text("Delete ${modelSpec.displayName}?", fontWeight = FontWeight.Bold)
-            },
-            text = {
-                Text(
-                    "Are you sure you want to remove the downloaded ${modelSpec.shortName} file? This will free ~${modelSpec.approximateSizeBytes / (1024 * 1024)} MB of device storage.",
-                    fontSize = 13.sp
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val spec = modelSpec
-                        showDeleteDialogForModel = null
-                        val deleted = LocalModelManager.deleteModel(context, spec)
-                        if (deleted) {
-                            Toast.makeText(context, "${spec.shortName} removed.", Toast.LENGTH_SHORT).show()
-                            if (selectedModelId == spec.id) {
-                                selectModelAction(AgentKind.LOCAL, "local-qwen-coder-0.5b")
-                            }
-                        }
-                    }
-                ) {
-                    Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialogForModel = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }

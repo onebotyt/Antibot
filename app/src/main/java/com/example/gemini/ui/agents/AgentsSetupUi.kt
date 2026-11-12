@@ -62,11 +62,6 @@ private val AGENT_OPTIONS = listOf(
         "Google's coding agent through the agy hub: Gemini and Claude models on your Google plan."
     ),
     AgentOption(
-        AgentKind.LOCAL,
-        "AntiBot Local Model (Offline)",
-        "100% Offline & 0 Tokens: On-device coding, dev server recipes, and terminal execution without cloud tokens."
-    ),
-    AgentOption(
         AgentKind.CLAUDE,
         "Claude Code",
         "Anthropic's Claude Code CLI on this device: your Claude subscription or Anthropic Console account."
@@ -143,7 +138,7 @@ fun AgentSelector(
 /** First launch: which agents the app should run (Hybrid preselected). */
 @Composable
 fun AgentChoiceDialog(onConfirm: (Set<AgentKind>) -> Unit) {
-    var selected by remember { mutableStateOf(setOf(AgentKind.LOCAL, AgentKind.AGY)) }
+    var selected by remember { mutableStateOf(setOf(AgentKind.AGY)) }
     Dialog(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false)

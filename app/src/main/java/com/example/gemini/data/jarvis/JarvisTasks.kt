@@ -134,14 +134,6 @@ object JarvisTasks {
         val text = goal.trim()
         require(text.isNotEmpty()) { "The task needs a goal." }
         val id = when (agent) {
-            AgentKind.LOCAL -> {
-                vm.localBackend.startNewChat()
-                delay(150)
-                val id = vm.localBackend.currentConversation.value?.id ?: UUID.randomUUID().toString()
-                modelId?.takeIf { it.isNotBlank() }?.let { vm.localBackend.selectModel(it) }
-                vm.localBackend.sendMessage(PromptExpansion.expand(text))
-                id
-            }
             AgentKind.AGY -> {
                 val id = UUID.randomUUID().toString()
                 val chosen = modelId?.takeIf { it.isNotBlank() } ?: vm.agyBackend.selectedModelId.value
@@ -206,9 +198,6 @@ object JarvisTasks {
             while (isRunningNow(t) && w < 24) { delay(500); w++ }
         }
         when (t.agent) {
-            AgentKind.LOCAL -> {
-                vm.localBackend.sendMessage(PromptExpansion.expand(text))
-            }
             AgentKind.AGY -> {
                 val enum = AgyHubClient.resolveModelEnum(modelOfChat(t.id))
                 hub.sendUserPrompt(t.id, PromptExpansion.expand(text), enum).getOrElse { return "Could not send: ${it.message}" }
@@ -228,9 +217,6 @@ object JarvisTasks {
     suspend fun stop(id: String, quiet: Boolean = false): String {
         val t = find(id) ?: return "No task with that id."
         when (t.agent) {
-            AgentKind.LOCAL -> {
-                vm.localBackend.stopStreaming()
-            }
             AgentKind.AGY -> hub.cancelCascadeInvocation(t.id).onFailure { return "Could not stop: ${it.message}" }
             else -> {}
         }
@@ -260,7 +246,6 @@ object JarvisTasks {
     /** The task's last reply text (cut to [max]). */
     suspend fun lastReply(t: Task, max: Int = 900): String {
         val msgs = when (t.agent) {
-            AgentKind.LOCAL -> vm.localBackend.messages.value.filter { it.conversationId == t.id }
             AgentKind.AGY -> runCatching { JarvisController.readChat(t.id) }.getOrDefault(emptyList())
             else -> emptyList()
         }
@@ -313,7 +298,6 @@ object JarvisTasks {
     }
 
     private fun isRunningNow(t: Task): Boolean = when (t.agent) {
-        AgentKind.LOCAL -> vm.localBackend.conversations.value.find { it.id == t.id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == t.id)
         AgentKind.AGY -> agyBusy(t.id)
         else -> false
     }
@@ -348,12 +332,6 @@ object JarvisTasks {
         var error: String? = null
         var sig: String = ""
         when (t.agent) {
-            AgentKind.LOCAL -> {
-                running = vm.localBackend.conversations.value.find { it.id == t.id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == t.id)
-                val msgs = vm.messages.value
-                val last = msgs.lastOrNull()
-                sig = "${msgs.size}:${last?.content?.length}"
-            }
             AgentKind.AGY -> {
                 running = agyBusy(t.id)
                 val c = vm.agyBackend.conversations.value.find { it.id == t.id }

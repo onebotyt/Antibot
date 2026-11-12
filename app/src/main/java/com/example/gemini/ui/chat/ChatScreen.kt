@@ -74,7 +74,6 @@ import com.example.gemini.domain.model.AiModel
 import com.example.gemini.domain.model.ChatMessage
 import com.example.gemini.domain.model.MessageRole
 import com.example.gemini.domain.model.ToolType
-import com.example.gemini.domain.model.LocalCodingDomain
 import com.example.gemini.theme.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -178,17 +177,12 @@ fun ChatScreen(
         } else if (messages.isEmpty() || isFreshNewChat) {
             viewModel.setNewChatAgent(agent)
             viewModel.startNewChat(agent)
-            if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                viewModel.selectModel("local-model-only")
-            }
         } else {
             pendingAgentSwitch = agent
         }
     }
     val artifacts by viewModel.artifacts.collectAsState()
     val selectedModelId by viewModel.selectedModelId.collectAsState()
-    val isAutoModel = com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId)
-    val isLocalChat = !isAutoModel && (effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId))
     val availableModels by viewModel.availableModels.collectAsState()
     val enabledModels by viewModel.enabledModels.collectAsState()
     val enabledModelIds by viewModel.enabledModelIds.collectAsState()
@@ -598,26 +592,18 @@ fun ChatScreen(
     val voiceCall by com.example.gemini.data.voice.AgyVoiceCall.state.collectAsState()
     val agyPickedModel by viewModel.agyBackend.selectedModelId.collectAsState()
     val beginVoiceCall: () -> Unit = {
-        val title = currentConv?.title?.takeIf { it.isNotBlank() && it != "New Chat" } ?: (if (isLocalChat) "Local voice chat" else "Voice chat")
+        val title = currentConv?.title?.takeIf { it.isNotBlank() && it != "New Chat" } ?: "Voice chat"
         com.example.gemini.data.voice.AgyVoiceCall.start(
             context = context,
             title = title,
-            isLocal = isLocalChat,
+            isLocal = false,
             conversationId = currentConv?.id,
             onSendPrompt = { prompt ->
                 viewModel.sendMessage(prompt)
             },
             messagesFlow = viewModel.messages,
             prepare = {
-                if (isLocalChat) {
-                    val cid = currentConv?.id ?: run {
-                        viewModel.startNewChat(com.example.gemini.domain.model.AgentKind.LOCAL)
-                        viewModel.currentConversation.value?.id ?: "local_${System.currentTimeMillis()}"
-                    }
-                    cid to 0
-                } else {
-                    viewModel.agyBackend.prepareVoiceCall()
-                }
+                viewModel.agyBackend.prepareVoiceCall()
             }
         )
     }
@@ -639,11 +625,11 @@ fun ChatScreen(
         com.example.gemini.data.voice.AgyVoicePreferences.init(context)
         when {
             voiceCall.active -> com.example.gemini.data.voice.AgyVoiceCall.setMinimized(false)
-            !isLocalChat && !systemConnectionState.canSend -> com.example.gemini.ui.components.AppToastHelper.showToast(
+            !systemConnectionState.canSend -> com.example.gemini.ui.components.AppToastHelper.showToast(
                 "Start the server to call Antigravity.", com.example.gemini.ui.components.ChatToastType.ERROR
             )
             // agy refuses voice calls for cloud chats (its /voice/ws answers 404 for them)
-            !isLocalChat && currentConv?.cloudProjectId != null -> com.example.gemini.ui.components.AppToastHelper.showToast(
+            currentConv?.cloudProjectId != null -> com.example.gemini.ui.components.AppToastHelper.showToast(
                 com.example.gemini.data.voice.AgyVoiceCall.CLOUD_CHAT_NO_VOICE, com.example.gemini.ui.components.ChatToastType.INFO
             )
             !com.example.gemini.data.voice.AgyVoicePreferences.picked.value -> showVoicePicker = true
@@ -695,9 +681,9 @@ fun ChatScreen(
     LaunchedEffect(currentConv?.id, isAgyChat) {
         if (isAgyChat) currentConv?.id?.let { com.example.gemini.data.voice.AgyVoiceChats.refresh(it) }
     }
-    val voiceCallItems = remember(agyVoiceChats, currentConv?.id, isAgyChat, isLocalChat, voiceCall.active, voiceCall.conversationId, voiceCall.startedAtWall) {
+    val voiceCallItems = remember(agyVoiceChats, currentConv?.id, isAgyChat, voiceCall.active, voiceCall.conversationId, voiceCall.startedAtWall) {
         val id = currentConv?.id
-        if ((!isAgyChat && !isLocalChat) || id == null) emptyList() else {
+        if (!isAgyChat || id == null) emptyList() else {
             val live = voiceCall.active && voiceCall.conversationId == id && voiceCall.startedAtWall > 0
             buildList {
                 agyVoiceChats[id].orEmpty().forEach { r ->
@@ -989,21 +975,6 @@ fun ChatScreen(
                 family = com.example.gemini.domain.model.ModelFamily.OTHER
             )
         }
-        isAutoModel -> AiModel(
-            id = com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
-            displayName = com.example.gemini.domain.model.SmartModelRouter.AUTO_DISPLAY_NAME,
-            description = "Dynamic routing · Qwen for shell/offline, Flash for Q&A, Claude for complex logic",
-            family = com.example.gemini.domain.model.ModelFamily.OTHER
-        )
-        isLocalChat -> {
-            val domain = com.example.gemini.domain.model.LocalCodingDomain.fromModelId(selectedModelId)
-            AiModel(
-                id = domain.modelId,
-                displayName = domain.displayName,
-                description = domain.description,
-                family = com.example.gemini.domain.model.ModelFamily.LOCAL
-            )
-        }
         else -> AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
     }
     val currentQuota = remember(quotas, selectedModelId, currentModel) {
@@ -1226,9 +1197,6 @@ fun ChatScreen(
                     conversationBackStack.clear()
                     viewModel.setNewChatAgent(agent)
                     viewModel.startNewChat(agent)
-                    if (agent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                        viewModel.selectModel("local-model-only")
-                    }
                     scope.launch { drawerState.close() }
                 },
                 onDeleteConversation = { id ->
@@ -1598,7 +1566,6 @@ fun ChatScreen(
                     val isServerStopped = sysStatus == com.example.gemini.data.remote.SystemStatus.OFFLINE && !isInitialGracePeriod
                     val isExistingConversation = currentConv != null && currentConv?.title != "New Chat" && conversations.any { it.id == currentConv?.id }
                     val isExistingChat = messages.isEmpty() && isExistingConversation && isLoadingConversation
-                    val isLocalChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.LOCAL || com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(selectedModelId)
 
                     if (isAgyChat && isServerStopped && messages.isEmpty()) {
                         BoxWithConstraints(
@@ -1616,9 +1583,6 @@ fun ChatScreen(
                             ) {
                                 com.example.gemini.ui.components.ServerStoppedPromptCard(
                                     onStartServer = { com.example.gemini.data.local.LocalServerManager.startServer(context, forceRestart = true) },
-                                    onSwitchToLocal = {
-                                        pickAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
-                                    },
                                     onOpenServerLogs = { showLocalServerOutputDialog = true },
                                     onOpenDaemonLogs = { showDaemonLogsDialog = true },
                                     onOpenInstaller = { showLocalToolsInstallDialog = true },
@@ -2395,13 +2359,11 @@ fun ChatScreen(
 
                 // Chat Input Bar with Bottom Model & Thinking Selector Pills
                 ChatInputBar(
-                    isOnline = if (isLocalChat) true
-                        else if (isCodexChat) !codexState.isBlocking
+                    isOnline = if (isCodexChat) !codexState.isBlocking
                         else if (isOpenCodeChat) !openCodeState.isBlocking
                         else if (isClaudeChat) !claudeState.isBlocking
                         else systemConnectionState.canSend,
-                    isAuth = if (isLocalChat) true
-                        else if (isCodexChat) codexState != com.example.gemini.data.agent.codex.CodexState.SIGNED_OUT
+                    isAuth = if (isCodexChat) codexState != com.example.gemini.data.agent.codex.CodexState.SIGNED_OUT
                         else if (isOpenCodeChat) true
                         else if (isClaudeChat) claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN
                         else systemConnectionState.isAuth,
@@ -2487,7 +2449,7 @@ fun ChatScreen(
                     voiceNotesAsText = false,
                     cascadeId = activeConversationKey,
                     focusRequester = chatInputFocusRequester,
-                    onStartVoiceCall = if (isAgyChat || isLocalChat) onStartVoiceCall else null,
+                    onStartVoiceCall = if (isAgyChat) onStartVoiceCall else null,
                     voiceCallActive = voiceCall.active
                 )
 
@@ -2898,9 +2860,6 @@ fun ChatScreen(
                 Button(
                     onClick = {
                         viewModel.switchOngoingChatAgent(targetAgent)
-                        if (targetAgent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                            viewModel.selectModel("local-model-only")
-                        }
                         pendingAgentSwitch = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = targetAgent.accent())
@@ -2914,9 +2873,6 @@ fun ChatScreen(
                         onClick = {
                             viewModel.setNewChatAgent(targetAgent)
                             viewModel.startNewChat(targetAgent)
-                            if (targetAgent == com.example.gemini.domain.model.AgentKind.LOCAL) {
-                                viewModel.selectModel("local-model-only")
-                            }
                             pendingAgentSwitch = null
                         }
                     ) {
@@ -3621,7 +3577,6 @@ fun AntiBotStudioHero(
     selectedModelId: String,
     onOpenModelSelector: () -> Unit,
     onSelectPrompt: (prompt: String, targetModelId: String?) -> Unit,
-    isLocalChat: Boolean,
     isAuth: Boolean,
     onSignIn: () -> Unit,
     modifier: Modifier = Modifier

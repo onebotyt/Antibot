@@ -296,7 +296,6 @@ object AgyVoiceCall {
     fun startJarvisCall(context: Context) {
         val app = context.applicationContext
         val asstName = com.example.gemini.data.jarvis.JarvisPreferences.assistantName.value.ifBlank { "Personal Assistant" }
-        val isLocal = com.example.gemini.data.jarvis.JarvisPreferences.agentKind == com.example.gemini.domain.model.AgentKind.LOCAL
         val currentId = com.example.gemini.data.jarvis.JarvisPreferences.currentChatId.value
 
         start(
@@ -311,14 +310,7 @@ object AgyVoiceCall {
             prepare = {
                 val existing = com.example.gemini.data.jarvis.JarvisPreferences.currentChatId.value
                 val cid = if (existing.isNotBlank()) existing else {
-                    val newId = if (isLocal && com.example.gemini.data.jarvis.JarvisController.isAttached) {
-                        runCatching {
-                            com.example.gemini.data.jarvis.JarvisController.vm.localBackend.startNewChat()
-                            com.example.gemini.data.jarvis.JarvisController.vm.localBackend.currentConversation.value?.id
-                        }.getOrNull() ?: "local_${System.currentTimeMillis()}"
-                    } else {
-                        java.util.UUID.randomUUID().toString()
-                    }
+                    val newId = java.util.UUID.randomUUID().toString()
                     com.example.gemini.data.jarvis.JarvisPreferences.currentChatId.set(newId)
                     com.example.gemini.data.jarvis.JarvisPreferences.addChatId(newId)
                     newId

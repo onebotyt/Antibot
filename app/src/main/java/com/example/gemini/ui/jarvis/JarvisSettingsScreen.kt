@@ -79,7 +79,7 @@ fun JarvisSettingsScreen(cardBg: Color, cardBorder: BorderStroke, onOpen: (Jarvi
             com.example.gemini.ui.settings.SettingsRowItem(icon, tint, title, value) { onOpen(page) }
         listOf(
             listOfNotNull(
-                row(JarvisSettingsPage.AGENT, I.SmartToy, c.info, "Agent", if (agentName == AgentKind.LOCAL.name) "Local Model" else "Antigravity"),
+                row(JarvisSettingsPage.AGENT, I.SmartToy, c.info, "Agent", "Antigravity"),
                 row(JarvisSettingsPage.PERSONALITY, I.Face, c.accentPink, "Personality & Name", currentName),
                 // the setup checklist is only for an assistant that is turned on
                 if (enabled) row(JarvisSettingsPage.SETUP, I.Checklist, c.success, "Setup") else null
@@ -132,7 +132,7 @@ fun JarvisSettingsSectionPage(page: JarvisSettingsPage, cardBg: Color, cardBorde
             JarvisSettingsPage.AGENT -> {
                 JCard(cardBg, cardBorder, "") {
                     JChips(
-                        listOf(AgentKind.AGY.name to "Antigravity", AgentKind.LOCAL.name to "Local Model"),
+                        listOf(AgentKind.AGY.name to "Antigravity"),
                         agentName
                     ) { P.agent.set(it); P.modelId.set("") }
                     val models by vm.enabledModels.collectAsState()
@@ -189,7 +189,7 @@ fun JarvisSettingsSectionPage(page: JarvisSettingsPage, cardBg: Color, cardBorde
                 if (!enabled) {
                     JHint("Turn on Jarvis first (Settings → Jarvis).")
                 } else {
-                    JCard(cardBg, cardBorder, "Setup for ${if (agent == AgentKind.LOCAL) "Local Model" else "Antigravity"}") {
+                    JCard(cardBg, cardBorder, "Setup for Antigravity") {
                         val deviceId = remember(context) {
                             runCatching { android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "" }.getOrDefault("")
                         }

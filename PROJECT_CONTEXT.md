@@ -73,20 +73,18 @@ AntiBot supports seamless execution and routing across multiple CLI agents:
 
 ## 5. Rust Migration Catalog (Ported Endpoints)
 
-The following 8 critical performance bottlenecks have been migrated from Kotlin into the Rust bridge daemon (`agy_ide_bridge_rs/`):
+The following critical performance bottlenecks have been migrated from Kotlin into the Rust bridge daemon (`agy_ide_bridge_rs/`):
 
 | # | Feature / Service | Rust Bridge Endpoint | Kotlin Caller | Description |
 |---|---|---|---|---|
-| 1 | **SmartModelRouter** | `POST /api/models/route` | `SmartModelRouter.kt` | 8-step model routing hierarchy (manual → offline → shell → security → coding → fast-QA → fallback → local). |
-| 2 | **ContextCompactor** | `POST /api/conversations/compact` & `/rollover-seed` | `ContextCompactor.kt` | Zero-allocation history windowing, prompt building, and rollover seed generation. |
-| 3 | **SHA-256 Crypto** | `POST /api/file/save` & `POST /api/file/patch` | `IdeApiClient.kt` | Direct SHA-256 verification via Rust crypto engine on file operations. |
-| 4 | **TrajectoryParser** | `POST /api/conversations/parse-trajectory` | `TrajectoryParser.kt` | Instant parsing of JSON step trajectories into typed `ChatMessage` / `ToolCall` domain objects. |
-| 5 | **NetworkInspectorManager** | `POST /api/network/record` & `GET /api/network/stats` | `NetworkInspectorManager.kt` | Native bandwidth (upload/download bps), connection tracking, and circular log buffer. |
-| 6 | **Archive Engine** | `POST /api/backup/*` & `POST /api/restore/*` | `IdeApiClient.kt` | In-daemon tar/gz/zip chat and project workspace backup and restoration. |
-| 7 | **Local Intelligence Intent Classifier** | `POST /api/ai/intent/classify` | `LocalIntelligenceEngine.kt` | Instant heuristic categorization into DIRECT_COMMAND, DEV_SERVER, INBUILT_BROWSER_SEARCH, DEV_TEAM_FULLSTACK, etc. |
-| 8 | **Transcript Metadata Engine** | `GET /api/conversations/:id/meta` | `IdeApiClient.kt` | High-speed memory-mapped extraction of conversation title, total steps, running status, first prompt, and last active role. |
+| 1 | **ContextCompactor** | `POST /api/conversations/compact` & `/rollover-seed` | `ContextCompactor.kt` | Zero-allocation history windowing, prompt building, and rollover seed generation. |
+| 2 | **SHA-256 Crypto** | `POST /api/file/save` & `POST /api/file/patch` | `IdeApiClient.kt` | Direct SHA-256 verification via Rust crypto engine on file operations. |
+| 3 | **TrajectoryParser** | `POST /api/conversations/parse-trajectory` | `TrajectoryParser.kt` | Instant parsing of JSON step trajectories into typed `ChatMessage` / `ToolCall` domain objects. |
+| 4 | **NetworkInspectorManager** | `POST /api/network/record` & `GET /api/network/stats` | `NetworkInspectorManager.kt` | Native bandwidth (upload/download bps), connection tracking, and circular log buffer. |
+| 5 | **Archive Engine** | `POST /api/backup/*` & `POST /api/restore/*` | `IdeApiClient.kt` | In-daemon tar/gz/zip chat and project workspace backup and restoration. |
+| 6 | **Transcript Metadata Engine** | `GET /api/conversations/:id/meta` | `IdeApiClient.kt` | High-speed memory-mapped extraction of conversation title, total steps, running status, first prompt, and last active role. |
 
-All Kotlin callers implement graceful fallback to in-process logic if the Rust bridge daemon is temporarily offline.
+*(Note: Legacy Local Model intelligence and Smart Manager auto-routing were completely decommissioned and removed to maintain direct, 100% authentic CLI agent execution: Antigravity, Claude Code, OpenAI Codex, OpenCode).*
 
 ---
 

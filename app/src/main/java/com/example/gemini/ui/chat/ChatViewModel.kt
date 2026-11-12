@@ -71,9 +71,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .map { it?.agent ?: AgentKind.AGY }
         .stateIn(viewModelScope, SharingStarted.Eagerly, AgentKind.AGY)
 
-    val localBackend = com.example.gemini.data.agent.local.LocalAgentBackend(application, viewModelScope, store)
-    val isLocalActive get() = store.currentConversation.value?.agent == AgentKind.LOCAL
-
     val claudePrefs = com.example.gemini.data.agent.claude.ClaudePreferences(application)
     private val claudeClient = com.example.gemini.data.agent.claude.ClaudeBridgeClient()
     val claudeBackend = com.example.gemini.data.agent.claude.ClaudeChatBackend(application, viewModelScope, store, claudePrefs, claudeClient)
@@ -167,33 +164,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             AgentKind.CLAUDE -> claudeStream
             AgentKind.CODEX -> codexStream
             AgentKind.OPENCODE -> openCodeStream
-            AgentKind.LOCAL -> conv?.isRunning == true
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val availableModels = agyBackend.availableModels
     val enabledModelIds = agyBackend.enabledModelIds
     val enabledModels = agyBackend.enabledModels
     val isRefreshingModels = agyBackend.isRefreshingModels
-    private val _isAutoRouting = MutableStateFlow(true)
-    val isAutoRouting: StateFlow<Boolean> = _isAutoRouting.asStateFlow()
 
-    private val _activeRoutingDecision = MutableStateFlow<com.example.gemini.domain.model.SmartRoutingDecision?>(null)
-    val activeRoutingDecision: StateFlow<com.example.gemini.domain.model.SmartRoutingDecision?> = _activeRoutingDecision.asStateFlow()
-
-    val selectedModelId: StateFlow<String> = kotlinx.coroutines.flow.combine(
-        store.currentConversation,
-        localBackend.selectedModelId,
-        agyBackend.selectedModelId,
-        _isAutoRouting
-    ) { conv, localModel, agyModel, isAuto ->
-        if (isAuto) {
-            com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID
-        } else if (conv?.agent == AgentKind.LOCAL || isLocalActive) {
-            localModel
-        } else {
-            agyModel
-        }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID)
+    val selectedModelId: StateFlow<String> = agyBackend.selectedModelId
     val preferredModelName = agyBackend.preferredModelName
     val quotas = agyBackend.quotas
     val quotaSummary = agyBackend.quotaSummary
@@ -237,7 +215,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             AgentKind.CLAUDE -> claudeRunning
             AgentKind.CODEX -> codexRunning
             AgentKind.OPENCODE -> openCodeRunning
-            AgentKind.LOCAL -> conv?.isRunning == true
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val isCurrentChatBackgroundActive = agyBackend.isCurrentChatBackgroundActive
@@ -257,11 +234,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             var wasRunning = false
             isCurrentChatActivelyRunning.collect { isRunning ->
                 if (wasRunning && !isRunning) {
-                    val completedAgent = activeAgent.value
-                    com.example.gemini.domain.model.SmartManagerOrchestrator.onTurnCompleted(completedAgent)
-                    if (completedAgent == AgentKind.LOCAL || _isAutoRouting.value) {
-                        com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-                    }
                     val convId = currentConversation.value?.id.orEmpty()
                     if (convId.isNotEmpty()) {
                         var nextMsg: com.example.gemini.domain.model.QueuedMessage? = null
@@ -356,33 +328,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun onUserStartedTyping() = agyBackend.onUserStartedTyping()
     fun startNewChat() = startNewChat(
         newChatAgent.value.takeIf { it in enabledAgents.value }
-            ?: if (AgentKind.AGY in enabledAgents.value) AgentKind.AGY else AgentKind.LOCAL
+            ?: AgentKind.AGY
     )
 
     /** New chat with [agent], without changing the new-chat default. */
     fun startNewChat(agent: AgentKind) {
-        if (agent != AgentKind.LOCAL) {
-            com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-        }
         when (agent) {
-            AgentKind.LOCAL -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-                localBackend.startNewChat()
-            }
             AgentKind.AGY -> {
-                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 agyBackend.startNewChat()
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 claudeBackend.startNewChat()
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
                 openCodeBackend.startNewChat()
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
                 codexBackend.startNewChat()
             }
         }
@@ -393,25 +358,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val cur = store.currentConversation.value ?: return
         if (cur.agent == targetAgent) return
 
-        // 1. Enforce strict Zero-Idle-RAM turn isolation: detach inactive backends
-        if (targetAgent != AgentKind.LOCAL) {
-            com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-        }
         when (targetAgent) {
-            AgentKind.LOCAL -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-            }
             AgentKind.AGY -> {
-                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
             }
         }
 
@@ -424,44 +382,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // 3. Keep target backend in sync
-        if (targetAgent == AgentKind.LOCAL) {
-            localBackend.syncOngoingConversation(updated, currentMsgs)
-        } else {
-            store.messages.value = currentMsgs
-        }
+        store.messages.value = currentMsgs
     }
 
     fun selectConversation(id: String) {
         val targetAgent = agentOf(id)
-        if (targetAgent != AgentKind.LOCAL) {
-            com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-        }
         when (targetAgent) {
-            AgentKind.LOCAL -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-                localBackend.selectConversation(id)
-            }
             AgentKind.AGY -> {
-                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 agyBackend.selectConversation(id)
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 claudeBackend.selectConversation(id)
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
                 openCodeBackend.selectConversation(id)
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
                 codexBackend.selectConversation(id)
             }
         }
     }
     fun startPersistentStream(conversationId: String) = agyBackend.startPersistentStream(conversationId)
     fun deleteConversation(id: String) = when (agentOf(id)) {
-        AgentKind.LOCAL -> localBackend.deleteConversation(id)
         AgentKind.AGY -> agyBackend.deleteConversation(id)
         AgentKind.CLAUDE -> claudeBackend.deleteConversation(id)
         AgentKind.OPENCODE -> openCodeBackend.deleteConversation(id)
@@ -469,99 +415,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun forkConversation(id: String) {
         when (agentOf(id)) {
-            AgentKind.LOCAL -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-                localBackend.forkConversation(id)
-            }
             AgentKind.AGY -> {
-                localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 agyBackend.forkConversation(id)
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
                 claudeBackend.forkConversation(id)
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
                 openCodeBackend.forkConversation(id)
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
                 codexBackend.forkConversation(id)
             }
         }
     }
     fun selectModel(modelId: String) {
-        if (com.example.gemini.domain.model.SmartModelRouter.isAuto(modelId)) {
-            _isAutoRouting.value = true
-            // In Manager mode, engines remain inactive with 0 RAM until active turn dispatch
-            com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-            viewModelScope.launch {
-                authPrefs.savePreferredModel(
-                    com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID,
-                    displayName = com.example.gemini.domain.model.SmartModelRouter.AUTO_DISPLAY_NAME
-                )
-            }
-            return
-        }
-        _isAutoRouting.value = false
-        if (com.example.gemini.domain.model.LocalCodingDomain.isLocalModel(modelId)) {
-            if (!isLocalActive) {
-                startNewChat(AgentKind.LOCAL)
-            }
-            localBackend.selectModel(modelId)
-            return
-        }
-        // Switched away from local model: immediately unload local weights from RAM
-        com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-        if (isLocalActive) {
-            startNewChat(AgentKind.AGY)
-        }
         agyBackend.selectModel(modelId)
     }
-
-    fun getDynamicRoutingDecision(draftText: String): com.example.gemini.domain.model.SmartRoutingDecision {
-        val config = com.example.gemini.domain.model.LlmManagerConfig(
-            architectureModel = authPrefs.getLlmManagerArchitectureModelSync(),
-            codingModel = authPrefs.getLlmManagerCodingModelSync(),
-            fastQaModel = authPrefs.getLlmManagerFastQaModelSync(),
-            shellModel = authPrefs.getLlmManagerShellModelSync(),
-            fallbackModel = authPrefs.getLlmManagerFallbackModelSync(),
-            preferredCli = authPrefs.getLlmManagerPreferredCliSync()
-        )
-        // Synchronous fallback (used in non-suspend contexts)
-        return com.example.gemini.domain.model.SmartModelRouter.route(
-            prompt = draftText,
-            hasAttachments = store.attachments.value.isNotEmpty(),
-            isOnline = isNetworkConnected() && agyBackend.systemConnectionState.value.canSend,
-            availableModels = enabledModels.value,
-            quotas = quotas.value,
-            currentSelectedModelId = if (_isAutoRouting.value) com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID else selectedModelId.value,
-            config = config
-        )
-    }
-
-    /** Bridge-accelerated routing decision — prefers Rust bridge, falls back to in-process. */
-    suspend fun getDynamicRoutingDecisionAsync(draftText: String): com.example.gemini.domain.model.SmartRoutingDecision {
-        val config = com.example.gemini.domain.model.LlmManagerConfig(
-            architectureModel = authPrefs.getLlmManagerArchitectureModelSync(),
-            codingModel = authPrefs.getLlmManagerCodingModelSync(),
-            fastQaModel = authPrefs.getLlmManagerFastQaModelSync(),
-            shellModel = authPrefs.getLlmManagerShellModelSync(),
-            fallbackModel = authPrefs.getLlmManagerFallbackModelSync(),
-            preferredCli = authPrefs.getLlmManagerPreferredCliSync()
-        )
-        return com.example.gemini.domain.model.SmartModelRouter.routeViaBridge(
-            prompt = draftText,
-            hasAttachments = store.attachments.value.isNotEmpty(),
-            isOnline = isNetworkConnected() && agyBackend.systemConnectionState.value.canSend,
-            availableModels = enabledModels.value,
-            quotas = quotas.value,
-            currentSelectedModelId = if (_isAutoRouting.value) com.example.gemini.domain.model.SmartModelRouter.AUTO_MODEL_ID else selectedModelId.value,
-            config = config
-        )
-    }
-
 
     /** `/plu:` plugin skills and custom slash commands are expanded here, for all agents. */
     fun sendMessage(content: String) = PromptExpansion.expand(content).let { expanded ->
@@ -580,86 +454,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             handleSkillViaIntent(expanded, skillIntent)
             return@let
         }
-        if (_isAutoRouting.value || com.example.gemini.domain.model.SmartModelRouter.isAuto(selectedModelId.value)) {
-            val decision = getDynamicRoutingDecision(expanded)
-            _activeRoutingDecision.value = decision
-
-            // Strict Zero-Idle-RAM Turn Isolation:
-            // In Manager Mode, only start the designated engine for this turn.
-            // All other CLIs are detached and local neural weights are unloaded from RAM.
-            com.example.gemini.domain.model.SmartManagerOrchestrator.prepareEngineForTurn(
-                targetAgent = decision.targetAgent,
-                targetModelId = decision.targetModelId,
-                onDetachOthers = {
-                    when (decision.targetAgent) {
-                        AgentKind.LOCAL -> {
-                            agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-                        }
-                        AgentKind.AGY -> {
-                            localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-                        }
-                        AgentKind.CLAUDE -> {
-                            agyBackend.detach(); localBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
-                        }
-                        AgentKind.OPENCODE -> {
-                            agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); codexBackend.detach()
-                        }
-                        AgentKind.CODEX -> {
-                            agyBackend.detach(); localBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
-                        }
-                    }
-                }
-            )
-
-            when (decision.targetAgent) {
-                AgentKind.LOCAL -> {
-                    if (!isLocalActive) {
-                        switchOngoingChatAgent(AgentKind.LOCAL)
-                    }
-                    localBackend.selectModel(decision.targetModelId)
-                    localBackend.sendMessage(expanded)
-                }
-                AgentKind.AGY -> {
-                    if (isLocalActive || isClaudeActive || isOpenCodeActive || isCodexActive) {
-                        switchOngoingChatAgent(AgentKind.AGY)
-                    }
-                    agyBackend.selectModel(decision.targetModelId)
-                    agyBackend.sendMessage(expanded)
-                }
-                AgentKind.CLAUDE -> {
-                    if (!isClaudeActive) {
-                        switchOngoingChatAgent(AgentKind.CLAUDE)
-                    }
-                    claudeBackend.selectModel(decision.targetModelId)
-                    claudeBackend.sendMessage(expanded)
-                }
-                AgentKind.OPENCODE -> {
-                    if (!isOpenCodeActive) {
-                        switchOngoingChatAgent(AgentKind.OPENCODE)
-                    }
-                    openCodeBackend.selectModel(decision.targetModelId)
-                    openCodeBackend.sendMessage(expanded)
-                }
-                AgentKind.CODEX -> {
-                    if (!isCodexActive) {
-                        switchOngoingChatAgent(AgentKind.CODEX)
-                    }
-                    codexBackend.selectModel(decision.targetModelId)
-                    codexBackend.sendMessage(expanded)
-                }
-            }
-        } else {
-            // Manual selection: guarantee local model is unloaded if not the selected engine
-            if (!isLocalActive) {
-                com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
-            }
-            when {
-                isLocalActive -> localBackend.sendMessage(expanded)
-                isClaudeActive -> claudeBackend.sendMessage(expanded)
-                isOpenCodeActive -> openCodeBackend.sendMessage(expanded)
-                isCodexActive -> codexBackend.sendMessage(expanded)
-                else -> agyBackend.sendMessage(expanded)
-            }
+        when {
+            isClaudeActive -> claudeBackend.sendMessage(expanded)
+            isOpenCodeActive -> openCodeBackend.sendMessage(expanded)
+            isCodexActive -> codexBackend.sendMessage(expanded)
+            else -> agyBackend.sendMessage(expanded)
         }
     }
 
@@ -1073,21 +872,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
     val isTranscribingAudio = agyBackend.isTranscribingAudio
     fun transcribeAudioFile(file: java.io.File, onDone: (String) -> Unit, onError: (String) -> Unit) = agyBackend.transcribeAudioFile(file, onDone, onError)
-    fun retryMessage(messageId: String) = when {
-        isLocalActive -> Unit
-        else -> agyBackend.retryMessage(messageId)
-    }
-    fun prepareEditMessage(messageId: String): String? {
-        if (isLocalActive) {
-            return null
-        }
-        return agyBackend.prepareEditMessage(messageId)?.let(PromptExpansion::collapse)
-    }
+    fun retryMessage(messageId: String) = agyBackend.retryMessage(messageId)
+    fun prepareEditMessage(messageId: String): String? =
+        agyBackend.prepareEditMessage(messageId)?.let(PromptExpansion::collapse)
     fun revertAndEditLastUserMessage(targetMsg: ChatMessage, onRestored: (String) -> Unit) = agyBackend.revertAndEditLastUserMessage(targetMsg) { onRestored(PromptExpansion.collapse(it)) }
 
     fun renameConversation(id: String, title: String) {
         when (agentOf(id)) {
-            AgentKind.LOCAL -> localBackend.renameConversation(id, title)
             AgentKind.CLAUDE -> claudeBackend.renameConversation(id, title)
             AgentKind.OPENCODE -> openCodeBackend.renameConversation(id, title)
             AgentKind.CODEX -> codexBackend.renameConversation(id, title)
@@ -1095,16 +886,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun stopStreaming() {
-        val agent = activeAgent.value
         when {
             isClaudeActive -> claudeBackend.stopStreaming()
             isOpenCodeActive -> openCodeBackend.stopStreaming()
             isCodexActive -> codexBackend.stopStreaming()
-            isLocalActive -> localBackend.stopStreaming()
             else -> agyBackend.stopStreaming()
         }
-        com.example.gemini.domain.model.SmartManagerOrchestrator.onTurnCompleted(agent)
-        com.example.gemini.data.agent.local.LocalModelManager.deactivateAndUnload()
     }
     fun applyQuotaSummary(summary: com.example.gemini.domain.model.QuotaSummaryResponse) = agyBackend.applyQuotaSummary(summary)
     fun refreshQuotas(force: Boolean = true, showToastFeedback: Boolean = false) {
@@ -1186,14 +973,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val conversations: StateFlow<List<Conversation>> = combine(
         combine(
             _conversations,
-            localBackend.conversations,
             claudeBackend.conversations,
             openCodeBackend.conversations,
             codexBackend.conversations
-        ) { agy, local, claude, opencode, codex ->
+        ) { agy, claude, opencode, codex ->
             listOf(
                 AgentKind.AGY to agy,
-                AgentKind.LOCAL to local,
                 AgentKind.CLAUDE to claude,
                 AgentKind.OPENCODE to opencode,
                 AgentKind.CODEX to codex
@@ -1850,13 +1635,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             authPrefs.isDevModeEnabled.collect { _isDevModeEnabled.value = it }
         }
-
-        viewModelScope.launch {
-            authPrefs.preferredModelId.collect { savedModel ->
-                _isAutoRouting.value = com.example.gemini.domain.model.SmartModelRouter.isAuto(savedModel)
-            }
-        }
-
     }
 
     fun getDraft(conversationId: String): androidx.compose.ui.text.input.TextFieldValue {

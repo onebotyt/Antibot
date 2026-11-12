@@ -159,7 +159,6 @@ data class QueuedMessage(
 enum class ModelFamily {
     CLAUDE,
     GEMINI,
-    LOCAL,
     OTHER
 }
 
@@ -168,7 +167,6 @@ data class AiModel(
     val id: String,
     val displayName: String,
     val family: ModelFamily = when {
-        id.startsWith("local-") || id == "local-model-only" || displayName.contains("Local", ignoreCase = true) -> ModelFamily.LOCAL
         id.contains("claude", ignoreCase = true) || displayName.contains("claude", ignoreCase = true) -> ModelFamily.CLAUDE
         else -> ModelFamily.GEMINI
     },
@@ -185,13 +183,11 @@ data class AiModel(
         fun fromApi(id: String, displayName: String?, description: String? = null): AiModel {
             val name = displayName?.takeIf { it.isNotBlank() } ?: formatModelName(id)
             val family = when {
-                id.startsWith("local-") || id == "local-model-only" || name.contains("Local", ignoreCase = true) -> ModelFamily.LOCAL
                 id.contains("claude", ignoreCase = true) || name.contains("claude", ignoreCase = true) -> ModelFamily.CLAUDE
                 else -> ModelFamily.GEMINI
             }
             val thinking = id.contains("thinking", ignoreCase = true) || id.contains("flash", ignoreCase = true) || id.contains("pro", ignoreCase = true) || id.contains("high", ignoreCase = true) || id.contains("medium", ignoreCase = true) || id.contains("low", ignoreCase = true)
             val desc = description ?: when (family) {
-                ModelFamily.LOCAL -> "AntiBot Local Model (Offline · 0 Tokens)"
                 ModelFamily.CLAUDE -> "Anthropic Claude via Antigravity"
                 ModelFamily.GEMINI -> "Google Gemini via Antigravity"
                 ModelFamily.OTHER -> "Other Model via Antigravity"

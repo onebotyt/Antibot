@@ -741,14 +741,10 @@ fun ChatHistoryDrawer(
             val filterOptions = buildList<Pair<com.example.gemini.domain.model.AgentKind?, String>> {
                 add(null to "All")
                 val activeAgents = if (enabledAgents.isNotEmpty()) enabledAgents else setOf(
-                    com.example.gemini.domain.model.AgentKind.AGY,
-                    com.example.gemini.domain.model.AgentKind.LOCAL
+                    com.example.gemini.domain.model.AgentKind.AGY
                 )
                 if (com.example.gemini.domain.model.AgentKind.AGY in activeAgents) {
                     add(com.example.gemini.domain.model.AgentKind.AGY to "Antigravity")
-                }
-                if (com.example.gemini.domain.model.AgentKind.LOCAL in activeAgents) {
-                    add(com.example.gemini.domain.model.AgentKind.LOCAL to "Local (0 Tokens)")
                 }
                 if (com.example.gemini.domain.model.AgentKind.CLAUDE in activeAgents) {
                     add(com.example.gemini.domain.model.AgentKind.CLAUDE to "Claude Code")
@@ -993,20 +989,7 @@ fun ChatHistoryDrawer(
                                 ) {
                                     Text("Retry", fontSize = 12.5.sp)
                                 }
-                                OutlinedButton(
-                                    onClick = {
-                                        agentFilter = com.example.gemini.domain.model.AgentKind.LOCAL
-                                        if (onNewChatWithAgent != null) {
-                                            onNewChatWithAgent(com.example.gemini.domain.model.AgentKind.LOCAL)
-                                        } else {
-                                            onNewChat()
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text("Use Local Model", fontSize = 12.5.sp)
-                                }
+
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

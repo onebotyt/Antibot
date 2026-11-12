@@ -540,7 +540,6 @@ fun NewChatCheckingAuthPromptCard(
 fun ServerStoppedPromptCard(
     modifier: Modifier = Modifier,
     onStartServer: () -> Unit = {},
-    onSwitchToLocal: () -> Unit = {},
     onOpenServerLogs: () -> Unit = {},
     onOpenDaemonLogs: () -> Unit = {},
     onOpenInstaller: () -> Unit = {},
@@ -582,9 +581,9 @@ fun ServerStoppedPromptCard(
 
         Text(
             text = if (!isEnvironmentInstalled)
-                "The 350MB Linux environment has not been installed yet. Install it to start the local engine, or chat immediately using AntiBot Local Model (Offline · 0 Tokens)."
+                "The Linux environment has not been installed yet. Install it to start the background engine and use coding tools."
             else
-                "The background engine is paused. You can start the engine for full tools, or chat immediately using AntiBot Local Model (Offline · 0 Tokens).",
+                "The background engine is paused. You can start the engine for full tools and agent connectivity.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             textAlign = TextAlign.Center,
@@ -621,22 +620,6 @@ fun ServerStoppedPromptCard(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Start AntiBot Engine", fontWeight = FontWeight.SemiBold)
             }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        OutlinedButton(
-            onClick = onSwitchToLocal,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = AntiBotCyan
-            ),
-            border = BorderStroke(1.dp, AntiBotCyan.copy(alpha = 0.5f)),
-            modifier = Modifier.fillMaxWidth(0.85f)
-        ) {
-            Icon(Icons.Outlined.Terminal, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Use Offline Local Model (0 Tokens)", fontWeight = FontWeight.Medium)
         }
 
         Spacer(modifier = Modifier.height(14.dp))

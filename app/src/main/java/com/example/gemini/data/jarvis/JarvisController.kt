@@ -353,12 +353,8 @@ object JarvisController {
     private fun computeBusy(): Boolean {
         val id = JarvisPreferences.currentChatId.value
         if (id.isBlank()) return false
-        return if (JarvisPreferences.currentChatAgent.value == AgentKind.LOCAL.name) {
-            vm.localBackend.conversations.value.find { it.id == id }?.isRunning == true || (vm.isStreaming.value && vm.currentConversation.value?.id == id)
-        } else {
-            System.currentTimeMillis() < agyBusyUntil ||
-                vm.agyBackend.conversations.value.any { it.id == id && it.isRunning }
-        }
+        return System.currentTimeMillis() < agyBusyUntil ||
+            vm.agyBackend.conversations.value.any { it.id == id && it.isRunning }
     }
 
     private fun touch() {
@@ -404,11 +400,7 @@ object JarvisController {
 
     private suspend fun lastJarvisReply(): String? {
         val id = JarvisPreferences.currentChatId.value
-        val raw = if (JarvisPreferences.currentChatAgent.value == AgentKind.LOCAL.name) {
-            vm.localBackend.messages.value.lastOrNull { it.role == MessageRole.ASSISTANT && it.content.isNotBlank() }?.content
-        } else {
-            runCatching { readChat(id).lastOrNull { it.role == MessageRole.ASSISTANT && it.content.isNotBlank() }?.content }.getOrNull()
-        }
+        val raw = runCatching { readChat(id).lastOrNull { it.role == MessageRole.ASSISTANT && it.content.isNotBlank() }?.content }.getOrNull()
         return raw?.let { PromptExpansion.collapse(it).trim() }
     }
 
@@ -443,7 +435,7 @@ object JarvisController {
         }
     }
 
-    private fun agentLabel() = if (JarvisPreferences.agentKind == AgentKind.LOCAL) "Local Model" else "Antigravity"
+    private fun agentLabel() = JarvisPreferences.agentKind.name
 
     private suspend fun onMcpMissing() {
         _mcpProblem.value = true
@@ -898,9 +890,7 @@ object JarvisController {
 
     private fun transcriber(): SpeechTranscriber {
         if (sttFallback) return androidStt
-        val chosen = JarvisPreferences.sttEngine.value.let {
-            if (it == "auto") (if (JarvisPreferences.agentKind == AgentKind.LOCAL) "local" else "agy") else it
-        }
+        val chosen = JarvisPreferences.sttEngine.value
         return when (chosen) {
             "agy" -> vm.speechManager
             else -> androidStt
@@ -1255,11 +1245,7 @@ object JarvisController {
         val prompt = PromptExpansion.hidden(note) + m.text
         val existingId = if (freshChat) "" else chatId
         try {
-            when (agent) {
-                AgentKind.LOCAL -> sendLocal(prompt)
-                AgentKind.AGY -> sendAgy(prompt)
-                else -> sendAgy(prompt)
-            }
+            sendAgy(prompt)
         } catch (e: Exception) {
             // the saved Jarvis chat was deleted: start a new one and send this message there (once)
             if (!retried && existingId.isNotBlank() && missingChat.containsMatchIn(e.message.orEmpty())) {
@@ -1275,20 +1261,6 @@ object JarvisController {
         JarvisPreferences.profileSentFor.set("${JarvisPreferences.currentChatId.value}|${JarvisSkill.profileHash()}")
         JarvisPreferences.currentChatMessages.set(JarvisPreferences.currentChatMessages.value + 1)
         touch()
-    }
-
-    private suspend fun sendLocal(prompt: String) {
-        var id = JarvisPreferences.currentChatId.value
-        if (id.isBlank() || JarvisPreferences.currentChatAgent.value != AgentKind.LOCAL.name) {
-            vm.localBackend.startNewChat()
-            delay(150)
-            id = vm.localBackend.currentConversation.value?.id ?: java.util.UUID.randomUUID().toString()
-            JarvisPreferences.currentChatId.set(id)
-            JarvisPreferences.currentChatAgent.set(AgentKind.LOCAL.name)
-            JarvisPreferences.addChatId(id)
-            JarvisPreferences.modelId.value.takeIf { it.isNotBlank() }?.let { vm.localBackend.selectModel(it) }
-        }
-        vm.localBackend.sendMessage(prompt)
     }
 
     private suspend fun sendAgy(prompt: String) {
@@ -1339,34 +1311,25 @@ object JarvisController {
 
     /** Sets the model of a chat that is not on screen. Applies to its next message. */
     suspend fun setChatModel(id: String, kind: AgentKind, modelId: String) {
-        when (kind) {
-            AgentKind.AGY -> JarvisTasks.rememberChatModel(id, modelId)
-            AgentKind.LOCAL -> vm.localBackend.selectModel(modelId)
-            else -> JarvisTasks.rememberChatModel(id, modelId)
-        }
+        JarvisTasks.rememberChatModel(id, modelId)
     }
 
     suspend fun stopChat(id: String): String {
         if (id.isBlank()) return "No chat."
         if (JarvisTasks.isTask(id)) return JarvisTasks.stop(id)
         return when (agentOfChat(id)) {
-            AgentKind.LOCAL -> {
-                vm.localBackend.stopStreaming()
-                "Stopped."
-            }
             AgentKind.AGY -> hub.cancelCascadeInvocation(id).fold({ "Stopped." }, { "Could not stop: ${it.message}" })
             else -> "Stopped."
         }
     }
 
-    /** Messages of any chat (Local: from memory; Antigravity: from its trajectory). */
+    /** Messages of any chat (Antigravity: from its trajectory, others: from memory). */
     suspend fun readChat(id: String): List<ChatMessage> = when (agentOfChat(id)) {
-        AgentKind.LOCAL -> vm.localBackend.messages.value.filter { it.conversationId == id }
         AgentKind.AGY -> {
             val steps = hub.getCascadeTrajectorySteps(id).getOrNull().orEmpty()
             com.example.gemini.domain.chat.TrajectoryEngine().ingestStepsDirect(steps, id)
         }
-        else -> emptyList()
+        else -> vm.allMessages.value.filter { it.conversationId == id }
     }
 
     // ------------------------------------------------------------------ speaking and asking

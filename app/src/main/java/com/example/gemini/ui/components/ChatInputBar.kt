@@ -626,7 +626,6 @@ fun ChatInputBar(
     val attachmentsBusy = isUploadingAttachment || attachmentProgress.isNotEmpty()
     val familyColor = when (selectedModel.family) {
         ModelFamily.CLAUDE -> ClaudeAccent
-        ModelFamily.LOCAL -> Color(0xFF8B5CF6)
         else -> when {
             selectedModel.id.startsWith("codex") || selectedModel.description?.contains("Codex", ignoreCase = true) == true -> CodexAccent
             selectedModel.description?.contains("OpenCode", ignoreCase = true) == true -> OpenCodeAccent

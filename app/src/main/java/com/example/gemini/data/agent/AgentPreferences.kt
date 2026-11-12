@@ -45,7 +45,7 @@ class AgentPreferences(context: Context) {
 
         private fun key(agent: AgentKind) = "enabled_" + agent.name.lowercase()
 
-        private fun default(agent: AgentKind) = agent == AgentKind.AGY || agent == AgentKind.LOCAL
+        private fun default(agent: AgentKind) = agent == AgentKind.AGY
 
         private fun read(prefs: android.content.SharedPreferences): Set<AgentKind> {
             val chosen = prefs.getBoolean(KEY_CHOSEN, false)
