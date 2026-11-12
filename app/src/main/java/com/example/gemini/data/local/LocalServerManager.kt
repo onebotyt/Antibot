@@ -294,7 +294,7 @@ object LocalServerManager {
         }
 
         try {
-            Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '")).waitFor()
+            Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '; pkill -9 -f '@deepseek-ai/dsh'; pkill -9 -f 'dsh web'")).waitFor()
         } catch (_: Exception) {
         }
 
@@ -387,7 +387,7 @@ object LocalServerManager {
 
         withContext(Dispatchers.IO) {
             try {
-                Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f 'agy '")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f 'agy '; pkill -9 -f '@deepseek-ai/dsh'; pkill -9 -f 'dsh web'")).waitFor()
             } catch (_: Exception) {}
         }
 

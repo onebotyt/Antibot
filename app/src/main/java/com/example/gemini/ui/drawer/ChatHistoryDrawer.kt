@@ -755,6 +755,9 @@ fun ChatHistoryDrawer(
                 if (com.example.gemini.domain.model.AgentKind.CODEX in activeAgents) {
                     add(com.example.gemini.domain.model.AgentKind.CODEX to "Codex")
                 }
+                if (com.example.gemini.domain.model.AgentKind.DSH in activeAgents) {
+                    add(com.example.gemini.domain.model.AgentKind.DSH to "DeepSeek")
+                }
             }
             Row(
                 modifier = Modifier

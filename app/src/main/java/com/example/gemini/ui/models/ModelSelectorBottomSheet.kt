@@ -33,6 +33,7 @@ import com.example.gemini.theme.*
 import com.example.gemini.ui.components.ClaudeAccent
 import com.example.gemini.ui.components.CodexAccent
 import com.example.gemini.ui.components.OpenCodeAccent
+import com.example.gemini.ui.components.DshAccent
 import kotlinx.coroutines.launch
 
 sealed interface ModelItemEntry {
@@ -74,11 +75,12 @@ fun ModelSelectorBottomSheet(
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     currentAgent: AgentKind = AgentKind.AGY,
-    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.CLAUDE, AgentKind.CODEX, AgentKind.OPENCODE),
+    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.CLAUDE, AgentKind.CODEX, AgentKind.OPENCODE, AgentKind.DSH),
     claudeBackend: com.example.gemini.data.agent.claude.ClaudeChatBackend? = null,
     claudeAccount: com.example.gemini.data.agent.claude.ClaudeAccountManager? = null,
     codexBackend: com.example.gemini.data.agent.codex.CodexChatBackend? = null,
     openCodeBackend: com.example.gemini.data.agent.opencode.OpenCodeChatBackend? = null,
+    dshBackend: com.example.gemini.data.agent.dsh.DshChatBackend? = null,
     onSelectAgentAndModel: ((AgentKind, String) -> Unit)? = null,
     onSelectModel: (String) -> Unit,
     onDismiss: () -> Unit
@@ -324,6 +326,57 @@ fun ModelSelectorBottomSheet(
             )
         }
 
+        // 5. 🐋 DeepSeek Harness Engine
+        if (AgentKind.DSH in enabledAgents) {
+            val dshList = mutableListOf<ModelItemEntry>()
+            val dshModels = dshBackend?.client?.cachedModels?.value ?: emptyList()
+            if (dshModels.isNotEmpty()) {
+                dshModels.forEach { model ->
+                    dshList.add(
+                        ModelItemEntry.Single(
+                            id = model.id,
+                            title = model.displayName.ifBlank { model.id },
+                            badge = if (model.supportsThinking) "Reasoning" else "Agentic",
+                            badgeColor = DshAccent,
+                            subtitle = model.description.ifBlank { null },
+                            agentKind = AgentKind.DSH
+                        )
+                    )
+                }
+            } else {
+                dshList.add(
+                    ModelItemEntry.Single(
+                        id = "deepseek-reasoner",
+                        title = "DeepSeek R1 (Reasoner)",
+                        badge = "Reasoning",
+                        badgeColor = DshAccent,
+                        subtitle = "DeepSeek R1 with deep Chain-of-Thought reasoning (<think>)",
+                        agentKind = AgentKind.DSH
+                    )
+                )
+                dshList.add(
+                    ModelItemEntry.Single(
+                        id = "deepseek-chat",
+                        title = "DeepSeek V3 (Chat)",
+                        badge = "Agentic",
+                        badgeColor = DshAccent,
+                        subtitle = "High-speed DeepSeek-V3 agentic coding and Cordis plugins",
+                        agentKind = AgentKind.DSH
+                    )
+                )
+            }
+
+            sections.add(
+                EngineSection(
+                    agentKind = AgentKind.DSH,
+                    title = "DeepSeek Harness",
+                    badge = "🐋 Ready",
+                    accentColor = DshAccent,
+                    entries = dshList
+                )
+            )
+        }
+
         sections
     }
 
@@ -517,6 +570,9 @@ fun ModelSelectorBottomSheet(
                                                 )
                                                 AgentKind.OPENCODE -> currentAgent == AgentKind.OPENCODE && (
                                                     openCodeSelModelId == entry.id
+                                                )
+                                                AgentKind.DSH -> currentAgent == AgentKind.DSH && (
+                                                    dshBackend?.selectedModelId?.value == entry.id || selectedModelId == entry.id
                                                 )
                                                 else -> false
                                             }

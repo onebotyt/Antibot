@@ -84,9 +84,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val codexPrefs = com.example.gemini.data.agent.codex.CodexPreferences(application)
     val codexBackend = com.example.gemini.data.agent.codex.CodexChatBackend(application, viewModelScope, store, codexPrefs)
 
+    val dshPrefs = com.example.gemini.data.agent.dsh.DshPreferences(application)
+    val dshBackend = com.example.gemini.data.agent.dsh.DshChatBackend(application, viewModelScope, store, dshPrefs)
+
     val isClaudeActive get() = store.currentConversation.value?.agent == AgentKind.CLAUDE
     val isOpenCodeActive get() = store.currentConversation.value?.agent == AgentKind.OPENCODE
     val isCodexActive get() = store.currentConversation.value?.agent == AgentKind.CODEX
+    val isDshActive get() = store.currentConversation.value?.agent == AgentKind.DSH
 
     private val agentPrefs = com.example.gemini.data.agent.AgentPreferences(application)
     /** Agent used for new chats, picked on the empty chat screen (remembered). */
@@ -157,13 +161,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         store.currentConversation,
         agyBackend.isStreaming,
         claudeBackend.isStreaming,
-        kotlinx.coroutines.flow.combine(codexBackend.isStreaming, openCodeBackend.isStreaming) { codex, openCode -> codex to openCode }
-    ) { agent, conv, agyStream, claudeStream, (codexStream, openCodeStream) ->
+        kotlinx.coroutines.flow.combine(
+            codexBackend.isStreaming,
+            openCodeBackend.isStreaming,
+            dshBackend.isStreaming
+        ) { codex, openCode, dsh -> Triple(codex, openCode, dsh) }
+    ) { agent, conv, agyStream, claudeStream, (codexStream, openCodeStream, dshStream) ->
         when (agent) {
             AgentKind.AGY -> agyStream
             AgentKind.CLAUDE -> claudeStream
             AgentKind.CODEX -> codexStream
             AgentKind.OPENCODE -> openCodeStream
+            AgentKind.DSH -> dshStream
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val availableModels = agyBackend.availableModels
@@ -207,14 +216,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         claudeBackend.isCurrentChatActivelyRunning,
         kotlinx.coroutines.flow.combine(
             codexBackend.isCurrentChatActivelyRunning,
-            openCodeBackend.isCurrentChatActivelyRunning
-        ) { codex, openCode -> codex to openCode }
-    ) { agent, conv, agyRunning, claudeRunning, (codexRunning, openCodeRunning) ->
+            openCodeBackend.isCurrentChatActivelyRunning,
+            dshBackend.isCurrentChatActivelyRunning
+        ) { codex, openCode, dsh -> Triple(codex, openCode, dsh) }
+    ) { agent, conv, agyRunning, claudeRunning, (codexRunning, openCodeRunning, dshRunning) ->
         when (agent) {
             AgentKind.AGY -> agyRunning
             AgentKind.CLAUDE -> claudeRunning
             AgentKind.CODEX -> codexRunning
             AgentKind.OPENCODE -> openCodeRunning
+            AgentKind.DSH -> dshRunning
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val isCurrentChatBackgroundActive = agyBackend.isCurrentChatBackgroundActive
@@ -335,20 +346,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun startNewChat(agent: AgentKind) {
         when (agent) {
             AgentKind.AGY -> {
-                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 agyBackend.startNewChat()
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 claudeBackend.startNewChat()
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 openCodeBackend.startNewChat()
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); dshBackend.detach()
                 codexBackend.startNewChat()
+            }
+            AgentKind.DSH -> {
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                dshBackend.startNewChat()
             }
         }
     }
@@ -360,16 +375,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         when (targetAgent) {
             AgentKind.AGY -> {
-                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach(); dshBackend.detach()
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); dshBackend.detach()
+            }
+            AgentKind.DSH -> {
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
             }
         }
 
@@ -389,20 +407,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val targetAgent = agentOf(id)
         when (targetAgent) {
             AgentKind.AGY -> {
-                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 agyBackend.selectConversation(id)
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 claudeBackend.selectConversation(id)
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 openCodeBackend.selectConversation(id)
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); dshBackend.detach()
                 codexBackend.selectConversation(id)
+            }
+            AgentKind.DSH -> {
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                dshBackend.selectConversation(id)
             }
         }
     }
@@ -412,24 +434,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         AgentKind.CLAUDE -> claudeBackend.deleteConversation(id)
         AgentKind.OPENCODE -> openCodeBackend.deleteConversation(id)
         AgentKind.CODEX -> codexBackend.deleteConversation(id)
+        AgentKind.DSH -> dshBackend.deleteConversation(id)
     }
     fun forkConversation(id: String) {
         when (agentOf(id)) {
             AgentKind.AGY -> {
-                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 agyBackend.forkConversation(id)
             }
             AgentKind.CLAUDE -> {
-                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); openCodeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 claudeBackend.forkConversation(id)
             }
             AgentKind.OPENCODE -> {
-                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); codexBackend.detach(); dshBackend.detach()
                 openCodeBackend.forkConversation(id)
             }
             AgentKind.CODEX -> {
-                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach()
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); dshBackend.detach()
                 codexBackend.forkConversation(id)
+            }
+            AgentKind.DSH -> {
+                agyBackend.detach(); claudeBackend.detach(); openCodeBackend.detach(); codexBackend.detach()
+                dshBackend.forkConversation(id)
             }
         }
     }
@@ -437,7 +464,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         agyBackend.selectModel(modelId)
     }
 
-    /** `/plu:` plugin skills and custom slash commands are expanded here, for all agents. */
+    /** `/plu:` plugin skills, multi-model @-mentions, and custom slash commands are expanded and routed here. */
     fun sendMessage(content: String) = PromptExpansion.expand(content).let { expanded ->
         val moveIntent = com.example.gemini.domain.project.ChatProjectMover.parseMoveChatIntent(expanded)
         if (moveIntent != null && moveIntent.isMatch) {
@@ -454,11 +481,38 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             handleSkillViaIntent(expanded, skillIntent)
             return@let
         }
-        when {
-            isClaudeActive -> claudeBackend.sendMessage(expanded)
-            isOpenCodeActive -> openCodeBackend.sendMessage(expanded)
-            isCodexActive -> codexBackend.sendMessage(expanded)
-            else -> agyBackend.sendMessage(expanded)
+
+        // Multi-Model Single-Chat Dispatcher:
+        // Detect @-mentions like @claude, @deepseek, @dsh, @gemini, @agy, @codex, @opencode
+        val mentionRegex = Regex("""^@(claude|gemini|agy|deepseek|dsh|codex|opencode)\b\s*""", RegexOption.IGNORE_CASE)
+        val mentionMatch = mentionRegex.find(expanded.trim())
+
+        val (targetAgent, promptToSend) = if (mentionMatch != null) {
+            val tag = mentionMatch.groupValues[1].lowercase()
+            val agent = when (tag) {
+                "claude" -> AgentKind.CLAUDE
+                "gemini", "agy" -> AgentKind.AGY
+                "deepseek", "dsh" -> AgentKind.DSH
+                "codex" -> AgentKind.CODEX
+                "opencode" -> AgentKind.OPENCODE
+                else -> activeAgent.value
+            }
+            val stripped = expanded.trim().substring(mentionMatch.range.last + 1).trim()
+            agent to (stripped.ifEmpty { expanded })
+        } else {
+            activeAgent.value to expanded
+        }
+
+        if (targetAgent != activeAgent.value) {
+            switchOngoingChatAgent(targetAgent)
+        }
+
+        when (targetAgent) {
+            AgentKind.DSH -> dshBackend.sendMessage(promptToSend)
+            AgentKind.CLAUDE -> claudeBackend.sendMessage(promptToSend)
+            AgentKind.OPENCODE -> openCodeBackend.sendMessage(promptToSend)
+            AgentKind.CODEX -> codexBackend.sendMessage(promptToSend)
+            AgentKind.AGY -> agyBackend.sendMessage(promptToSend)
         }
     }
 
@@ -882,16 +936,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             AgentKind.CLAUDE -> claudeBackend.renameConversation(id, title)
             AgentKind.OPENCODE -> openCodeBackend.renameConversation(id, title)
             AgentKind.CODEX -> codexBackend.renameConversation(id, title)
+            AgentKind.DSH -> dshBackend.renameConversation(id, title)
             AgentKind.AGY -> Unit
         }
     }
     fun stopStreaming() {
-        when {
-            isClaudeActive -> claudeBackend.stopStreaming()
-            isOpenCodeActive -> openCodeBackend.stopStreaming()
-            isCodexActive -> codexBackend.stopStreaming()
-            else -> agyBackend.stopStreaming()
-        }
+        agyBackend.stopStreaming()
+        claudeBackend.stopStreaming()
+        openCodeBackend.stopStreaming()
+        codexBackend.stopStreaming()
+        dshBackend.stopStreaming()
     }
     fun applyQuotaSummary(summary: com.example.gemini.domain.model.QuotaSummaryResponse) = agyBackend.applyQuotaSummary(summary)
     fun refreshQuotas(force: Boolean = true, showToastFeedback: Boolean = false) {
@@ -975,13 +1029,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _conversations,
             claudeBackend.conversations,
             openCodeBackend.conversations,
-            codexBackend.conversations
-        ) { agy, claude, opencode, codex ->
+            codexBackend.conversations,
+            dshBackend.conversations
+        ) { agy, claude, opencode, codex, dsh ->
             listOf(
                 AgentKind.AGY to agy,
                 AgentKind.CLAUDE to claude,
                 AgentKind.OPENCODE to opencode,
-                AgentKind.CODEX to codex
+                AgentKind.CODEX to codex,
+                AgentKind.DSH to dsh
             )
         },
         enabledAgents
@@ -1600,6 +1656,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         claudeBackend.start()
         codexBackend.start()
         openCodeBackend.start()
+        dshBackend.start()
 
         // Also refresh agent statuses whenever local server comes online or restarts
         viewModelScope.launch {
@@ -1608,6 +1665,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     claudeAccount.refreshStatus()
                     codexBackend.refreshStatus()
                     openCodeBackend.refreshStatus()
+                    dshBackend.refreshStatus()
                 }
             }
         }

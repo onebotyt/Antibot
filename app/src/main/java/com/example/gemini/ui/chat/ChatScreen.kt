@@ -323,6 +323,8 @@ fun ChatScreen(
     val claudeStatusError by viewModel.claudeAccount.statusError.collectAsState()
     val claudeSlashCommands by claudeBackend.slashCommands.collectAsState()
 
+    val dshBackend = viewModel.dshBackend
+
     val claudeChatState = if (
         com.example.gemini.data.agent.claude.ClaudeChatBackend.providerOf(selectedModelId).isNotEmpty() &&
         (claudeState == com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT || claudeState == com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN)
@@ -489,7 +491,26 @@ fun ChatScreen(
             onRetry = { codexBackend.retryConnections() }
         )
     } else null
-    val agentEntries = listOfNotNull(agyEntry, claudeEntry, openCodeEntry, codexEntry)
+    var isDshOnline by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isDshOnline = dshBackend.client.isDaemonOnline()
+    }
+    val dshEntry = if (com.example.gemini.domain.model.AgentKind.DSH in enabledAgents) {
+        com.example.gemini.ui.agents.dshStatusEntry(
+            isOnline = isDshOnline,
+            modelName = dshBackend.selectedModelId.value,
+            serverRestarting = serverRestarting,
+            onSetup = {
+                requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
+                showSettingsDialog = true
+            },
+            onRestartServer = restartLocalServer,
+            onRetry = {
+                scope.launch { isDshOnline = dshBackend.client.isDaemonOnline() }
+            }
+        )
+    } else null
+    val agentEntries = listOfNotNull(agyEntry, claudeEntry, openCodeEntry, codexEntry, dshEntry)
     var showAccountsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -1257,7 +1278,8 @@ fun ChatScreen(
                         onClick = { showAccountsDialog = true },
                         openCode = openCodeEntry,
                         codex = codexEntry,
-                        codexEmail = codexAccount?.email
+                        codexEmail = codexAccount?.email,
+                        dsh = dshEntry
                     )
                 }
             )
@@ -2055,10 +2077,31 @@ fun ChatScreen(
                         )
                     }
 
-                    // Floating File Autocomplete Suggestions when user types @
+                    // Floating Multi-Model & File Autocomplete Suggestions when user types @
                     val atIndex = inputText.lastIndexOf('@')
                     val isAtMentioning = atIndex >= 0 && (atIndex == inputText.length - 1 || !inputText.substring(atIndex + 1).contains(" "))
                     val atQuery = if (atIndex >= 0 && atIndex < inputText.length) inputText.substring(atIndex + 1) else ""
+
+                    val allAgentMentions = remember {
+                        listOf(
+                            Triple("@deepseek", "DeepSeek", com.example.gemini.domain.model.AgentKind.DSH),
+                            Triple("@claude", "Claude", com.example.gemini.domain.model.AgentKind.CLAUDE),
+                            Triple("@gemini", "Gemini", com.example.gemini.domain.model.AgentKind.AGY),
+                            Triple("@codex", "Codex", com.example.gemini.domain.model.AgentKind.CODEX),
+                            Triple("@opencode", "OpenCode", com.example.gemini.domain.model.AgentKind.OPENCODE)
+                        )
+                    }
+
+                    val agentSuggestions = remember(atQuery, isAtMentioning) {
+                        if (!isAtMentioning) emptyList()
+                        else {
+                            allAgentMentions.filter { (tag, name, _) ->
+                                atQuery.isBlank() ||
+                                tag.removePrefix("@").contains(atQuery, ignoreCase = true) ||
+                                name.contains(atQuery, ignoreCase = true)
+                            }
+                        }
+                    }
 
                     val fileSuggestions = remember(atQuery, chatProjectFiles, isAtMentioning) {
                         if (!isAtMentioning || chatProjectFiles.isEmpty()) emptyList()
@@ -2070,7 +2113,7 @@ fun ChatScreen(
                     }
 
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = fileSuggestions.isNotEmpty(),
+                        visible = agentSuggestions.isNotEmpty() || fileSuggestions.isNotEmpty(),
                         enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom),
                         exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom),
                         modifier = Modifier
@@ -2079,55 +2122,110 @@ fun ChatScreen(
                     ) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                            shadowElevation = 8.dp,
+                            shadowElevation = 10.dp,
                             tonalElevation = 6.dp
                         ) {
                             LazyColumn(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 220.dp)
+                                    .heightIn(max = 260.dp)
                                     .padding(vertical = 4.dp)
                             ) {
-                                items(fileSuggestions, key = { file -> file.path }) { file ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                val newText = inputText.substring(0, atIndex) + "@${file.path} "
-                                                val tfv = TextFieldValue(
-                                                    text = newText,
-                                                    selection = TextRange(newText.length)
-                                                )
-                                                textFieldValue = tfv
-                                                viewModel.setDraft(activeConversationKey, tfv)
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Description,
-                                            contentDescription = null,
-                                            tint = ClaudeTerracotta,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                if (agentSuggestions.isNotEmpty()) {
+                                    item(key = "h_agents") {
                                         Text(
-                                            text = file.name,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            text = "CLI MODELS & AGENTS",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.8.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+                                    items(agentSuggestions, key = { it.first }) { (tag, name, agentKind) ->
+                                        val accent = com.example.gemini.ui.components.accent(agentKind)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    val newText = inputText.substring(0, atIndex) + "$tag "
+                                                    val tfv = TextFieldValue(text = newText, selection = TextRange(newText.length))
+                                                    textFieldValue = tfv
+                                                    viewModel.setDraft(activeConversationKey, tfv)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            com.example.gemini.ui.agents.AgentMark(agentKind, size = 22.dp)
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = tag,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = accent
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = name,
+                                                fontSize = 11.5.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (fileSuggestions.isNotEmpty()) {
+                                    item(key = "h_files") {
                                         Text(
-                                            text = file.path,
-                                            fontSize = 11.sp,
-                                            color = Color.Gray,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            text = "PROJECT FILES",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.8.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                                         )
+                                    }
+                                    items(fileSuggestions, key = { file -> file.path }) { file ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    val newText = inputText.substring(0, atIndex) + "@${file.path} "
+                                                    val tfv = TextFieldValue(
+                                                        text = newText,
+                                                        selection = TextRange(newText.length)
+                                                    )
+                                                    textFieldValue = tfv
+                                                    viewModel.setDraft(activeConversationKey, tfv)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Description,
+                                                contentDescription = null,
+                                                tint = ClaudeTerracotta,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = file.name,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = file.path,
+                                                fontSize = 11.sp,
+                                                color = Color.Gray,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2497,12 +2595,14 @@ fun ChatScreen(
             claudeAccount = viewModel.claudeAccount,
             codexBackend = codexBackend,
             openCodeBackend = openCodeBackend,
+            dshBackend = dshBackend,
             onSelectAgentAndModel = { targetAgent, modelId ->
                 if (targetAgent != effectiveAgent) {
                     when (targetAgent) {
                         com.example.gemini.domain.model.AgentKind.CLAUDE -> claudeBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.CODEX -> codexBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.OPENCODE -> openCodeBackend.selectModel(modelId)
+                        com.example.gemini.domain.model.AgentKind.DSH -> dshBackend.selectModel(modelId)
                         else -> viewModel.selectModel(modelId)
                     }
                     pickAgent(targetAgent)
@@ -2511,6 +2611,7 @@ fun ChatScreen(
                         com.example.gemini.domain.model.AgentKind.CLAUDE -> claudeBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.CODEX -> codexBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.OPENCODE -> openCodeBackend.selectModel(modelId)
+                        com.example.gemini.domain.model.AgentKind.DSH -> dshBackend.selectModel(modelId)
                         else -> viewModel.selectModel(modelId)
                     }
                 }
@@ -2687,6 +2788,7 @@ fun ChatScreen(
             initialOpenCodePage = openCodeSettingsPage,
             codex = viewModel.codexBackend,
             initialCodexPage = codexSettingsPage,
+            dsh = viewModel.dshBackend,
             initialSection = requestedSettingsSection
                 ?: if (openOpenCodeSettings) com.example.gemini.ui.settings.SettingsSection.OPENCODE
                 else if (openCodexSettings) com.example.gemini.ui.settings.SettingsSection.CODEX else null,
@@ -2755,6 +2857,12 @@ fun ChatScreen(
             onCodexSettings = {
                 scope.launch { drawerState.close() }
                 openCodexSettings = true
+                showSettingsDialog = true
+            },
+            dsh = dshEntry,
+            onDshSettings = {
+                scope.launch { drawerState.close() }
+                requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
                 showSettingsDialog = true
             }
         )

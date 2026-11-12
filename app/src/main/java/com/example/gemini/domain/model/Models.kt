@@ -87,6 +87,8 @@ data class ChatMessage(
     val createdAt: Long = System.currentTimeMillis(),
     /** The model that wrote this reply, as the agent reports it (null when unknown). */
     val modelId: String? = null,
+    /** Which agent/CLI generated this message (e.g. AGY, CLAUDE, DSH, CODEX, OPENCODE). */
+    val agentKind: AgentKind? = null,
     /** A request an Antigravity voice call sent: [content] is what was said (the full prompt is in [rawContent]). */
     val viaVoice: Boolean = false,
     /** What the voice said while handing that request to the agent. */
@@ -159,6 +161,8 @@ data class QueuedMessage(
 enum class ModelFamily {
     CLAUDE,
     GEMINI,
+    DEEPSEEK,
+    CODEX,
     OTHER
 }
 
@@ -168,6 +172,8 @@ data class AiModel(
     val displayName: String,
     val family: ModelFamily = when {
         id.contains("claude", ignoreCase = true) || displayName.contains("claude", ignoreCase = true) -> ModelFamily.CLAUDE
+        id.contains("deepseek", ignoreCase = true) || displayName.contains("deepseek", ignoreCase = true) || id.contains("dsh", ignoreCase = true) -> ModelFamily.DEEPSEEK
+        id.contains("codex", ignoreCase = true) || displayName.contains("codex", ignoreCase = true) -> ModelFamily.CODEX
         else -> ModelFamily.GEMINI
     },
     val supportsThinking: Boolean = id.contains("thinking", ignoreCase = true) || id.contains("flash", ignoreCase = true) || id.contains("pro", ignoreCase = true) || id.contains("high", ignoreCase = true) || id.contains("medium", ignoreCase = true) || id.contains("low", ignoreCase = true),
@@ -184,11 +190,15 @@ data class AiModel(
             val name = displayName?.takeIf { it.isNotBlank() } ?: formatModelName(id)
             val family = when {
                 id.contains("claude", ignoreCase = true) || name.contains("claude", ignoreCase = true) -> ModelFamily.CLAUDE
+                id.contains("deepseek", ignoreCase = true) || name.contains("deepseek", ignoreCase = true) || id.contains("dsh", ignoreCase = true) -> ModelFamily.DEEPSEEK
+                id.contains("codex", ignoreCase = true) || name.contains("codex", ignoreCase = true) -> ModelFamily.CODEX
                 else -> ModelFamily.GEMINI
             }
-            val thinking = id.contains("thinking", ignoreCase = true) || id.contains("flash", ignoreCase = true) || id.contains("pro", ignoreCase = true) || id.contains("high", ignoreCase = true) || id.contains("medium", ignoreCase = true) || id.contains("low", ignoreCase = true)
+            val thinking = id.contains("thinking", ignoreCase = true) || id.contains("reasoner", ignoreCase = true) || id.contains("r1", ignoreCase = true) || id.contains("flash", ignoreCase = true) || id.contains("pro", ignoreCase = true) || id.contains("high", ignoreCase = true) || id.contains("medium", ignoreCase = true) || id.contains("low", ignoreCase = true)
             val desc = description ?: when (family) {
                 ModelFamily.CLAUDE -> "Anthropic Claude via Antigravity"
+                ModelFamily.DEEPSEEK -> "DeepSeek AI via DeepSeek Harness"
+                ModelFamily.CODEX -> "OpenAI Codex CLI"
                 ModelFamily.GEMINI -> "Google Gemini via Antigravity"
                 ModelFamily.OTHER -> "Other Model via Antigravity"
             }

@@ -767,6 +767,39 @@ fun AssistantMessageFooter(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Multi-Model Badge: indicates which CLI model or agent generated this message
+            val agent = message.agentKind
+            val model = message.modelId
+            if (agent != null || !model.isNullOrBlank()) {
+                val accent = agent?.accent() ?: Color(0xFF388BFD)
+                val badgeText = when {
+                    agent == AgentKind.DSH -> "🐋 DeepSeek" + (if (!model.isNullOrBlank() && !model.contains("deepseek", ignoreCase = true)) " · $model" else "")
+                    agent == AgentKind.CLAUDE -> "✻ Claude" + (if (!model.isNullOrBlank() && !model.contains("claude", ignoreCase = true)) " · $model" else "")
+                    agent == AgentKind.CODEX -> ">_ Codex" + (if (!model.isNullOrBlank() && !model.contains("codex", ignoreCase = true)) " · $model" else "")
+                    agent == AgentKind.OPENCODE -> "</> OpenCode" + (if (!model.isNullOrBlank() && !model.contains("opencode", ignoreCase = true)) " · $model" else "")
+                    agent == AgentKind.AGY -> "⚡ Antigravity" + (if (!model.isNullOrBlank() && !model.contains("gemini", ignoreCase = true)) " · $model" else "")
+                    !model.isNullOrBlank() -> model
+                    else -> ""
+                }
+                if (badgeText.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(accent.copy(alpha = 0.12f))
+                            .padding(horizontal = 7.dp, vertical = 2.5.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = accent
+                        )
+                    }
+                }
+            }
         }
     }
 }

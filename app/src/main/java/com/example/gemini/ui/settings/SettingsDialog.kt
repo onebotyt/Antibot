@@ -129,7 +129,8 @@ enum class SettingsSection(val title: String, val subtitle: String) {
     CODEX("Codex", "OpenAI Codex CLI, models & permissions"),
     CODEX_PAGE("Codex", "Codex sub-page"),
     OPENCODE("OpenCode", "OpenCode CLI, custom providers & endpoints"),
-    OPENCODE_PAGE("OpenCode", "OpenCode sub-page");
+    OPENCODE_PAGE("OpenCode", "OpenCode sub-page"),
+    DSH("DeepSeek Harness", "DeepSeek Harness daemon, Cordis plugins & R1 reasoning");
 
     val jarvisPage: com.example.gemini.ui.jarvis.JarvisSettingsPage? get() = when (this) {
         JARVIS_AGENT -> com.example.gemini.ui.jarvis.JarvisSettingsPage.AGENT
@@ -293,6 +294,7 @@ fun SettingsDialog(
     initialOpenCodePage: com.example.gemini.ui.opencode.OpenCodeSettingsPage? = null,
     codex: com.example.gemini.data.agent.codex.CodexChatBackend? = null,
     initialCodexPage: com.example.gemini.ui.codex.CodexSettingsPage? = null,
+    dsh: com.example.gemini.data.agent.dsh.DshChatBackend? = null,
     initialSection: SettingsSection? = null,
     enabledAgents: Set<com.example.gemini.domain.model.AgentKind> = setOf(com.example.gemini.domain.model.AgentKind.AGY),
     isApplyingAgents: Boolean = false,
@@ -747,6 +749,18 @@ fun SettingsDialog(
                             onOpenReaGroups = { currentSection = SettingsSection.REA_GROUPS }
                         )
                     }
+                    SettingsSection.DSH -> {
+                        val backend = dsh ?: remember {
+                            val app = context.applicationContext as android.app.Application
+                            val store = com.example.gemini.data.agent.ChatSessionStore()
+                            val dshPrefs = com.example.gemini.data.agent.dsh.DshPreferences(app)
+                            com.example.gemini.data.agent.dsh.DshChatBackend(app, coroutineScope, store, dshPrefs)
+                        }
+                        com.example.gemini.ui.dsh.DeepSeekSettingsScreen(
+                            backend = backend,
+                            onBack = { currentSection = SettingsSection.MAIN }
+                        )
+                    }
                     SettingsSection.CHANGELOG -> ChangelogScreen(
                         cardBg = cardBg,
                         cardBorder = cardBorder
@@ -891,6 +905,13 @@ private fun MainSettingsMenu(
                 title = "OpenCode",
                 subtitle = "OpenCode CLI, custom providers & endpoints",
                 onClick = { onNavigate(SettingsSection.OPENCODE) }
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            SettingsGroupItemRow(
+                icon = Icons.Outlined.Psychology,
+                title = "DeepSeek Harness",
+                subtitle = "DeepSeek Harness daemon, Cordis plugins & R1 reasoning",
+                onClick = { onNavigate(SettingsSection.DSH) }
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             SettingsGroupItemRow(

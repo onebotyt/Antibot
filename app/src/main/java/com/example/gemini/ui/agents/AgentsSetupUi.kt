@@ -75,6 +75,11 @@ private val AGENT_OPTIONS = listOf(
         AgentKind.CODEX,
         "Codex",
         "OpenAI's Codex CLI on this device: sign in with your ChatGPT account (or an API key)."
+    ),
+    AgentOption(
+        AgentKind.DSH,
+        "DeepSeek Harness",
+        "DeepSeek's official Harness meta-framework in Termux: R1 reasoning, Cordis plugins, and local daemon tools."
     )
 )
 
