@@ -1,6 +1,6 @@
 {
-  "version_code": 271,
-  "version_name": "2.4.151",
+  "version_code": 272,
+  "version_name": "2.4.152",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83e\udded Harness URL & diagnostics: the harness shell can now point at a harness that is already running (paste the 'dsh web: http://127.0.0.1:4010/?token=...' URL into Settings \u2192 DeepSeek \u2192 Harness UI Shell), and the 'harness unavailable' screen shows the launcher's output plus the reason it failed (the DeepSeek Harness needs a glibc/Linux environment and cannot run natively on Android).",
