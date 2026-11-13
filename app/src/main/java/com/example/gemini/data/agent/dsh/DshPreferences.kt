@@ -129,8 +129,13 @@ class DshPreferences(context: Context) {
         const val DEFAULT_MODEL = "deepseek-chat"
         const val REASONER_MODEL = "deepseek-reasoner"
         const val DEFAULT_COMMAND = "npx @deepseek-ai/dsh web"
-        // @deepseek-ai/dsh is published as a prerelease on the `next` tag only.
-        const val DEFAULT_HARNESS_COMMAND = "npx -y @deepseek-ai/dsh@next web"
+        /**
+         * The app installs and runs the harness itself (see [HarnessInstaller]);
+         * this value means "use that managed launcher".
+         */
+        const val DEFAULT_HARNESS_COMMAND = "app-managed"
+        /** The launcher command older versions stored; treated as [DEFAULT_HARNESS_COMMAND]. */
+        const val LEGACY_HARNESS_COMMAND = "npx -y @deepseek-ai/dsh@next web"
 
         fun getHttpBaseUrl(context: Context): String {
             val p = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_PORT, DEFAULT_PORT)

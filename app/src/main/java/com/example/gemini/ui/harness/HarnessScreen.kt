@@ -126,9 +126,16 @@ fun HarnessScreen(
         // Status overlay until the harness answers; hidden once it is ready.
         when (val current = state) {
             is HarnessController.UiState.Ready -> Unit
-            HarnessController.UiState.Idle, HarnessController.UiState.Starting -> HarnessStatusOverlay(
+            HarnessController.UiState.Idle -> HarnessStatusOverlay(
                 title = "Starting DeepSeek Harness",
                 body = "Launching the harness and waiting for it to answer…",
+                busy = true,
+                onRetry = null
+            )
+
+            is HarnessController.UiState.Starting -> HarnessStatusOverlay(
+                title = "Starting DeepSeek Harness",
+                body = current.message,
                 busy = true,
                 onRetry = null
             )

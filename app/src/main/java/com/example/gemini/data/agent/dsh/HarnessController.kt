@@ -37,6 +37,8 @@ object HarnessController {
     private const val TAG = "HarnessController"
     private const val LOG_NAME = ".dsh-harness.log"
     private const val START_TIMEOUT_MS = 120_000L
+    /** The first run installs the harness from npm, which takes much longer. */
+    private const val INSTALL_TIMEOUT_MS = 45 * 60_000L
     private const val TOKEN_WAIT_MS = 5_000L
     private const val PROBE_TIMEOUT_S = 2L
 
@@ -50,7 +52,7 @@ object HarnessController {
 
     sealed interface UiState {
         data object Idle : UiState
-        data object Starting : UiState
+        data class Starting(val message: String = "Starting the harness…") : UiState
         data class Ready(val url: String) : UiState
         data class Error(val message: String, val details: String? = null) : UiState
     }
@@ -111,7 +113,7 @@ object HarnessController {
 
         if (!force && _state.value is UiState.Ready && probe(base)) return
 
-        _state.value = UiState.Starting
+        _state.value = UiState.Starting()
 
         if (force) {
             // A forced refresh must actually restart the app's own harness, not
@@ -135,7 +137,10 @@ object HarnessController {
 
         startSession(context, prefs, port)
 
-        val deadline = System.currentTimeMillis() + START_TIMEOUT_MS
+        val deadline = System.currentTimeMillis() +
+            if (isManaged(prefs) && !HarnessInstaller.isReady(context)) INSTALL_TIMEOUT_MS
+            else START_TIMEOUT_MS
+        var lastMessage = ""
         while (System.currentTimeMillis() < deadline) {
             if (probe(base)) {
                 // The listener accepts connections a moment before the harness
@@ -150,6 +155,11 @@ object HarnessController {
                 // The launcher exited and nothing is listening: do not keep waiting.
                 break
             }
+            val message = progressMessage(logTail(context, 2))
+            if (message != lastMessage) {
+                lastMessage = message
+                _state.value = UiState.Starting(message)
+            }
             delay(1000)
         }
 
@@ -162,29 +172,44 @@ object HarnessController {
     }
 
     /**
-     * Explains why the launcher did not produce a harness. The DeepSeek
-     * Harness ships native addons that only exist for glibc/Linux, so it
-     * cannot run natively on Android; that case is called out explicitly.
+     * Explains why the launcher did not produce a harness. The harness runs
+     * natively now, so a failure is usually the first-run install (large npm
+     * download) or the one-time native addon build.
      */
     private fun diagnose(port: Int, log: String): String {
         val text = log.lowercase()
-        val hint = "Start it in Termux with 'dsh-web' (it leaves its launch URL in " +
-            "Download/antibot-harness-url.txt, which AntiBot picks up automatically). " +
-            "Without the Termux helper:\n" +
-            "  proot-distro login ubuntu\n" +
-            "  cd /opt/dsh && . ./env.sh\n" +
-            "  /opt/node/bin/node node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 4010 --no-open"
+        val fallback = "You can also run the harness in Termux with 'dsh-web': the app picks its " +
+            "launch URL up from Download/antibot-harness-url.txt automatically."
         return when {
-            text.contains("require_builtin.node") || text.contains("native builtins") ->
-                "The DeepSeek Harness ships native addons that only exist for glibc/Linux, so it " +
-                    "cannot run inside AntiBot's native Android shell. $hint"
+            text.contains("pnpm add") && text.contains("failed") ->
+                "The DeepSeek Harness could not be downloaded. Check the connection and tap Retry. " +
+                    "The download is large (several hundred MB) and only happens once. $fallback"
+            text.contains("native addon") || text.contains("clang++ failed") ->
+                "The native addon the harness needs could not be built on this device. " +
+                    "The launcher output is shown below. $fallback"
             text.contains("cache/policy.js") || text.contains("make-fetch-happen") ->
-                "npm in this environment is broken (make-fetch-happen is missing), so the harness " +
-                    "cannot be downloaded here. $hint"
+                "npm in this environment is broken, so the app installs the harness with pnpm " +
+                    "instead. The launcher output is shown below. $fallback"
             text.isBlank() ->
-                "The harness did not come up on port $port. $hint"
+                "The harness did not come up on port $port. $fallback"
             else ->
-                "The harness did not come up on port $port. The launcher output is shown below."
+                "The harness did not come up on port $port. The launcher output is shown below. $fallback"
+        }
+    }
+
+    /** A short status line for the start screen, based on the launcher's output. */
+    private fun progressMessage(log: String): String {
+        val last = log.lines().lastOrNull { it.isNotBlank() } ?: ""
+        return when {
+            last.contains("Progress: resolved") ->
+                "Installing the DeepSeek Harness (first run)…\n$last"
+            last.contains("installing @deepseek-ai/dsh") ->
+                "Installing the DeepSeek Harness (first run, several hundred MB)…"
+            last.contains("building the native addon") ->
+                "Building the native addon for Android (one time)…"
+            last.contains("starting the harness") ->
+                "Starting the harness…"
+            else -> "Starting the harness…"
         }
     }
 
@@ -217,7 +242,7 @@ object HarnessController {
             Log.w(TAG, "Could not prepare harness log ${logFile.absolutePath}", t)
         }
 
-        val command = buildLaunchCommand(prefs, port, logFile)
+        val command = buildLaunchCommand(context, prefs, port, logFile)
 
         session = withContext(Dispatchers.Main) {
             LocalPtySession(
@@ -235,16 +260,36 @@ object HarnessController {
         }
     }
 
-    private fun buildLaunchCommand(prefs: DshPreferences, port: Int, logFile: File): String {
-        val raw = prefs.harnessCommand.value.trim().ifBlank { DshPreferences.DEFAULT_HARNESS_COMMAND }
-        val withFlags = buildString {
-            append(raw)
-            if (!raw.contains("--host")) append(" --host 127.0.0.1")
-            if (!raw.contains("--port")) append(" --port ").append(port)
-            if (!raw.contains("--no-open")) append(" --no-open")
+    /** True when the app manages the harness (installs and runs it itself). */
+    private fun isManaged(prefs: DshPreferences): Boolean {
+        val raw = prefs.harnessCommand.value.trim()
+        return raw.isEmpty() ||
+            raw == DshPreferences.DEFAULT_HARNESS_COMMAND ||
+            raw == DshPreferences.LEGACY_HARNESS_COMMAND
+    }
+
+    private fun buildLaunchCommand(
+        context: Context,
+        prefs: DshPreferences,
+        port: Int,
+        logFile: File
+    ): String {
+        val command = if (isManaged(prefs)) {
+            // The app installs the harness and builds its missing android-arm64
+            // native addon, then runs `dsh web`.
+            val script = HarnessInstaller.prepare(context)
+            "sh \"${script.absolutePath}\" $port"
+        } else {
+            val raw = prefs.harnessCommand.value.trim()
+            buildString {
+                append(raw)
+                if (!raw.contains("--host")) append(" --host 127.0.0.1")
+                if (!raw.contains("--port")) append(" --port ").append(port)
+                if (!raw.contains("--no-open")) append(" --no-open")
+            }
         }
         // Keep the launcher's output so its one-time token URL can be read back.
-        return "$withFlags > \"${logFile.absolutePath}\" 2>&1"
+        return "$command > \"${logFile.absolutePath}\" 2>&1"
     }
 
     private fun resolveUrl(context: Context, port: Int): String =

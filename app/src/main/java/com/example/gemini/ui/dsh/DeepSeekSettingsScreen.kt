@@ -206,7 +206,7 @@ fun DeepSeekSettingsScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "AntiBot opens straight into this harness. The Termux 'dsh-web' script leaves its launch URL in Download/antibot-harness-url.txt, which the app picks up automatically; you can also paste a URL here (it may contain the ?token= part) or leave it empty to let the app start its own copy on the port below.",
+                    text = "AntiBot opens straight into its own DeepSeek Harness: on the first run it installs the harness and builds the native addon Android is missing (several hundred MB, one time). To use a harness that is already running instead, paste its URL here — the Termux 'dsh-web' script leaves one in Download/antibot-harness-url.txt, which the app picks up automatically.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -230,9 +230,14 @@ fun DeepSeekSettingsScreen(
                     value = harnessCommandInput,
                     onValueChange = { harnessCommandInput = it },
                     label = { Text("Harness Launch Command") },
-                    placeholder = { Text("npx -y @deepseek-ai/dsh@next web") },
+                    placeholder = { Text("app-managed") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "Keep 'app-managed' to let AntiBot install and run the harness itself. A custom command runs instead (host, port and --no-open are added when missing).",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
                     onClick = {

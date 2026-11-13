@@ -85,3 +85,20 @@ This document preserves the chronological log of user requests, decisions, probl
   - The Termux `dsh-web` launcher writes its launch URL to `Download/antibot-harness-url.txt`, which the app reads automatically, so starting the harness in Termux is all the app needs.
   - The error screen now shows the launcher's output tail and names the real cause (glibc-only native addons / broken npm) plus the exact commands to start the harness.
 - **Verification**: npm/pnpm failures reproduced from the Termux shell with the same registry; registry checked for the missing android-arm64 prebuild; the app's release build delegated to CI.
+
+---
+
+### Session 7: The Harness Runs Natively on Android (app-managed install)
+- **User Prompt**: "you have full deepseek harness codebase why not convert that into android app"
+- **What was measured, not assumed**:
+  - The missing native addon's source is public and MIT (`deepseek-ai/dsh-node-addon-require-builtin`); its `node-addon-require-builtin@0.1.9` package only ships prebuilds for linux/darwin/win32, which is why android-arm64 failed.
+  - Built the addon for android-arm64 in Termux with node-gyp against the bundled Node 26.4.0 headers; `requireBuiltin('internal/modules/esm/loader')` returned the ESM loader, and a full `dsh web` booted natively on Android (served HTTP, printed the launch token).
+  - Reduced the build to a single clang++ invocation (31 .cc sources, `-DNAPI_VERSION=9 -DNARB_BACKEND=1 -DNARB_PRODUCT=1 -DNODE_ADDON_API_DISABLE_CPP_EXCEPTIONS`, `-I$PREFIX/include/node` + node-addon-api) so the app can compile it without node-gyp; verified `-I include/node` alone is enough.
+  - pnpm (a 48 MB standalone bionic binary in the app's toolchain) installs `@deepseek-ai/dsh` fine with `--ignore-scripts`; without it pnpm 12 fails with `ERR_PNPM_IGNORED_BUILDS` because node-pty/koffi/protobufjs ship build scripts. npm cannot be used (its `make-fetch-happen/lib/cache` is missing from the toolchain).
+  - End-to-end test of the exact generated launcher in a fresh directory: pnpm install (reused the store, ~35 s) -> addon build (~3 min) -> `node -e require(...)` check -> `dsh web` served its real UI (41 KB HTML after the token cookie).
+- **Implementation**:
+  - New `HarnessInstaller` (`data/agent/dsh/`): extracts `app/src/main/assets/harness/` (addon C++ sources, node-addon-api headers, prebuilt fallback binary) into `filesDir/harness/.addon`, writes `.npmrc` (`node-linker=hoisted`), generates `launch.sh` (install -> build -> verify -> `exec node ... bin.js web`), and reports `isReady()` (harness installed AND addon built).
+  - `HarnessController` runs that launcher via the persistent `LocalPtySession`; when the harness or addon is not ready yet it waits up to 45 minutes and streams the launcher's log into the start screen (`UiState.Starting(message)`), otherwise it keeps the 120 s timeout.
+  - `DshPreferences.DEFAULT_HARNESS_COMMAND` is now `app-managed` (the legacy `npx -y @deepseek-ai/dsh@next web` value is treated as managed too); a custom command still runs verbatim.
+  - `LocalServerManager`'s pkill pattern narrowed to `@deepseek-ai/dsh/lib/bin.js` so it cannot kill the install/launch; the settings card explains the new behavior.
+- **Verification**: full launcher run verified on-device with a fresh directory; APK build delegated to CI.
