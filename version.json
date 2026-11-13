@@ -1,6 +1,6 @@
 {
-  "version_code": 273,
-  "version_name": "2.4.153",
+  "version_code": 274,
+  "version_name": "2.4.154",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udd17 Auto-detect a running harness: the Termux 'dsh-web' script now leaves its launch URL in Download/antibot-harness-url.txt and AntiBot picks it up automatically, so starting the harness in Termux is all it takes for the app to open the real DeepSeek Harness UI (with its ?token= part).",
