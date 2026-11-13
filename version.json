@@ -1,6 +1,6 @@
 {
-  "version_code": 268,
-  "version_name": "2.4.148",
+  "version_code": 269,
+  "version_name": "2.4.149",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udda5\ufe0f DeepSeek Harness App Shell: AntiBot now opens directly into the full-screen DeepSeek Harness web UI, running its own harness on-device (npx -y @deepseek-ai/dsh@next web on 127.0.0.1:4011) and capturing its one-time launch token. Added an in-harness floating settings button that opens the existing AntiBot settings, a Harness item in the floating switcher, and Harness UI Port / Launch Command controls in DeepSeek settings.",
