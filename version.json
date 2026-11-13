@@ -1,6 +1,6 @@
 {
-  "version_code": 274,
-  "version_name": "2.4.154",
+  "version_code": 275,
+  "version_name": "2.4.155",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\ude80 The app now runs its own DeepSeek Harness natively on Android: on the first start it installs @deepseek-ai/dsh with pnpm and builds the missing android-arm64 native addon (node-addon-require-builtin, compiled on the device with the bundled clang), then serves the harness UI on the configured port. The start screen shows live install progress; a harness already running in Termux is still picked up automatically.",
