@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -134,6 +135,7 @@ fun HarnessScreen(
             is HarnessController.UiState.Error -> HarnessStatusOverlay(
                 title = "DeepSeek Harness unavailable",
                 body = current.message,
+                details = current.details,
                 busy = false,
                 onRetry = { HarnessController.refresh(context, force = true) }
             )
@@ -179,7 +181,8 @@ private fun HarnessStatusOverlay(
     title: String,
     body: String,
     busy: Boolean,
-    onRetry: (() -> Unit)?
+    onRetry: (() -> Unit)?,
+    details: String? = null
 ) {
     Column(
         modifier = Modifier
@@ -209,6 +212,22 @@ private fun HarnessStatusOverlay(
             fontSize = 13.sp,
             textAlign = TextAlign.Center
         )
+        if (!details.isNullOrBlank()) {
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF101418))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = details,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = Color(0xFFB0BEC5)
+                )
+            }
+        }
         if (onRetry != null) {
             Spacer(Modifier.height(20.dp))
             Button(

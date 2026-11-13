@@ -50,6 +50,7 @@ fun DeepSeekSettingsScreen(
     val dshCommand by prefs.dshCommand.collectAsState()
     val harnessPort by prefs.harnessPort.collectAsState()
     val harnessCommand by prefs.harnessCommand.collectAsState()
+    val harnessUrl by prefs.harnessUrl.collectAsState()
 
     var isDaemonOnline by remember { mutableStateOf(false) }
     var isCheckingOnline by remember { mutableStateOf(false) }
@@ -61,6 +62,7 @@ fun DeepSeekSettingsScreen(
     var portInput by remember(daemonPort) { mutableStateOf(daemonPort.toString()) }
     var harnessPortInput by remember(harnessPort) { mutableStateOf(harnessPort.toString()) }
     var harnessCommandInput by remember(harnessCommand) { mutableStateOf(harnessCommand) }
+    var harnessUrlInput by remember(harnessUrl) { mutableStateOf(harnessUrl) }
     var isSaving by remember { mutableStateOf(false) }
 
     fun refreshHealth() {
@@ -204,9 +206,17 @@ fun DeepSeekSettingsScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "AntiBot opens straight into this harness. It runs the app's own copy when nothing answers on the port; a harness already running on that port is reused.",
+                    text = "AntiBot opens straight into this harness. Paste the URL of a harness that is already running (for example one started in Termux' Ubuntu) and the app shows it; leave it empty to let the app start its own copy on the port below.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = harnessUrlInput,
+                    onValueChange = { harnessUrlInput = it },
+                    label = { Text("Harness URL (optional)") },
+                    placeholder = { Text("http://127.0.0.1:4010/?token=...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = harnessPortInput,
@@ -228,6 +238,7 @@ fun DeepSeekSettingsScreen(
                     onClick = {
                         prefs.setHarnessPort(harnessPortInput.toIntOrNull() ?: DshPreferences.DEFAULT_HARNESS_PORT)
                         prefs.setHarnessCommand(harnessCommandInput.trim().ifEmpty { DshPreferences.DEFAULT_HARNESS_COMMAND })
+                        prefs.setHarnessUrl(harnessUrlInput.trim())
                         Toast.makeText(context, "Harness shell settings saved", Toast.LENGTH_SHORT).show()
                         com.example.gemini.data.agent.dsh.HarnessController.refresh(context, force = true)
                     },

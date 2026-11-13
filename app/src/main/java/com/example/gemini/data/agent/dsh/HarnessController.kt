@@ -44,7 +44,7 @@ object HarnessController {
         data object Idle : UiState
         data object Starting : UiState
         data class Ready(val url: String) : UiState
-        data class Error(val message: String) : UiState
+        data class Error(val message: String, val details: String? = null) : UiState
     }
 
     private val _state = MutableStateFlow<UiState>(UiState.Idle)
@@ -82,6 +82,22 @@ object HarnessController {
 
     private suspend fun ensureStarted(context: Context, force: Boolean) {
         val prefs = DshPreferences(context)
+
+        // A harness the user already started (Termux' Ubuntu, another device,
+        // ...) wins: the app only has to show it.
+        val external = prefs.harnessUrl.value.trim().ifBlank { null }
+        if (external != null) {
+            val base = baseOf(external)
+            if (probe(base)) {
+                _state.value = UiState.Ready(external)
+            } else {
+                _state.value = UiState.Error(
+                    "The configured harness ($base) did not answer. Start it, then tap Retry."
+                )
+            }
+            return
+        }
+
         val port = prefs.harnessPort.value
         val base = baseUrl(port)
 
@@ -132,10 +148,53 @@ object HarnessController {
         if (probe(base)) {
             _state.value = UiState.Ready(resolveUrl(context, port))
         } else {
-            _state.value = UiState.Error(
-                "The harness did not come up on port $port. Start 'dsh web' from Termux, then tap Retry."
-            )
+            val log = logTail(context)
+            _state.value = UiState.Error(diagnose(port, log), log.ifBlank { null })
         }
+    }
+
+    /**
+     * Explains why the launcher did not produce a harness. The DeepSeek
+     * Harness ships native addons that only exist for glibc/Linux, so it
+     * cannot run natively on Android; that case is called out explicitly.
+     */
+    private fun diagnose(port: Int, log: String): String {
+        val text = log.lowercase()
+        val hint = "Start it in Termux' Ubuntu:\n" +
+            "  proot-distro login ubuntu\n" +
+            "  cd /opt/dsh && . ./env.sh\n" +
+            "  /opt/node/bin/node node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 4010 --no-open\n" +
+            "Then copy the printed 'dsh web: http://127.0.0.1:4010/?token=...' URL into " +
+            "Settings → DeepSeek → Harness UI Shell."
+        return when {
+            text.contains("require_builtin.node") || text.contains("native builtins") ->
+                "The DeepSeek Harness ships native addons that only exist for glibc/Linux, so it " +
+                    "cannot run inside AntiBot's native Android shell. $hint"
+            text.contains("cache/policy.js") || text.contains("make-fetch-happen") ->
+                "npm in this environment is broken (make-fetch-happen is missing), so the harness " +
+                    "cannot be downloaded here. $hint"
+            text.isBlank() ->
+                "The harness did not come up on port $port. $hint"
+            else ->
+                "The harness did not come up on port $port. The launcher output is shown below."
+        }
+    }
+
+    /** The tail of the launcher's output, for the error screen. */
+    fun logTail(context: Context, lines: Int = 12): String = try {
+        val logFile = File(LocalEnvironmentManager.getHomeDir(context), LOG_NAME)
+        if (!logFile.exists()) {
+            ""
+        } else {
+            logFile.readText()
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .takeLast(lines)
+                .joinToString("\n")
+        }
+    } catch (_: Exception) {
+        ""
     }
 
     private suspend fun startSession(context: Context, prefs: DshPreferences, port: Int) {
@@ -213,6 +272,9 @@ object HarnessController {
     }
 
     private fun baseUrl(port: Int) = "http://127.0.0.1:$port"
+
+    /** The scheme/host/port part of a user supplied harness URL. */
+    private fun baseOf(url: String): String = url.trim().substringBefore('?').trimEnd('/')
 
     private fun probe(base: String): Boolean = try {
         val request = Request.Builder().url("$base/").get().build()

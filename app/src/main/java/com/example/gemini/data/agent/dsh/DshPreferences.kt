@@ -42,6 +42,15 @@ class DshPreferences(context: Context) {
     private val _harnessCommand = MutableStateFlow(prefs.getString(KEY_HARNESS_COMMAND, DEFAULT_HARNESS_COMMAND) ?: DEFAULT_HARNESS_COMMAND)
     val harnessCommand: StateFlow<String> = _harnessCommand.asStateFlow()
 
+    /**
+     * Optional URL of an already running harness (for example one started from
+     * Termux' Ubuntu). When it is set the app shows that harness instead of
+     * starting its own. The launch token may be included, e.g.
+     * `http://127.0.0.1:4010/?token=...`.
+     */
+    private val _harnessUrl = MutableStateFlow(prefs.getString(KEY_HARNESS_URL, "") ?: "")
+    val harnessUrl: StateFlow<String> = _harnessUrl.asStateFlow()
+
     fun setHarnessPort(portNum: Int) {
         val p = portNum.coerceIn(1024, 65535)
         prefs.edit().putInt(KEY_HARNESS_PORT, p).apply()
@@ -52,6 +61,12 @@ class DshPreferences(context: Context) {
         val c = cmd.trim().ifEmpty { DEFAULT_HARNESS_COMMAND }
         prefs.edit().putString(KEY_HARNESS_COMMAND, c).apply()
         _harnessCommand.value = c
+    }
+
+    fun setHarnessUrl(url: String) {
+        val u = url.trim()
+        prefs.edit().putString(KEY_HARNESS_URL, u).apply()
+        _harnessUrl.value = u
     }
 
     fun setApiKey(key: String) {
@@ -104,6 +119,7 @@ class DshPreferences(context: Context) {
         const val KEY_DSH_COMMAND = "dsh_command"
         const val KEY_HARNESS_PORT = "dsh_harness_port"
         const val KEY_HARNESS_COMMAND = "dsh_harness_command"
+        const val KEY_HARNESS_URL = "dsh_harness_url"
 
         const val DEFAULT_BASE_URL = "https://api.deepseek.com"
         const val DEFAULT_PORT = 3080
