@@ -168,12 +168,12 @@ object HarnessController {
      */
     private fun diagnose(port: Int, log: String): String {
         val text = log.lowercase()
-        val hint = "Start it in Termux' Ubuntu:\n" +
+        val hint = "Start it in Termux with 'dsh-web' (it leaves its launch URL in " +
+            "Download/antibot-harness-url.txt, which AntiBot picks up automatically). " +
+            "Without the Termux helper:\n" +
             "  proot-distro login ubuntu\n" +
             "  cd /opt/dsh && . ./env.sh\n" +
-            "  /opt/node/bin/node node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 4010 --no-open\n" +
-            "Then copy the printed 'dsh web: http://127.0.0.1:4010/?token=...' URL into " +
-            "Settings → DeepSeek → Harness UI Shell."
+            "  /opt/node/bin/node node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 4010 --no-open"
         return when {
             text.contains("require_builtin.node") || text.contains("native builtins") ->
                 "The DeepSeek Harness ships native addons that only exist for glibc/Linux, so it " +
