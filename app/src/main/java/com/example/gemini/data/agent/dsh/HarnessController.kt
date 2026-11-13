@@ -40,6 +40,14 @@ object HarnessController {
     private const val TOKEN_WAIT_MS = 5_000L
     private const val PROBE_TIMEOUT_S = 2L
 
+    /** Where a launcher script can leave the harness URL for the app. */
+    private const val SHARED_URL_FILE = "antibot-harness-url.txt"
+    private val SHARED_URL_DIRS = listOf(
+        "/storage/emulated/0/Download",
+        "/sdcard/Download",
+        "/storage/emulated/0/Documents"
+    )
+
     sealed interface UiState {
         data object Idle : UiState
         data object Starting : UiState
@@ -85,7 +93,7 @@ object HarnessController {
 
         // A harness the user already started (Termux' Ubuntu, another device,
         // ...) wins: the app only has to show it.
-        val external = prefs.harnessUrl.value.trim().ifBlank { null }
+        val external = externalUrl(prefs)
         if (external != null) {
             val base = baseOf(external)
             if (probe(base)) {
@@ -275,6 +283,37 @@ object HarnessController {
 
     /** The scheme/host/port part of a user supplied harness URL. */
     private fun baseOf(url: String): String = url.trim().substringBefore('?').trimEnd('/')
+
+    /**
+     * The harness the app should show: the URL configured in the settings, or
+     * the one a launcher script dropped into shared storage (the Termux
+     * `dsh-web` script writes its launch URL there, so starting the harness in
+     * Termux is enough for the app to pick it up).
+     */
+    private fun externalUrl(prefs: DshPreferences): String? {
+        val configured = prefs.harnessUrl.value.trim()
+        if (configured.isNotBlank()) return configured
+        return readSharedUrl()
+    }
+
+    private fun readSharedUrl(): String? = try {
+        var found: String? = null
+        for (dir in SHARED_URL_DIRS) {
+            val file = File(dir, SHARED_URL_FILE)
+            if (!file.isFile) continue
+            val url = file.readText()
+                .lines()
+                .map { it.trim() }
+                .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
+            if (!url.isNullOrBlank()) {
+                found = url
+                break
+            }
+        }
+        found
+    } catch (_: Exception) {
+        null
+    }
 
     private fun probe(base: String): Boolean = try {
         val request = Request.Builder().url("$base/").get().build()

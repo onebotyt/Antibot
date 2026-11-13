@@ -206,7 +206,7 @@ fun DeepSeekSettingsScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "AntiBot opens straight into this harness. Paste the URL of a harness that is already running (for example one started in Termux' Ubuntu) and the app shows it; leave it empty to let the app start its own copy on the port below.",
+                    text = "AntiBot opens straight into this harness. The Termux 'dsh-web' script leaves its launch URL in Download/antibot-harness-url.txt, which the app picks up automatically; you can also paste a URL here (it may contain the ?token= part) or leave it empty to let the app start its own copy on the port below.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
