@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.gemini.data.agent.dsh.HarnessController
 import com.example.gemini.theme.AppColors
+import kotlinx.coroutines.delay
 
 /**
  * The app's main shell: the DeepSeek Harness web UI rendered full screen.
@@ -145,6 +146,13 @@ fun HarnessScreen(
             // Re-check the harness when returning to it: it may have exited while
             // another view was open (a dead harness is restarted by refresh()).
             HarnessController.refresh(context)
+            // Keep checking while the harness is on screen: the app's own launch
+            // bootstrap can kill stray `dsh` processes, and the harness may exit
+            // on its own. refresh() re-probes and restarts it when needed.
+            while (true) {
+                delay(15_000)
+                HarnessController.refresh(context)
+            }
         } else {
             webViewHolder[0]?.onPause()
         }
