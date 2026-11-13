@@ -37,6 +37,7 @@ object HarnessController {
     private const val TAG = "HarnessController"
     private const val LOG_NAME = ".dsh-harness.log"
     private const val START_TIMEOUT_MS = 120_000L
+    private const val TOKEN_WAIT_MS = 5_000L
     private const val PROBE_TIMEOUT_S = 2L
 
     sealed interface UiState {
@@ -113,7 +114,11 @@ object HarnessController {
         val deadline = System.currentTimeMillis() + START_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
             if (probe(base)) {
-                _state.value = UiState.Ready(resolveUrl(context, port))
+                // The listener accepts connections a moment before the harness
+                // prints its launch token; wait for the token so the very first
+                // load is already authenticated instead of hitting the 401 page.
+                val token = awaitToken(context, TOKEN_WAIT_MS)
+                _state.value = UiState.Ready(urlFor(base, token))
                 return
             }
             val current = session
@@ -175,10 +180,21 @@ object HarnessController {
         return "$withFlags > \"${logFile.absolutePath}\" 2>&1"
     }
 
-    private fun resolveUrl(context: Context, port: Int): String {
-        val base = baseUrl(port)
-        val token = readToken(context)
-        return if (token.isNullOrBlank()) "$base/" else "$base/?token=$token"
+    private fun resolveUrl(context: Context, port: Int): String =
+        urlFor(baseUrl(port), readToken(context))
+
+    private fun urlFor(base: String, token: String?): String =
+        if (token.isNullOrBlank()) "$base/" else "$base/?token=$token"
+
+    /** Waits briefly for the launch token to appear in the harness log. */
+    private suspend fun awaitToken(context: Context, timeoutMs: Long): String? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val token = readToken(context)
+            if (!token.isNullOrBlank()) return token
+            if (System.currentTimeMillis() >= deadline) return null
+            delay(250)
+        }
     }
 
     private fun readToken(context: Context): String? = try {

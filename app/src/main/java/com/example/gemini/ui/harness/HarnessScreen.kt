@@ -243,7 +243,7 @@ private object HarnessFabScript {
                   b.setAttribute('aria-label','AntiBot Settings');
                   b.title='AntiBot Settings';
                   b.innerHTML='&#9881;';
-                  b.style.cssText='position:fixed;right:16px;bottom:24px;width:46px;height:46px;border-radius:23px;z-index:2147483647;display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;color:#fff;background:$hex;box-shadow:0 4px 16px rgba(0,0,0,.45);cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;';
+                  b.style.cssText='position:fixed;right:12px;top:45%;transform:translateY(-50%);width:42px;height:42px;border-radius:21px;z-index:2147483647;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;color:#fff;background:$hex;box-shadow:0 4px 16px rgba(0,0,0,.45);cursor:pointer;opacity:.92;-webkit-tap-highlight-color:transparent;user-select:none;';
                   b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();try{if(window.AntiBotBridge&&window.AntiBotBridge.openSettings){window.AntiBotBridge.openSettings();}}catch(err){}},true);
                   (document.body||document.documentElement).appendChild(b);
                 }catch(err){}
