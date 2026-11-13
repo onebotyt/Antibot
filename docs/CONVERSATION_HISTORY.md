@@ -70,3 +70,18 @@ This document preserves the chronological log of user requests, decisions, probl
   - Added `harness` to the floating switcher (default on) and "Harness UI Shell" port/command controls in DeepSeek settings (`DshPreferences.harnessPort` / `harnessCommand`).
   - All existing UI elements were kept; the harness shell is additive.
 - **Verification**: Compile correctness self-reviewed against the existing `LocalPtySession` / `AppColors` / Compose APIs; release build delegated to CI (`assembleTermuxRelease`).
+
+---
+
+### Session 6: Harness Not Starting on Android — Root Cause & Running-Harness Support
+- **User Prompt**: "why I see old ui still and harness not open" (with screenshots of the onboarding flow and the new "DeepSeek Harness unavailable" screen).
+- **Root Cause (measured on the device, not guessed)**:
+  - The onboarding screens in the screenshots are AntiBot's pre-existing first-run flow (Welcome → Environment setup → Toolchain download), not the old chat UI; the new harness shell is what the app opens into afterwards.
+  - The harness never came up because **the DeepSeek Harness cannot run natively on Android**: `node-addon-require-builtin` (pulled in by `@deepseek-ai/cordis-plugin-loader`) only ships glibc/Linux prebuilds (`linux-arm64-gnu`/`musl`), so on `android-arm64` the loader cannot load `require_builtin.node` and boot dies with `MODULE_NOT_FOUND`. Verified by running `pnpm dlx @deepseek-ai/dsh@next web` in Termux and by checking the registry's optional dependency list (no android-arm64 build exists).
+  - The app's npm is additionally broken: `npm/node_modules/make-fetch-happen/lib/cache/` is missing, so `npx` fails with `Cannot find module './cache/policy.js'` before it even downloads.
+  - The device's own working setup confirms the constraint: the harness lives in Termux' proot Ubuntu at `/opt/dsh` with a glibc Node in `/opt/node`.
+- **Fix**:
+  - `DshPreferences.harnessUrl` + `HarnessController.externalUrl`: the harness shell now shows a harness that is already running; the URL may contain the `?token=` part.
+  - The Termux `dsh-web` launcher writes its launch URL to `Download/antibot-harness-url.txt`, which the app reads automatically, so starting the harness in Termux is all the app needs.
+  - The error screen now shows the launcher's output tail and names the real cause (glibc-only native addons / broken npm) plus the exact commands to start the harness.
+- **Verification**: npm/pnpm failures reproduced from the Termux shell with the same registry; registry checked for the missing android-arm64 prebuild; the app's release build delegated to CI.
