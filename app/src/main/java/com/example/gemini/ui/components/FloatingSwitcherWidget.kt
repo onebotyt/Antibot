@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,6 +53,7 @@ fun FloatingSwitcherWidget(
     onNavigateToBrowser: () -> Unit,
     onNavigateToTerminal: () -> Unit,
     onNavigateToNotes: () -> Unit = {},
+    onNavigateToHarness: () -> Unit = {},
     onPositionSaved: (Float, Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -258,6 +260,7 @@ fun FloatingSwitcherWidget(
                                     "browser" -> currentViewMode == AppViewMode.BROWSER
                                     "terminal" -> currentViewMode == AppViewMode.TERMINAL
                                     "notes" -> currentViewMode == AppViewMode.NOTES
+                                    "harness" -> currentViewMode == AppViewMode.HARNESS
                                     else -> false
                                 }
 
@@ -267,6 +270,7 @@ fun FloatingSwitcherWidget(
                                     "terminal" -> Icons.Outlined.Terminal
                                     "browser" -> Icons.Outlined.Language
                                     "notes" -> Icons.Outlined.EditNote
+                                    "harness" -> Icons.Outlined.SmartToy
                                     else -> Icons.Outlined.ChatBubbleOutline
                                 }
 
@@ -276,6 +280,7 @@ fun FloatingSwitcherWidget(
                                     "terminal" -> "Terminal"
                                     "browser" -> "Browser"
                                     "notes" -> "Notes"
+                                    "harness" -> "Harness"
                                     else -> itemId
                                 }
 
@@ -291,6 +296,7 @@ fun FloatingSwitcherWidget(
                                             "browser" -> onNavigateToBrowser()
                                             "terminal" -> onNavigateToTerminal()
                                             "notes" -> onNavigateToNotes()
+                                            "harness" -> onNavigateToHarness()
                                         }
                                     }
                                 )
@@ -311,6 +317,7 @@ fun FloatingSwitcherWidget(
                                     "browser" -> currentViewMode == AppViewMode.BROWSER
                                     "terminal" -> currentViewMode == AppViewMode.TERMINAL
                                     "notes" -> currentViewMode == AppViewMode.NOTES
+                                    "harness" -> currentViewMode == AppViewMode.HARNESS
                                     else -> false
                                 }
 
@@ -320,6 +327,7 @@ fun FloatingSwitcherWidget(
                                     "terminal" -> Icons.Outlined.Terminal
                                     "browser" -> Icons.Outlined.Language
                                     "notes" -> Icons.Outlined.EditNote
+                                    "harness" -> Icons.Outlined.SmartToy
                                     else -> Icons.Outlined.ChatBubbleOutline
                                 }
 
@@ -329,6 +337,7 @@ fun FloatingSwitcherWidget(
                                     "terminal" -> "Terminal"
                                     "browser" -> "Browser"
                                     "notes" -> "Notes"
+                                    "harness" -> "Harness"
                                     else -> itemId
                                 }
 
@@ -344,6 +353,7 @@ fun FloatingSwitcherWidget(
                                             "browser" -> onNavigateToBrowser()
                                             "terminal" -> onNavigateToTerminal()
                                             "notes" -> onNavigateToNotes()
+                                            "harness" -> onNavigateToHarness()
                                         }
                                     }
                                 )

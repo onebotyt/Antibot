@@ -248,7 +248,7 @@ fun SettingsDialog(
     onClearPluginStatus: () -> Unit = {},
     isFloatingSwitcherEnabled: Boolean = true,
     floatingSwitcherOrientation: String = "HORIZONTAL",
-    floatingSwitcherItems: List<String> = listOf("chat", "ide", "terminal", "browser", "notes"),
+    floatingSwitcherItems: List<String> = listOf("harness", "chat", "ide", "terminal", "browser", "notes"),
     floatingSwitcherAutoCollapseSec: Int = 0,
     onToggleFloatingSwitcher: (Boolean) -> Unit = {},
     onSetFloatingSwitcherOrientation: (String) -> Unit = {},
@@ -2057,13 +2057,14 @@ private fun AppearanceSubScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    val allAvailable = listOf("chat", "ide", "terminal", "browser", "notes")
+                    val allAvailable = listOf("harness", "chat", "ide", "terminal", "browser", "notes")
                     val currentItems = floatingSwitcherItems.toMutableList()
                     val displayedList = currentItems + allAvailable.filterNot { currentItems.contains(it) }
 
                     displayedList.forEach { itemId ->
                         val isEnabled = currentItems.contains(itemId)
                         val itemLabel = when (itemId) {
+                            "harness" -> "DeepSeek Harness"
                             "chat" -> "Chat"
                             "ide" -> "IDE (Code Editor)"
                             "terminal" -> "Terminal"
@@ -2072,6 +2073,7 @@ private fun AppearanceSubScreen(
                             else -> itemId
                         }
                         val itemIcon = when (itemId) {
+                            "harness" -> Icons.Outlined.SmartToy
                             "chat" -> Icons.Outlined.ChatBubbleOutline
                             "ide" -> Icons.Outlined.Code
                             "terminal" -> Icons.Outlined.Terminal

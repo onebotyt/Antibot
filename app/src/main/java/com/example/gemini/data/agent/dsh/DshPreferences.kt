@@ -34,6 +34,26 @@ class DshPreferences(context: Context) {
     private val _dshCommand = MutableStateFlow(prefs.getString(KEY_DSH_COMMAND, DEFAULT_COMMAND) ?: DEFAULT_COMMAND)
     val dshCommand: StateFlow<String> = _dshCommand.asStateFlow()
 
+    /** Port the harness web UI is served on (the app shows it full screen). */
+    private val _harnessPort = MutableStateFlow(prefs.getInt(KEY_HARNESS_PORT, DEFAULT_HARNESS_PORT))
+    val harnessPort: StateFlow<Int> = _harnessPort.asStateFlow()
+
+    /** Command used to launch the app's own harness web UI. */
+    private val _harnessCommand = MutableStateFlow(prefs.getString(KEY_HARNESS_COMMAND, DEFAULT_HARNESS_COMMAND) ?: DEFAULT_HARNESS_COMMAND)
+    val harnessCommand: StateFlow<String> = _harnessCommand.asStateFlow()
+
+    fun setHarnessPort(portNum: Int) {
+        val p = portNum.coerceIn(1024, 65535)
+        prefs.edit().putInt(KEY_HARNESS_PORT, p).apply()
+        _harnessPort.value = p
+    }
+
+    fun setHarnessCommand(cmd: String) {
+        val c = cmd.trim().ifEmpty { DEFAULT_HARNESS_COMMAND }
+        prefs.edit().putString(KEY_HARNESS_COMMAND, c).apply()
+        _harnessCommand.value = c
+    }
+
     fun setApiKey(key: String) {
         prefs.edit().putString(KEY_API_KEY, key.trim()).apply()
         _apiKey.value = key.trim()
@@ -82,12 +102,19 @@ class DshPreferences(context: Context) {
         const val KEY_PROFILE = "dsh_profile"
         const val KEY_AUTO_START = "dsh_auto_start"
         const val KEY_DSH_COMMAND = "dsh_command"
+        const val KEY_HARNESS_PORT = "dsh_harness_port"
+        const val KEY_HARNESS_COMMAND = "dsh_harness_command"
 
         const val DEFAULT_BASE_URL = "https://api.deepseek.com"
         const val DEFAULT_PORT = 3080
+        // The app's own harness runs on its own port so it never clashes with a
+        // harness the user already started from Termux (dsh-web uses 4010).
+        const val DEFAULT_HARNESS_PORT = 4011
         const val DEFAULT_MODEL = "deepseek-chat"
         const val REASONER_MODEL = "deepseek-reasoner"
         const val DEFAULT_COMMAND = "npx @deepseek-ai/dsh web"
+        // @deepseek-ai/dsh is published as a prerelease on the `next` tag only.
+        const val DEFAULT_HARNESS_COMMAND = "npx -y @deepseek-ai/dsh@next web"
 
         fun getHttpBaseUrl(context: Context): String {
             val p = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_PORT, DEFAULT_PORT)

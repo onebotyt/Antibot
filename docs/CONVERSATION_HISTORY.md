@@ -58,3 +58,15 @@ This document preserves the chronological log of user requests, decisions, probl
     - Bumped `version.json` to `v2.4.107` (version code `227`).
     - CI run `42915584022` passed with **`completed (success)`**.
     - Release APKs built, signed, and published to GitHub Releases.
+
+---
+
+### Session 5: DeepSeek Harness App Shell & In-Harness Settings
+- **User Prompt**: "make the app open directly into the real DeepSeek Harness UI instead of the old chat UI, with a button in the harness that opens the old AntiBot settings"
+- **Key Actions**:
+  - Added `AppViewMode.HARNESS` and made it the default launch view; `MainActivity` renders a persistent full-screen `HarnessScreen` that keeps its WebView/session while other views are used.
+  - New `HarnessController` runs the app's own `npx -y @deepseek-ai/dsh@next web` on `127.0.0.1:4011`, logs to `filesDir/home/.dsh-harness.log`, and reads the one-time `?token=...` URL (the harness returns 401 without the cookie from that URL). An answering harness on the port is reused.
+  - New `HarnessScreen` injects a theme-matched floating settings button into the harness page; its `AntiBotBridge` JS interface opens the existing `SettingsDialog` (`SettingsSection.MAIN`) and returns to the harness on dismiss.
+  - Added `harness` to the floating switcher (default on) and "Harness UI Shell" port/command controls in DeepSeek settings (`DshPreferences.harnessPort` / `harnessCommand`).
+  - All existing UI elements were kept; the harness shell is additive.
+- **Verification**: Compile correctness self-reviewed against the existing `LocalPtySession` / `AppColors` / Compose APIs; release build delegated to CI (`assembleTermuxRelease`).

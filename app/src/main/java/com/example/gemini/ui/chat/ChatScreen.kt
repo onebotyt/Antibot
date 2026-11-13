@@ -317,6 +317,20 @@ fun ChatScreen(
     var codexSettingsPage by remember { mutableStateOf<com.example.gemini.ui.codex.CodexSettingsPage?>(null) }
 
     var requestedSettingsSection by remember { mutableStateOf<com.example.gemini.ui.settings.SettingsSection?>(null) }
+    // True while the settings were opened from the harness' floating button, so closing them returns there.
+    var settingsOpenedFromHarness by remember { mutableStateOf(false) }
+
+    val openSettingsRequest by viewModel.requestedOpenSettings.collectAsState()
+    LaunchedEffect(openSettingsRequest) {
+        openSettingsRequest?.let { section ->
+            requestedSettingsSection = runCatching {
+                com.example.gemini.ui.settings.SettingsSection.valueOf(section)
+            }.getOrNull() ?: com.example.gemini.ui.settings.SettingsSection.MAIN
+            settingsOpenedFromHarness = true
+            showSettingsDialog = true
+            viewModel.consumeRequestedOpenSettings()
+        }
+    }
 
     val claudeBackend = viewModel.claudeBackend
     val claudePending by claudeBackend.pendingPermissions.collectAsState()
@@ -2900,6 +2914,10 @@ fun ChatScreen(
                 openCodeSettingsPage = null
                 openCodexSettings = false
                 codexSettingsPage = null
+                if (settingsOpenedFromHarness) {
+                    settingsOpenedFromHarness = false
+                    viewModel.requestViewMode("HARNESS")
+                }
             }
         )
     }

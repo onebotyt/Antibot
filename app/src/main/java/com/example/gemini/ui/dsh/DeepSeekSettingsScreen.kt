@@ -48,6 +48,8 @@ fun DeepSeekSettingsScreen(
     val daemonPort by prefs.daemonPort.collectAsState()
     val autoStart by prefs.autoStartDaemon.collectAsState()
     val dshCommand by prefs.dshCommand.collectAsState()
+    val harnessPort by prefs.harnessPort.collectAsState()
+    val harnessCommand by prefs.harnessCommand.collectAsState()
 
     var isDaemonOnline by remember { mutableStateOf(false) }
     var isCheckingOnline by remember { mutableStateOf(false) }
@@ -57,6 +59,8 @@ fun DeepSeekSettingsScreen(
     var showApiKey by remember { mutableStateOf(false) }
     var baseUrlInput by remember(baseUrl) { mutableStateOf(baseUrl) }
     var portInput by remember(daemonPort) { mutableStateOf(daemonPort.toString()) }
+    var harnessPortInput by remember(harnessPort) { mutableStateOf(harnessPort.toString()) }
+    var harnessCommandInput by remember(harnessCommand) { mutableStateOf(harnessCommand) }
     var isSaving by remember { mutableStateOf(false) }
 
     fun refreshHealth() {
@@ -182,6 +186,57 @@ fun DeepSeekSettingsScreen(
                         fontSize = 12.sp,
                         color = Color(0xFF8BE9FD)
                     )
+                }
+            }
+        }
+
+        // Harness UI Shell (the full screen harness the app opens into)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Harness UI Shell",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "AntiBot opens straight into this harness. It runs the app's own copy when nothing answers on the port; a harness already running on that port is reused.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = harnessPortInput,
+                    onValueChange = { harnessPortInput = it },
+                    label = { Text("Harness UI Port") },
+                    placeholder = { Text("4011") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = harnessCommandInput,
+                    onValueChange = { harnessCommandInput = it },
+                    label = { Text("Harness Launch Command") },
+                    placeholder = { Text("npx -y @deepseek-ai/dsh@next web") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        prefs.setHarnessPort(harnessPortInput.toIntOrNull() ?: DshPreferences.DEFAULT_HARNESS_PORT)
+                        prefs.setHarnessCommand(harnessCommandInput.trim().ifEmpty { DshPreferences.DEFAULT_HARNESS_COMMAND })
+                        Toast.makeText(context, "Harness shell settings saved", Toast.LENGTH_SHORT).show()
+                        com.example.gemini.data.agent.dsh.HarnessController.refresh(context, force = true)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DshAccent),
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Save & Restart Harness")
                 }
             }
         }

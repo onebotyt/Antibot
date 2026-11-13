@@ -60,6 +60,13 @@ AntiBot supports seamless execution and routing across multiple CLI agents:
   - Dynamic filter chips in the history drawer (`All`, `Antigravity`, `Local`, `Claude Code`, `OpenCode`, `Codex`).
   - Uses explicit typing: `buildList<Pair<AgentKind?, String>>`.
 
+### DeepSeek Harness App Shell (Default Launch View)
+- The app opens into `AppViewMode.HARNESS` (full-screen WebView of the DeepSeek Harness UI) instead of the chat screen.
+- `HarnessController` (`data/agent/dsh/HarnessController.kt`) probes `http://127.0.0.1:<harnessPort>/`; it reuses a harness already answering there, otherwise starts the app's own `npx -y @deepseek-ai/dsh@next web --host 127.0.0.1 --port 4011 --no-open` through a persistent `LocalPtySession`, logs to `filesDir/home/.dsh-harness.log`, and parses the one-time `?token=...` URL the harness prints.
+- `ui/harness/HarnessScreen.kt` renders the WebView and injects a theme-matched floating settings button (`#antibot-settings-fab`, re-injected by a MutationObserver) backed by the `AntiBotBridge` `@JavascriptInterface`. Tapping it switches to CHAT and opens `SettingsDialog` (`SettingsSection.MAIN`); closing the dialog returns to the harness.
+- Harness port/command are configurable in Settings → DeepSeek → "Harness UI Shell" (`DshPreferences.harnessPort` / `harnessCommand`; defaults `4011` / `npx -y @deepseek-ai/dsh@next web`). Termux's own `dsh-web` stays on `4010`, so the app never reuses a harness it cannot authenticate.
+- The floating switcher has a `harness` item (on by default) to return to the harness from any view. All pre-existing UI elements are unchanged; the harness is additive.
+
 ---
 
 ## 4. Personal Assistant (Formerly Jarvis) System

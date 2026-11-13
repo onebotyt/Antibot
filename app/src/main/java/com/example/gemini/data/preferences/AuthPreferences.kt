@@ -866,12 +866,12 @@ class AuthPreferences(private val context: Context) {
 
     val floatingSwitcherItems: Flow<List<String>> = context.dataStore.data
         .map {
-            val raw = it[FLOATING_SWITCHER_ITEMS] ?: "chat,ide,terminal,browser,notes"
+            val raw = it[FLOATING_SWITCHER_ITEMS] ?: "harness,chat,ide,terminal,browser,notes"
             withNotesSwitcherItem(raw.split(",").map { s -> s.trim() }.filter { s -> s.isNotEmpty() })
         }
 
     fun getFloatingSwitcherItemsSync(): List<String> {
-        val raw = syncPrefs.getString("floating_switcher_items", "chat,ide,terminal,browser,notes") ?: "chat,ide,terminal,browser,notes"
+        val raw = syncPrefs.getString("floating_switcher_items", "harness,chat,ide,terminal,browser,notes") ?: "harness,chat,ide,terminal,browser,notes"
         return withNotesSwitcherItem(raw.split(",").map { it.trim() }.filter { it.isNotEmpty() })
     }
 

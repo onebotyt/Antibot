@@ -28,6 +28,7 @@ import com.example.gemini.ui.chat.ChatViewModelHolder
 import com.example.gemini.ui.ide.IdeScreen
 
 enum class AppViewMode {
+    HARNESS,
     CHAT,
     IDE,
     TERMINAL,
@@ -99,19 +100,26 @@ class MainActivity : ComponentActivity() {
             val requestedMode by chatViewModel.requestedViewMode.collectAsState()
             val initialViewMode = remember {
                 when (chatViewModel.requestedViewMode.value) {
+                    "CHAT" -> AppViewMode.CHAT
                     "IDE" -> AppViewMode.IDE
                     "TERMINAL" -> AppViewMode.TERMINAL
                     "BROWSER" -> AppViewMode.BROWSER
                     "NOTES" -> AppViewMode.NOTES
-                    else -> AppViewMode.CHAT
+                    // The DeepSeek Harness is the app's main shell.
+                    else -> AppViewMode.HARNESS
                 }
             }
             var currentViewMode by remember { mutableStateOf(initialViewMode) }
-            var previousViewMode by remember { mutableStateOf(AppViewMode.CHAT) }
+            var previousViewMode by remember { mutableStateOf(AppViewMode.HARNESS) }
 
             LaunchedEffect(requestedMode) {
                 requestedMode?.let { mode ->
                     when (mode) {
+                        "HARNESS" -> {
+                            previousViewMode = currentViewMode
+                            currentViewMode = AppViewMode.HARNESS
+                        }
+
                         "IDE" -> {
                             previousViewMode = currentViewMode
                             currentViewMode = AppViewMode.IDE
@@ -250,7 +258,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
-                        BackHandler(enabled = currentViewMode != AppViewMode.CHAT && currentViewMode != AppViewMode.BROWSER) {
+                        BackHandler(enabled = currentViewMode != AppViewMode.CHAT && currentViewMode != AppViewMode.BROWSER && currentViewMode != AppViewMode.HARNESS) {
                             currentViewMode =
                                 if (previousViewMode != currentViewMode && previousViewMode != AppViewMode.BROWSER) previousViewMode else AppViewMode.CHAT
                         }
@@ -281,6 +289,27 @@ class MainActivity : ComponentActivity() {
                             com.example.gemini.ui.components.LocalAppFocusCoordinator provides focusCoordinator
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
+                                // Persistent DeepSeek Harness Screen (the app's main shell; keeps its
+                                // WebView, session, cookie and scroll while other views are used)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            val isVisible = currentViewMode == AppViewMode.HARNESS
+                                            alpha = if (isVisible) 1f else 0f
+                                            translationX = if (isVisible) 0f else -20000f
+                                        }
+                                ) {
+                                    com.example.gemini.ui.harness.HarnessScreen(
+                                        isVisible = currentViewMode == AppViewMode.HARNESS,
+                                        onOpenSettings = {
+                                            chatViewModel.requestOpenSettings("MAIN")
+                                            previousViewMode = AppViewMode.HARNESS
+                                            currentViewMode = AppViewMode.CHAT
+                                        }
+                                    )
+                                }
+
                                 // Persistent Chat Screen (Never destroyed on toggle)
                                 Box(
                                     modifier = Modifier
@@ -429,6 +458,10 @@ class MainActivity : ComponentActivity() {
                                         onNavigateToNotes = {
                                             previousViewMode = currentViewMode
                                             currentViewMode = AppViewMode.NOTES
+                                        },
+                                        onNavigateToHarness = {
+                                            previousViewMode = currentViewMode
+                                            currentViewMode = AppViewMode.HARNESS
                                         },
                                         onPositionSaved = { x, y ->
                                             chatViewModel.saveFloatingSwitcherPosition(x, y)

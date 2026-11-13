@@ -1075,6 +1075,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         requestedViewMode.value = null
     }
 
+    /** Set when the harness asks the app to open the old settings UI. */
+    val requestedOpenSettings = MutableStateFlow<String?>(null)
+
+    fun requestOpenSettings(section: String? = "MAIN") {
+        requestedOpenSettings.value = section ?: "MAIN"
+    }
+
+    fun consumeRequestedOpenSettings() {
+        requestedOpenSettings.value = null
+    }
+
     /** Antigravity's chat state (shared store). */
     private val _messages = store.messages
     /** Messages of the chat on screen. */
