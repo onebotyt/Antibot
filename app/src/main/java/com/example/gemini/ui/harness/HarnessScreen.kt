@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -71,6 +72,7 @@ fun HarnessScreen(
     // never happen during composition.
     val webViewHolder = remember { arrayOfNulls<WebView>(1) }
     val loadedUrlHolder = remember { arrayOfNulls<String>(1) }
+    var popupWebView by remember { mutableStateOf<WebView?>(null) }
 
     val backgroundColor = AppColors.background
     val readyUrl = (state as? HarnessController.UiState.Ready)?.url
@@ -91,11 +93,61 @@ fun HarnessScreen(
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
                     settings.mediaPlaybackRequiresUserGesture = false
+                    settings.setSupportMultipleWindows(true)
+                    settings.javaScriptCanOpenWindowsAutomatically = true
                     // The launch URL stores the harness session cookie; keep it so the
                     // bare URL keeps working after the first load.
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     addJavascriptInterface(HarnessJsBridge(onOpenSettings), "AntiBotBridge")
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onCreateWindow(
+                            view: WebView?,
+                            isDialog: Boolean,
+                            isUserGesture: Boolean,
+                            resultMsg: android.os.Message?
+                        ): Boolean {
+                            val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                            if (!isUserGesture || popupWebView != null) return false
+
+                            val popup = WebView(ctx).apply {
+                                setBackgroundColor(backgroundColor.toArgb())
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.databaseEnabled = true
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.setSupportMultipleWindows(true)
+                                settings.javaScriptCanOpenWindowsAutomatically = true
+                                CookieManager.getInstance().setAcceptCookie(true)
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): Boolean = false
+
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        CookieManager.getInstance().flush()
+                                    }
+                                }
+                                webChromeClient = WebChromeClient()
+                            }
+                            popupWebView = popup
+                            transport.webView = popup
+                            resultMsg.sendToTarget()
+                            return true
+                        }
+
+                        override fun onCloseWindow(window: WebView?) {
+                            if (popupWebView === window) {
+                                popupWebView?.stopLoading()
+                                popupWebView?.destroy()
+                                popupWebView = null
+                            }
+                        }
+                    }
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
@@ -126,6 +178,29 @@ fun HarnessScreen(
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        popupWebView?.let { popup ->
+            AndroidView(
+                factory = { popup },
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            ) {
+                Button(
+                    onClick = {
+                        popup.stopLoading()
+                        popup.destroy()
+                        popupWebView = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.primary)
+                ) {
+                    Text("Close sign-in")
+                }
+            }
+        }
 
         // Status overlay until the harness answers; hidden once it is ready.
         when (val current = state) {
@@ -174,17 +249,31 @@ fun HarnessScreen(
         }
     }
 
-    BackHandler(enabled = isVisible && canGoBack) {
-        webViewHolder[0]?.goBack()
+    BackHandler(enabled = isVisible && (popupWebView != null || canGoBack)) {
+        val popup = popupWebView
+        if (popup != null) {
+            if (popup.canGoBack()) {
+                popup.goBack()
+            } else {
+                popup.stopLoading()
+                popup.destroy()
+                popupWebView = null
+            }
+        } else {
+            webViewHolder[0]?.goBack()
+        }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             try {
+                popupWebView?.stopLoading()
+                popupWebView?.destroy()
                 webViewHolder[0]?.stopLoading()
                 webViewHolder[0]?.destroy()
             } catch (_: Exception) {
             }
+            popupWebView = null
             webViewHolder[0] = null
         }
     }
