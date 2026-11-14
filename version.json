@@ -1,6 +1,6 @@
 {
-  "version_code": 277,
-  "version_name": "2.4.157",
+  "version_code": 278,
+  "version_name": "2.4.158",
   "min_supported_version_code": 1,
   "changelog": [
     "\ud83d\udcca Harness startup now shows a live progress bar, elapsed time, and a scrollable launcher-log panel so first-run installs visibly continue working. Stale shared harness URLs no longer block the app-managed harness; configured URLs are checked for authentication.",
