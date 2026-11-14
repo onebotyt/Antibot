@@ -113,3 +113,11 @@ This document preserves the chronological log of user requests, decisions, probl
   - Bound launcher-log reads to the last 16 KiB to avoid rescanning a growing install log on each UI refresh.
   - Implemented external URL validation. The probe does not follow redirects, because a valid one-time harness token responds with a redirect that sets the WebView cookie and OkHttp has no matching cookie jar. An auth error (401) rejects the URL; stale shared-storage URLs fall back to the app-managed harness, while an explicitly configured invalid URL shows a settings error.
 - **Verification**: `git diff --check` passed. A local Android compile was not run because the repository instructions prohibit local builds; CI should provide build verification after push.
+
+---
+
+### Session 9: Harness OpenSSL Config Permission Failure
+- **User Report**: Harness addon verification failed while loading the native addon because OpenSSL attempted to read `/data/data/com.termux/files/usr/etc/tls/openssl.cnf`, which is outside AntiBot's app-private sandbox.
+- **Root Cause**: The native PTY session inherited the host process environment and overrode common Termux variables but did not override `OPENSSL_CONF`; the app's shell/command environment paths already use `LocalEnvironmentManager.getOpenSslConf(context)`.
+- **Fix**: Set `OPENSSL_CONF` explicitly in the native PTY environment to AntiBot's own `files/usr/etc/tls/openssl.cnf`, preventing a foreign Termux installation's path from leaking into child Node processes.
+- **Verification**: `git diff --check` passed. Android compile/device retry remains pending; no local build was run per repository rules.

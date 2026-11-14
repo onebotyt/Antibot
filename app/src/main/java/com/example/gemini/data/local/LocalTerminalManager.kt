@@ -315,6 +315,9 @@ class LocalPtySession(
                 envMap["HOME"] = home.absolutePath
                 envMap["PATH"] = "$pnpmHome/bin:$pnpmHome:${home.absolutePath}/.local/bin:${home.absolutePath}/.npm-global/bin:${bin.absolutePath}:${bin.absolutePath}/applets:${prefix.absolutePath}/bin:/system/bin:/system/xbin"
                 envMap["TMPDIR"] = tmp.absolutePath
+                // Do not inherit another Termux install's OpenSSL config. Each
+                // app runs in its own Android sandbox, so that path may be unreadable.
+                envMap["OPENSSL_CONF"] = LocalEnvironmentManager.getOpenSslConf(context)
                 envMap["TERM"] = "xterm-256color"
                 envMap["COLORTERM"] = "truecolor"
                 envMap["TERMUX_VERSION"] = "0.118.0"
