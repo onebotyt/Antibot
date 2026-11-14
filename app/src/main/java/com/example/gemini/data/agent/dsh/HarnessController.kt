@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
 
 /**
@@ -52,7 +53,11 @@ object HarnessController {
 
     sealed interface UiState {
         data object Idle : UiState
-        data class Starting(val message: String = "Starting the harness…") : UiState
+        data class Starting(
+            val message: String = "Starting the harness…",
+            val logs: String = "",
+            val elapsedSeconds: Long = 0
+        ) : UiState
         data class Ready(val url: String) : UiState
         data class Error(val message: String, val details: String? = null) : UiState
     }
@@ -66,6 +71,11 @@ object HarnessController {
     private val client = OkHttpClient.Builder()
         .connectTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS)
         .readTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS)
+        // A valid one-time token responds with a redirect that sets the WebView
+        // cookie. Do not follow it here: OkHttp has no cookie jar, so the final
+        // page would incorrectly look like an unauthenticated 401.
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     @Volatile
@@ -93,18 +103,30 @@ object HarnessController {
     private suspend fun ensureStarted(context: Context, force: Boolean) {
         val prefs = DshPreferences(context)
 
-        // A harness the user already started (Termux' Ubuntu, another device,
-        // ...) wins: the app only has to show it.
-        val external = externalUrl(prefs)
-        if (external != null) {
-            val base = baseOf(external)
-            if (probe(base)) {
-                _state.value = UiState.Ready(external)
+        // A harness the user explicitly configured wins: the app only has to
+        // show it. A URL that does not answer (or whose token is invalid) is an
+        // error so the user is not silently switched to another harness.
+        val configured = prefs.harnessUrl.value.trim()
+        if (configured.isNotBlank()) {
+            val base = baseOf(configured)
+            if (probeExternal(configured)) {
+                _state.value = UiState.Ready(configured)
             } else {
                 _state.value = UiState.Error(
-                    "The configured harness ($base) did not answer. Start it, then tap Retry."
+                    "The configured harness ($base) did not answer, or its launch token is no " +
+                        "longer valid. Start it, or clear the Harness URL in Settings → DeepSeek, " +
+                        "then tap Retry."
                 )
             }
+            return
+        }
+
+        // The Termux 'dsh-web' script leaves its launch URL in shared storage.
+        // A stale file there must not hijack the app, so a URL that does not
+        // authenticate simply falls back to the app's own harness.
+        val shared = readSharedUrl()
+        if (shared != null && probeExternal(shared)) {
+            _state.value = UiState.Ready(shared)
             return
         }
 
@@ -113,6 +135,7 @@ object HarnessController {
 
         if (!force && _state.value is UiState.Ready && probe(base)) return
 
+        val startedAt = System.currentTimeMillis()
         _state.value = UiState.Starting()
 
         if (force) {
@@ -140,7 +163,6 @@ object HarnessController {
         val deadline = System.currentTimeMillis() +
             if (isManaged(prefs) && !HarnessInstaller.isReady(context)) INSTALL_TIMEOUT_MS
             else START_TIMEOUT_MS
-        var lastMessage = ""
         while (System.currentTimeMillis() < deadline) {
             if (probe(base)) {
                 // The listener accepts connections a moment before the harness
@@ -155,11 +177,14 @@ object HarnessController {
                 // The launcher exited and nothing is listening: do not keep waiting.
                 break
             }
-            val message = progressMessage(logTail(context, 2))
-            if (message != lastMessage) {
-                lastMessage = message
-                _state.value = UiState.Starting(message)
-            }
+            val recentLog = logTail(context, 10)
+            val message = progressMessage(recentLog)
+            val elapsed = (System.currentTimeMillis() - startedAt) / 1000L
+            _state.value = UiState.Starting(
+                message = message,
+                logs = recentLog,
+                elapsedSeconds = elapsed
+            )
             delay(1000)
         }
 
@@ -219,12 +244,18 @@ object HarnessController {
         if (!logFile.exists()) {
             ""
         } else {
-            logFile.readText()
-                .lines()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .takeLast(lines)
-                .joinToString("\n")
+            RandomAccessFile(logFile, "r").use { file ->
+                val bytesToRead = minOf(file.length(), 16 * 1024L)
+                file.seek(file.length() - bytesToRead)
+                val bytes = ByteArray(bytesToRead.toInt())
+                file.readFully(bytes)
+                String(bytes, Charsets.UTF_8)
+                    .lines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .takeLast(lines)
+                    .joinToString("\n")
+            }
         }
     } catch (_: Exception) {
         ""
@@ -329,18 +360,6 @@ object HarnessController {
     /** The scheme/host/port part of a user supplied harness URL. */
     private fun baseOf(url: String): String = url.trim().substringBefore('?').trimEnd('/')
 
-    /**
-     * The harness the app should show: the URL configured in the settings, or
-     * the one a launcher script dropped into shared storage (the Termux
-     * `dsh-web` script writes its launch URL there, so starting the harness in
-     * Termux is enough for the app to pick it up).
-     */
-    private fun externalUrl(prefs: DshPreferences): String? {
-        val configured = prefs.harnessUrl.value.trim()
-        if (configured.isNotBlank()) return configured
-        return readSharedUrl()
-    }
-
     private fun readSharedUrl(): String? = try {
         var found: String? = null
         for (dir in SHARED_URL_DIRS) {
@@ -358,6 +377,16 @@ object HarnessController {
         found
     } catch (_: Exception) {
         null
+    }
+
+    /** Checks both reachability and the supplied launch token for an external URL. */
+    private fun probeExternal(url: String): Boolean = try {
+        val request = Request.Builder().url(url).get().build()
+        client.newCall(request).execute().use { response ->
+            response.code in 200..399
+        }
+    } catch (_: Exception) {
+        false
     }
 
     private fun probe(base: String): Boolean = try {

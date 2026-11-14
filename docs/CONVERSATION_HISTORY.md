@@ -102,3 +102,14 @@ This document preserves the chronological log of user requests, decisions, probl
   - `DshPreferences.DEFAULT_HARNESS_COMMAND` is now `app-managed` (the legacy `npx -y @deepseek-ai/dsh@next web` value is treated as managed too); a custom command still runs verbatim.
   - `LocalServerManager`'s pkill pattern narrowed to `@deepseek-ai/dsh/lib/bin.js` so it cannot kill the install/launch; the settings card explains the new behavior.
 - **Verification**: full launcher run verified on-device with a fresh directory; APK build delegated to CI.
+
+---
+
+### Session 8: Harness Startup Progress & Stale URL Handling
+- **User Prompt**: Continue the harness work; startup takes too long and should show ongoing progress/logs instead of appearing stuck.
+- **Changes**:
+  - Expanded `HarnessController.UiState.Starting` with the current phase message, the latest bounded launcher log tail, and elapsed seconds, refreshed while the launcher is starting/installing.
+  - Updated `HarnessScreen` to show an indeterminate progress bar, elapsed-time feedback, and a scrollable live output panel; long status/error content can scroll on smaller displays.
+  - Bound launcher-log reads to the last 16 KiB to avoid rescanning a growing install log on each UI refresh.
+  - Implemented external URL validation. The probe does not follow redirects, because a valid one-time harness token responds with a redirect that sets the WebView cookie and OkHttp has no matching cookie jar. An auth error (401) rejects the URL; stale shared-storage URLs fall back to the app-managed harness, while an explicitly configured invalid URL shows a settings error.
+- **Verification**: `git diff --check` passed. A local Android compile was not run because the repository instructions prohibit local builds; CI should provide build verification after push.

@@ -17,10 +17,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -137,7 +141,9 @@ fun HarnessScreen(
                 title = "Starting DeepSeek Harness",
                 body = current.message,
                 busy = true,
-                onRetry = null
+                onRetry = null,
+                details = current.logs,
+                elapsedSeconds = current.elapsedSeconds
             )
 
             is HarnessController.UiState.Error -> HarnessStatusOverlay(
@@ -190,13 +196,20 @@ private fun HarnessStatusOverlay(
     body: String,
     busy: Boolean,
     onRetry: (() -> Unit)?,
-    details: String? = null
+    details: String? = null,
+    elapsedSeconds: Long? = null
 ) {
+    val logScrollState = rememberScrollState()
+    LaunchedEffect(details) {
+        logScrollState.animateScrollTo(logScrollState.maxValue)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.background)
-            .padding(32.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -220,13 +233,30 @@ private fun HarnessStatusOverlay(
             fontSize = 13.sp,
             textAlign = TextAlign.Center
         )
+        if (busy) {
+            Spacer(Modifier.height(14.dp))
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = AppColors.primary
+            )
+            if (elapsedSeconds != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Elapsed ${elapsedSeconds / 60}m ${elapsedSeconds % 60}s • still working",
+                    color = AppColors.textSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
         if (!details.isNullOrBlank()) {
             Spacer(Modifier.height(16.dp))
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 220.dp)
                     .background(Color(0xFF101418))
                     .padding(12.dp)
+                    .verticalScroll(logScrollState)
             ) {
                 Text(
                     text = details,
@@ -235,6 +265,14 @@ private fun HarnessStatusOverlay(
                     color = Color(0xFFB0BEC5)
                 )
             }
+        } else if (busy) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Preparing the launcher. Live install output will appear here as soon as it starts.",
+                color = AppColors.textSecondary,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
         }
         if (onRetry != null) {
             Spacer(Modifier.height(20.dp))
