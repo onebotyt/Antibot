@@ -1,6 +1,8 @@
 package com.example.gemini.ui.harness
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
@@ -10,6 +12,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -37,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -72,10 +79,16 @@ fun HarnessScreen(
     // never happen during composition.
     val webViewHolder = remember { arrayOfNulls<WebView>(1) }
     val loadedUrlHolder = remember { arrayOfNulls<String>(1) }
+    val harnessUrlHolder = remember { arrayOfNulls<String>(1) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
+
+    fun closePopup(popup: WebView) {
+        if (popupWebView === popup) popupWebView = null
+    }
 
     val backgroundColor = AppColors.background
     val readyUrl = (state as? HarnessController.UiState.Ready)?.url
+    val lifecycleOwner = LocalLifecycleOwner.current
     var canGoBack by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -94,7 +107,6 @@ fun HarnessScreen(
                     settings.useWideViewPort = true
                     settings.mediaPlaybackRequiresUserGesture = false
                     settings.setSupportMultipleWindows(true)
-                    settings.javaScriptCanOpenWindowsAutomatically = true
                     // The launch URL stores the harness session cookie; keep it so the
                     // bare URL keeps working after the first load.
                     CookieManager.getInstance().setAcceptCookie(true)
@@ -111,28 +123,37 @@ fun HarnessScreen(
                             if (!isUserGesture || popupWebView != null) return false
 
                             val popup = WebView(ctx).apply {
-                                setBackgroundColor(backgroundColor.toArgb())
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
-                                settings.databaseEnabled = true
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                                settings.setSupportMultipleWindows(true)
-                                settings.javaScriptCanOpenWindowsAutomatically = true
                                 CookieManager.getInstance().setAcceptCookie(true)
                                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(
                                         view: WebView?,
                                         request: WebResourceRequest?
-                                    ): Boolean = false
+                                    ): Boolean {
+                                        val url = request?.url?.toString() ?: return false
+                                        if (url == "about:blank") return false
+                                        val harnessUrl = harnessUrlHolder[0] ?: return false
+                                        if (isHarnessOrigin(url, harnessUrl)) return false
+                                        val opened = openHarnessExternalUrl(context, url)
+                                        if (opened && view != null) closePopup(view)
+                                        return opened
+                                    }
 
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        super.onPageFinished(view, url)
-                                        CookieManager.getInstance().flush()
+                                    override fun onPageStarted(
+                                        view: WebView?,
+                                        url: String?,
+                                        favicon: android.graphics.Bitmap?
+                                    ) {
+                                        super.onPageStarted(view, url, favicon)
+                                        val harnessUrl = harnessUrlHolder[0] ?: return
+                                        if (url.isNullOrBlank() || url == "about:blank" || isHarnessOrigin(url, harnessUrl)) return
+                                        if (openHarnessExternalUrl(context, url) && view != null) {
+                                            closePopup(view)
+                                        }
                                     }
                                 }
-                                webChromeClient = WebChromeClient()
                             }
                             popupWebView = popup
                             transport.webView = popup
@@ -141,18 +162,30 @@ fun HarnessScreen(
                         }
 
                         override fun onCloseWindow(window: WebView?) {
-                            if (popupWebView === window) {
-                                popupWebView?.stopLoading()
-                                popupWebView?.destroy()
-                                popupWebView = null
-                            }
+                            if (window != null && popupWebView === window) closePopup(window)
                         }
                     }
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?
-                        ): Boolean = false
+                        ): Boolean {
+                            val url = request?.url?.toString() ?: return false
+                            val harnessUrl = harnessUrlHolder[0] ?: return false
+                            if (isHarnessOrigin(url, harnessUrl)) return false
+                            return openHarnessExternalUrl(context, url)
+                        }
+
+                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                            super.onPageStarted(view, url, favicon)
+                            val harnessUrl = harnessUrlHolder[0] ?: return
+                            if (url.isNullOrBlank() || url == "about:blank" || isHarnessOrigin(url, harnessUrl)) return
+                            if (openHarnessExternalUrl(context, url)) {
+                                // Some auth redirects bypass shouldOverrideUrlLoading.
+                                // Restore the working token URL, not its unauthenticated base.
+                                view?.post { view.loadUrl(harnessUrl) }
+                            }
+                        }
 
                         override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                             super.doUpdateVisitedHistory(view, url, isReload)
@@ -173,6 +206,7 @@ fun HarnessScreen(
                 val target = readyUrl
                 if (target != null && target != loadedUrlHolder[0]) {
                     loadedUrlHolder[0] = target
+                    harnessUrlHolder[0] = target
                     view.loadUrl(target)
                 }
             },
@@ -182,24 +216,13 @@ fun HarnessScreen(
         popupWebView?.let { popup ->
             AndroidView(
                 factory = { popup },
-                modifier = Modifier.fillMaxSize()
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-            ) {
-                Button(
-                    onClick = {
-                        popup.stopLoading()
-                        popup.destroy()
-                        popupWebView = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.primary)
-                ) {
-                    Text("Close sign-in")
+                modifier = Modifier.size(1.dp).alpha(0f),
+                onRelease = { released ->
+                    if (popupWebView === released) popupWebView = null
+                    released.stopLoading()
+                    released.destroy()
                 }
-            }
+            )
         }
 
         // Status overlay until the harness answers; hidden once it is ready.
@@ -234,6 +257,7 @@ fun HarnessScreen(
     LaunchedEffect(isVisible) {
         if (isVisible) {
             webViewHolder[0]?.onResume()
+            popupWebView?.onResume()
             // Re-check the harness when returning to it: it may have exited while
             // another view was open (a dead harness is restarted by refresh()).
             HarnessController.refresh(context)
@@ -246,19 +270,42 @@ fun HarnessScreen(
             }
         } else {
             webViewHolder[0]?.onPause()
+            popupWebView?.onPause()
         }
+    }
+
+    DisposableEffect(lifecycleOwner, popupWebView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    webViewHolder[0]?.let { webView ->
+                        webView.onResume()
+                        if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+                            (harnessUrlHolder[0] ?: readyUrl)?.let(webView::loadUrl)
+                        }
+                    }
+                    // External sign-in has returned (or was dismissed): never leave
+                    // its temporary popup covering the original harness page.
+                    popupWebView?.let(::closePopup)
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    webViewHolder[0]?.onPause()
+                    popupWebView?.onPause()
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    popupWebView?.let(::closePopup)
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     BackHandler(enabled = isVisible && (popupWebView != null || canGoBack)) {
         val popup = popupWebView
         if (popup != null) {
-            if (popup.canGoBack()) {
-                popup.goBack()
-            } else {
-                popup.stopLoading()
-                popup.destroy()
-                popupWebView = null
-            }
+            closePopup(popup)
         } else {
             webViewHolder[0]?.goBack()
         }
@@ -267,8 +314,7 @@ fun HarnessScreen(
     DisposableEffect(Unit) {
         onDispose {
             try {
-                popupWebView?.stopLoading()
-                popupWebView?.destroy()
+                popupWebView?.let(::closePopup)
                 webViewHolder[0]?.stopLoading()
                 webViewHolder[0]?.destroy()
             } catch (_: Exception) {
@@ -373,6 +419,25 @@ private fun HarnessStatusOverlay(
             }
         }
     }
+}
+
+private fun isHarnessOrigin(url: String, harnessUrl: String): Boolean {
+    val candidate = Uri.parse(url)
+    val harness = Uri.parse(harnessUrl)
+    return candidate.scheme.equals(harness.scheme, ignoreCase = true) &&
+        candidate.host.equals(harness.host, ignoreCase = true) &&
+        candidate.port == harness.port
+}
+
+private fun openHarnessExternalUrl(context: android.content.Context, url: String): Boolean {
+    val uri = Uri.parse(url)
+    if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) return false
+    return runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        true
+    }.getOrDefault(false)
 }
 
 /** Bridge the injected harness button calls into the app. */
