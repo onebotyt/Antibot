@@ -128,3 +128,36 @@ jobs:
             version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The CLI protocol is the only contract with `agy`, so its parser is pinned by
+  # AgyCliProtocolTest. It runs as its own job so a protocol regression shows up
+  # without blocking the APK artifacts of this run.
+  harness-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Antigravity CLI protocol tests
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testTermuxDebugUnitTest \
+            --tests "com.example.gemini.data.harness.agy.AgyCliProtocolTest" \
+            --stacktrace
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-test-report
+          path: app/build/reports/tests/testTermuxDebugUnitTest
+          retention-days: 7

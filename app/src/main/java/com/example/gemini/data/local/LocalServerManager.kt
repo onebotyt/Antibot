@@ -289,7 +289,7 @@ object LocalServerManager {
         }
 
         try {
-            Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '; pkill -9 -f '@deepseek-ai/dsh/lib/bin.js'; pkill -9 -f 'dsh web'")).waitFor()
+            Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f gemini-server; pkill -9 -f 'server -f'; pkill -9 -f 'agy '")).waitFor()
         } catch (_: Exception) {
         }
 
@@ -384,7 +384,7 @@ object LocalServerManager {
 
         withContext(Dispatchers.IO) {
             try {
-                Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f 'agy '; pkill -9 -f '@deepseek-ai/dsh/lib/bin.js'; pkill -9 -f 'dsh web'")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("sh", "-c", "pkill -9 -f agy_ide_bridge; pkill -9 -f 'agy '")).waitFor()
             } catch (_: Exception) {}
         }
 
@@ -417,22 +417,6 @@ object LocalServerManager {
             }
         }
 
-        // Auto-start DeepSeek Harness daemon in Termux background if enabled
-        try {
-            val dshPrefs = com.example.gemini.data.agent.dsh.DshPreferences(appContext)
-            if (dshPrefs.daemonAutoStart.value) {
-                managerScope.launch(Dispatchers.IO) {
-                    delay(2000)
-                    try {
-                        LocalEnvironmentManager.executeCommand(
-                            command = "command -v npx >/dev/null 2>&1 && npx @deepseek-ai/dsh web --port 3080 || true",
-                            context = appContext,
-                            timeoutSeconds = 5
-                        )
-                    } catch (_: Exception) {}
-                }
-            }
-        } catch (_: Exception) {}
     }
 
     /**

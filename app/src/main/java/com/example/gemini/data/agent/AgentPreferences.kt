@@ -18,7 +18,7 @@ class AgentPreferences(context: Context) {
     private val _hasChosen = MutableStateFlow(prefs.getBoolean(KEY_CHOSEN, false))
     val hasChosen: StateFlow<Boolean> = _hasChosen.asStateFlow()
     private val _newChatAgent = MutableStateFlow(
-        runCatching { AgentKind.valueOf(prefs.getString(KEY_NEW_CHAT_AGENT, AgentKind.DSH.name)!!) }.getOrDefault(AgentKind.DSH)
+        runCatching { AgentKind.valueOf(prefs.getString(KEY_NEW_CHAT_AGENT, AgentKind.AGY.name)!!) }.getOrDefault(AgentKind.AGY)
     )
     val newChatAgent: StateFlow<AgentKind> = _newChatAgent.asStateFlow()
 
@@ -45,16 +45,17 @@ class AgentPreferences(context: Context) {
 
         private fun key(agent: AgentKind) = "enabled_" + agent.name.lowercase()
 
-        private fun default(agent: AgentKind) = agent == AgentKind.AGY || agent == AgentKind.DSH
+        private fun default(agent: AgentKind) = agent == AgentKind.AGY
 
         private fun read(prefs: android.content.SharedPreferences): Set<AgentKind> {
             val chosen = prefs.getBoolean(KEY_CHOSEN, false)
-            val set = if (!chosen) {
+            val enabled = if (!chosen) {
                 AgentKind.entries.filter { default(it) }.toSet()
             } else {
                 AgentKind.entries.filter { prefs.getBoolean(key(it), default(it)) }.toSet()
             }
-            return set + AgentKind.DSH
+            // An older build could have left only a removed agent enabled.
+            return enabled.ifEmpty { setOf(AgentKind.AGY) }
         }
 
         /** The first-launch agent choice was made, read synchronously (the server does not start before it). */

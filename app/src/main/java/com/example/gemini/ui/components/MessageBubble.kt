@@ -777,7 +777,6 @@ fun AssistantMessageFooter(
             if (agent != null || !model.isNullOrBlank()) {
                 val accent = agent?.accent() ?: Color(0xFF388BFD)
                 val badgeText = when {
-                    agent == AgentKind.DSH -> "🐋 DeepSeek" + (if (!model.isNullOrBlank() && !model.contains("deepseek", ignoreCase = true)) " · $model" else "")
                     agent == AgentKind.CLAUDE -> "✻ Claude" + (if (!model.isNullOrBlank() && !model.contains("claude", ignoreCase = true)) " · $model" else "")
                     agent == AgentKind.CODEX -> ">_ Codex" + (if (!model.isNullOrBlank() && !model.contains("codex", ignoreCase = true)) " · $model" else "")
                     agent == AgentKind.OPENCODE -> "</> OpenCode" + (if (!model.isNullOrBlank() && !model.contains("opencode", ignoreCase = true)) " · $model" else "")

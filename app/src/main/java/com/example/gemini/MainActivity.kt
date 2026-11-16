@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                     "TERMINAL" -> AppViewMode.TERMINAL
                     "BROWSER" -> AppViewMode.BROWSER
                     "NOTES" -> AppViewMode.NOTES
-                    // The DeepSeek Harness is the app's main shell.
+                    // The CLI Harness is the app's main shell.
                     else -> AppViewMode.HARNESS
                 }
             }
@@ -289,8 +289,8 @@ class MainActivity : ComponentActivity() {
                             com.example.gemini.ui.components.LocalAppFocusCoordinator provides focusCoordinator
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
-                                // Persistent DeepSeek Harness Screen (the app's main shell; keeps its
-                                // WebView, session, cookie and scroll while other views are used)
+                                // Persistent CLI Harness Screen (the app's main shell; keeps its
+                                // session, transcript and scroll while other views are used)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()

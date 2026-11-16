@@ -237,31 +237,6 @@ fun codexStatusEntry(
     }
 }
 
-fun dshStatusEntry(
-    isOnline: Boolean,
-    modelName: String,
-    serverRestarting: Boolean,
-    onSetup: () -> Unit,
-    onRestartServer: () -> Unit,
-    onRetry: () -> Unit
-): AgentStatusEntry {
-    if (serverRestarting) {
-        return AgentStatusEntry(AgentKind.DSH, "Restarting…", SystemStatus.STARTING.dotColor, "DeepSeek Harness is restarting.", pending = true)
-    }
-    val resolvedModel = when (modelName) {
-        "deepseek-reasoner" -> "DeepSeek R1"
-        "deepseek-chat" -> "DeepSeek V3"
-        else -> if (modelName.isNotBlank()) modelName else "DeepSeek V3"
-    }
-    return AgentStatusEntry(
-        agent = AgentKind.DSH,
-        label = "Ready",
-        color = SystemStatus.READY.dotColor,
-        detail = "DeepSeek Harness Master Orchestrator · $resolvedModel",
-        isReady = true
-    )
-}
-
 fun claudePlanLabel(raw: String): String = when (raw.lowercase()) {
     "pro" -> "Pro"
     "max" -> "Max"
@@ -321,7 +296,6 @@ fun AgentMark(agent: AgentKind, modifier: Modifier = Modifier, size: Dp = 32.dp,
                 AgentKind.CLAUDE -> Text("✻", color = accent, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.5f).sp)
                 AgentKind.OPENCODE -> Text("</>", color = accent, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.3f).sp, maxLines = 1)
                 AgentKind.CODEX -> Text(">_", color = accent, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.32f).sp, maxLines = 1)
-                AgentKind.DSH -> Text("🐋", fontSize = (size.value * 0.44f).sp)
                 else -> Icon(Icons.Outlined.Terminal, null, tint = accent, modifier = Modifier.size(size * 0.52f))
             }
         }

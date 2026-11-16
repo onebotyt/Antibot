@@ -166,7 +166,6 @@ fun ChatScreen(
     val isClaudeChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.CLAUDE
     val isOpenCodeChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.OPENCODE
     val isCodexChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.CODEX
-    val isDshChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.DSH
     /** The chat on screen is Antigravity's (its hub, bridge banners and sign-in apply). */
     val isAgyChat = effectiveAgent == com.example.gemini.domain.model.AgentKind.AGY
     val isFreshNewChat = currentConv == null || currentConv?.title == "New Chat"
@@ -179,7 +178,7 @@ fun ChatScreen(
             viewModel.setNewChatAgent(agent)
             viewModel.startNewChat(agent)
         } else {
-            // DeepSeek Harness Unified Chat: seamlessly switch active model/agent for subsequent turns in the same chat
+            // Unified Chat: switch the active agent for subsequent turns in the same chat
             viewModel.switchOngoingChatAgent(agent)
         }
     }
@@ -279,6 +278,16 @@ fun ChatScreen(
     }
 
     var showModelSelector by remember { mutableStateOf(false) }
+    var showAgyCliAnalysis by remember { mutableStateOf(false) }
+    val agyCliTracker = remember { com.example.gemini.data.remote.services.AgyCliUpdateTracker(context) }
+    val agyAnalysisReport by agyCliTracker.analysisReport.collectAsState()
+    val agyNewModelIds by agyCliTracker.newModelIds.collectAsState()
+    val agyIsChecking by agyCliTracker.isChecking.collectAsState()
+    LaunchedEffect(Unit) {
+        // Cheap local scan on screen entry; hits the network only if a daemon model
+        // list is already cached, so it does not delay first paint.
+        runCatching { agyCliTracker.checkUpdatesAndAnalyzeModels(forceRefresh = false) }
+    }
     var showLocalTerminalDialog by rememberSaveable { mutableStateOf(false) }
     var showLocalToolsInstallDialog by remember { mutableStateOf(false) }
     var showLocalServerOutputDialog by remember { mutableStateOf(false) }
@@ -338,8 +347,6 @@ fun ChatScreen(
     val claudeState by viewModel.claudeAccount.state.collectAsState()
     val claudeStatusError by viewModel.claudeAccount.statusError.collectAsState()
     val claudeSlashCommands by claudeBackend.slashCommands.collectAsState()
-
-    val dshBackend = viewModel.dshBackend
 
     val claudeChatState = if (
         com.example.gemini.data.agent.claude.ClaudeChatBackend.providerOf(selectedModelId).isNotEmpty() &&
@@ -507,26 +514,7 @@ fun ChatScreen(
             onRetry = { codexBackend.retryConnections() }
         )
     } else null
-    var isDshOnline by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        isDshOnline = dshBackend.client.isDaemonOnline()
-    }
-    val dshEntry = if (com.example.gemini.domain.model.AgentKind.DSH in enabledAgents) {
-        com.example.gemini.ui.agents.dshStatusEntry(
-            isOnline = isDshOnline,
-            modelName = dshBackend.selectedModelId.value,
-            serverRestarting = serverRestarting,
-            onSetup = {
-                requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
-                showSettingsDialog = true
-            },
-            onRestartServer = restartLocalServer,
-            onRetry = {
-                scope.launch { isDshOnline = dshBackend.client.isDaemonOnline() }
-            }
-        )
-    } else null
-    val agentEntries = listOfNotNull(dshEntry, agyEntry, claudeEntry, openCodeEntry, codexEntry)
+    val agentEntries = listOfNotNull(agyEntry, claudeEntry, openCodeEntry, codexEntry)
     var showAccountsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -1012,19 +1000,6 @@ fun ChatScreen(
                 family = com.example.gemini.domain.model.ModelFamily.OTHER
             )
         }
-        isDshChat -> {
-            val dshSelId = dshBackend.selectedModelId.collectAsState().value
-            AiModel(
-                id = dshSelId.ifBlank { "deepseek-reasoner" },
-                displayName = when (dshSelId) {
-                    "deepseek-reasoner" -> "DeepSeek R1"
-                    "deepseek-chat" -> "DeepSeek V3"
-                    else -> if (dshSelId.isNotBlank()) dshSelId else "DeepSeek R1"
-                },
-                description = "DeepSeek Harness",
-                family = com.example.gemini.domain.model.ModelFamily.OTHER
-            )
-        }
         else -> AiModel.findInList(enabledModels, selectedModelId, preferredModelName)
     }
     val currentQuota = remember(quotas, selectedModelId, currentModel) {
@@ -1307,8 +1282,7 @@ fun ChatScreen(
                         onClick = { showAccountsDialog = true },
                         openCode = openCodeEntry,
                         codex = codexEntry,
-                        codexEmail = codexAccount?.email,
-                        dsh = dshEntry
+                        codexEmail = codexAccount?.email
                     )
                 }
             )
@@ -1698,24 +1672,6 @@ fun ChatScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Retry", fontSize = 13.5.sp)
                                 }
-
-                                if (isDshChat) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
-                                            showSettingsDialog = true
-                                        },
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Settings,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("DeepSeek Settings", fontSize = 13.5.sp)
-                                    }
-                                }
                             }
                         }
                     } else if (isExistingChat) {
@@ -1786,7 +1742,7 @@ fun ChatScreen(
                                         secondaryLabel = if (codexState == com.example.gemini.data.agent.codex.CodexState.CHECKING) null else "Server logs",
                                         onSecondary = { showLocalServerOutputDialog = true }
                                     )
-                                } else when (if (isClaudeChat || isOpenCodeChat || isCodexChat || isDshChat) null else systemConnectionState.status) {
+                                } else when (if (isClaudeChat || isOpenCodeChat || isCodexChat) null else systemConnectionState.status) {
                                     com.example.gemini.data.remote.SystemStatus.CHECKING_AUTH -> {
                                         com.example.gemini.ui.components.NewChatCheckingAuthPromptCard()
                                     }
@@ -1814,59 +1770,6 @@ fun ChatScreen(
                                             modifier = Modifier.padding(horizontal = 20.dp)
                                         )
 
-                                        if (isDshChat && dshBackend.prefs.apiKey.value.isBlank()) {
-                                            Spacer(modifier = Modifier.height(18.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                                border = BorderStroke(1.dp, com.example.gemini.ui.components.DshAccent.copy(alpha = 0.35f)),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 16.dp)
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(16.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        Text("🐋", fontSize = 18.sp)
-                                                        Text(
-                                                            text = "DeepSeek Harness Orchestrator",
-                                                            fontSize = 14.5.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = MaterialTheme.colorScheme.onSurface
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text(
-                                                        text = "AntiBot master orchestrator active. Configure your API key to run DeepSeek-V3 & R1 deep reasoning, or dispatch to subagents using @gemini, @claude, @opencode.",
-                                                        fontSize = 12.sp,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Spacer(modifier = Modifier.height(12.dp))
-                                                    Button(
-                                                        onClick = {
-                                                            requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
-                                                            showSettingsDialog = true
-                                                        },
-                                                        shape = RoundedCornerShape(10.dp),
-                                                        colors = ButtonDefaults.buttonColors(containerColor = com.example.gemini.ui.components.DshAccent)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Settings,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(15.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Text("Configure DeepSeek API Key", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                }
-                                            }
-                                        }
                                     }
                                 }
                             }
@@ -2190,7 +2093,6 @@ fun ChatScreen(
 
                     val allAgentMentions = remember {
                         listOf(
-                            Triple("@deepseek", "DeepSeek", com.example.gemini.domain.model.AgentKind.DSH),
                             Triple("@claude", "Claude", com.example.gemini.domain.model.AgentKind.CLAUDE),
                             Triple("@gemini", "Gemini", com.example.gemini.domain.model.AgentKind.AGY),
                             Triple("@codex", "Codex", com.example.gemini.domain.model.AgentKind.CODEX),
@@ -2566,12 +2468,10 @@ fun ChatScreen(
                     isOnline = if (isCodexChat) !codexState.isBlocking
                         else if (isOpenCodeChat) !openCodeState.isBlocking
                         else if (isClaudeChat) !claudeState.isBlocking
-                        else if (isDshChat) true
                         else systemConnectionState.canSend,
                     isAuth = if (isCodexChat) codexState != com.example.gemini.data.agent.codex.CodexState.SIGNED_OUT
                         else if (isOpenCodeChat) true
                         else if (isClaudeChat) claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNED_OUT && claudeChatState != com.example.gemini.data.agent.claude.ClaudeStatus.SIGNING_IN
-                        else if (isDshChat) true
                         else systemConnectionState.isAuth,
                     offlineMessage = if (isCodexChat) when (codexState) {
                         com.example.gemini.data.agent.codex.CodexState.NOT_INSTALLED -> "Codex is not installed on the server. See Settings → Codex."
@@ -2585,8 +2485,7 @@ fun ChatScreen(
                         com.example.gemini.data.agent.claude.ClaudeStatus.NOT_INSTALLED -> "Claude Code is not installed. Set it up in Settings."
                         com.example.gemini.data.agent.claude.ClaudeStatus.BRIDGE_OUTDATED -> "Restart the local server to use Claude Code."
                         else -> "The local server is offline. Start it to send messages."
-                    } else if (isDshChat) "DeepSeek Harness daemon is offline. Start the server to send messages."
-                    else "Server is offline. Start the server to send messages.",
+                    } else "Server is offline. Start the server to send messages.",
                     selectedModel = currentModel,
                     quota = currentQuota,
                     textFieldValue = textFieldValue,
@@ -2704,14 +2603,12 @@ fun ChatScreen(
             claudeAccount = viewModel.claudeAccount,
             codexBackend = codexBackend,
             openCodeBackend = openCodeBackend,
-            dshBackend = dshBackend,
             onSelectAgentAndModel = { targetAgent, modelId ->
                 if (targetAgent != effectiveAgent) {
                     when (targetAgent) {
                         com.example.gemini.domain.model.AgentKind.CLAUDE -> claudeBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.CODEX -> codexBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.OPENCODE -> openCodeBackend.selectModel(modelId)
-                        com.example.gemini.domain.model.AgentKind.DSH -> dshBackend.selectModel(modelId)
                         else -> viewModel.selectModel(modelId)
                     }
                     pickAgent(targetAgent)
@@ -2720,14 +2617,40 @@ fun ChatScreen(
                         com.example.gemini.domain.model.AgentKind.CLAUDE -> claudeBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.CODEX -> codexBackend.selectModel(modelId)
                         com.example.gemini.domain.model.AgentKind.OPENCODE -> openCodeBackend.selectModel(modelId)
-                        com.example.gemini.domain.model.AgentKind.DSH -> dshBackend.selectModel(modelId)
                         else -> viewModel.selectModel(modelId)
                     }
                 }
                 showModelSelector = false
             },
             onSelectModel = { modelId -> viewModel.selectModel(modelId) },
-            onDismiss = { showModelSelector = false }
+            onDismiss = { showModelSelector = false },
+            newModelIds = agyNewModelIds,
+            onOpenAnalysis = {
+                showModelSelector = false
+                showAgyCliAnalysis = true
+                scope.launch {
+                    agyCliTracker.checkUpdatesAndAnalyzeModels(forceRefresh = true)
+                }
+            }
+        )
+    }
+
+    if (showAgyCliAnalysis) {
+        val report = agyAnalysisReport ?: com.example.gemini.data.remote.services.AgyCliAnalysisReport(
+            currentCliVersion = "scanning…"
+        )
+        com.example.gemini.ui.updater.AgyCliAnalysisDialog(
+            report = report,
+            isChecking = agyIsChecking,
+            onRefresh = {
+                scope.launch {
+                    agyCliTracker.checkUpdatesAndAnalyzeModels(forceRefresh = true)
+                }
+            },
+            onDismiss = {
+                showAgyCliAnalysis = false
+                agyCliTracker.acknowledgeNewModels()
+            }
         )
     }
 
@@ -2897,7 +2820,6 @@ fun ChatScreen(
             initialOpenCodePage = openCodeSettingsPage,
             codex = viewModel.codexBackend,
             initialCodexPage = codexSettingsPage,
-            dsh = viewModel.dshBackend,
             initialSection = requestedSettingsSection
                 ?: if (openOpenCodeSettings) com.example.gemini.ui.settings.SettingsSection.OPENCODE
                 else if (openCodexSettings) com.example.gemini.ui.settings.SettingsSection.CODEX else null,
@@ -2972,12 +2894,6 @@ fun ChatScreen(
                 openCodexSettings = true
                 showSettingsDialog = true
             },
-            dsh = dshEntry,
-            onDshSettings = {
-                scope.launch { drawerState.close() }
-                requestedSettingsSection = com.example.gemini.ui.settings.SettingsSection.DSH
-                showSettingsDialog = true
-            }
         )
     }
 

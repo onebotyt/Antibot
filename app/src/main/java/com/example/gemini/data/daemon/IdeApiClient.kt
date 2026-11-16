@@ -844,7 +844,7 @@ object IdeApiClient {
     }
 
     /**
-     * DeepSeek Harness Goal Loop: Starts an autonomous goal workflow with milestone ledger.
+     * Goal Loop: Starts an autonomous goal workflow with a milestone ledger.
      */
     suspend fun startGoal(
         prompt: String,

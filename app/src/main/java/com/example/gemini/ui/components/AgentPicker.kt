@@ -25,15 +25,11 @@ val OpenCodeAccent = Color(0xFF10B981)
 /** Codex's color across the app. */
 val CodexAccent = Color(0xFF8B5CF6)
 
-/** DeepSeek Harness's color across the app. */
-val DshAccent = Color(0xFF4D6BFE)
-
 fun AgentKind.label(): String = when (this) {
     AgentKind.AGY -> "Antigravity"
     AgentKind.CLAUDE -> "Claude Code"
     AgentKind.OPENCODE -> "OpenCode"
     AgentKind.CODEX -> "Codex"
-    AgentKind.DSH -> "DeepSeek Harness"
 }
 
 fun AgentKind.shortLabel(): String = when (this) {
@@ -41,7 +37,6 @@ fun AgentKind.shortLabel(): String = when (this) {
     AgentKind.CLAUDE -> "Claude"
     AgentKind.OPENCODE -> "OpenCode"
     AgentKind.CODEX -> "Codex"
-    AgentKind.DSH -> "DeepSeek"
 }
 
 fun AgentKind.accent(): Color = when (this) {
@@ -49,6 +44,5 @@ fun AgentKind.accent(): Color = when (this) {
     AgentKind.CLAUDE -> ClaudeAccent
     AgentKind.OPENCODE -> OpenCodeAccent
     AgentKind.CODEX -> CodexAccent
-    AgentKind.DSH -> DshAccent
 }
 

@@ -7,6 +7,7 @@ import android.content.pm.Signature
 import android.os.Build
 import android.widget.Toast
 import com.example.gemini.data.adb.AdbConnectManager
+import com.example.gemini.data.updater.AgyCliUpdateWorker
 import com.example.gemini.data.updater.PluginUpdateCheckWorker
 import com.example.gemini.data.updater.UpdateCheckWorker
 import com.telemetrydeck.sdk.TelemetryDeck
@@ -28,6 +29,7 @@ class AntiGemApplication : Application() {
         com.example.gemini.theme.ThemeManager.init(this)
         UpdateCheckWorker.schedule(this)
         PluginUpdateCheckWorker.schedule(this)
+        AgyCliUpdateWorker.schedule(this)
         // Reconnects adb when Wireless debugging turns back on (it gets a new port every time)
         AdbConnectManager.init(this)
         com.example.gemini.data.ssh.SshSessionFactory.init(this)

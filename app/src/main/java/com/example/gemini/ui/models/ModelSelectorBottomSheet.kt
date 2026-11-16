@@ -12,7 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +35,6 @@ import com.example.gemini.theme.*
 import com.example.gemini.ui.components.ClaudeAccent
 import com.example.gemini.ui.components.CodexAccent
 import com.example.gemini.ui.components.OpenCodeAccent
-import com.example.gemini.ui.components.DshAccent
 import kotlinx.coroutines.launch
 
 sealed interface ModelItemEntry {
@@ -75,15 +76,18 @@ fun ModelSelectorBottomSheet(
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     currentAgent: AgentKind = AgentKind.AGY,
-    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.CLAUDE, AgentKind.CODEX, AgentKind.OPENCODE, AgentKind.DSH),
+    enabledAgents: Collection<AgentKind> = listOf(AgentKind.AGY, AgentKind.CLAUDE, AgentKind.CODEX, AgentKind.OPENCODE),
     claudeBackend: com.example.gemini.data.agent.claude.ClaudeChatBackend? = null,
     claudeAccount: com.example.gemini.data.agent.claude.ClaudeAccountManager? = null,
     codexBackend: com.example.gemini.data.agent.codex.CodexChatBackend? = null,
     openCodeBackend: com.example.gemini.data.agent.opencode.OpenCodeChatBackend? = null,
-    dshBackend: com.example.gemini.data.agent.dsh.DshChatBackend? = null,
     onSelectAgentAndModel: ((AgentKind, String) -> Unit)? = null,
     onSelectModel: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Ids of models first seen in the latest Antigravity analysis; rendered with a NEW badge. */
+    newModelIds: Set<String> = emptySet(),
+    /** Opens the Antigravity CLI / model capability analysis dialog. */
+    onOpenAnalysis: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val authPrefs = remember(context) { AuthPreferences(context) }
@@ -112,62 +116,7 @@ fun ModelSelectorBottomSheet(
     ) {
         val sections = mutableListOf<EngineSection>()
 
-        // 1. 🐋 DeepSeek Harness (Primary Master Engine & Orchestrator)
-        if (AgentKind.DSH in enabledAgents) {
-            val dshList = mutableListOf<ModelItemEntry>()
-            val dshModels = dshBackend?.client?.cachedModels?.value ?: emptyList()
-            if (dshModels.isNotEmpty()) {
-                dshModels.forEach { model ->
-                    val isReasoning = model.supportsThinking || model.id.contains("reasoner")
-                    dshList.add(
-                        ModelItemEntry.Single(
-                            id = model.id,
-                            title = model.displayName.ifBlank { model.id },
-                            badge = if (isReasoning) "Deep Reasoning" else "Master Engine",
-                            badgeColor = DshAccent,
-                            subtitle = model.description.ifBlank {
-                                if (isReasoning) "DeepSeek R1 deep chain-of-thought (<think>) architectural reasoning"
-                                else "DeepSeek V3 master orchestrator · Coordinates subagents and executes tools"
-                            },
-                            agentKind = AgentKind.DSH
-                        )
-                    )
-                }
-            } else {
-                dshList.add(
-                    ModelItemEntry.Single(
-                        id = "deepseek-chat",
-                        title = "DeepSeek V3 (Master Orchestrator)",
-                        badge = "Master Engine",
-                        badgeColor = DshAccent,
-                        subtitle = "Master app orchestrator · Controls & coordinates subagents, tools and coding workflows",
-                        agentKind = AgentKind.DSH
-                    )
-                )
-                dshList.add(
-                    ModelItemEntry.Single(
-                        id = "deepseek-reasoner",
-                        title = "DeepSeek R1 (Deep Reasoning)",
-                        badge = "Deep Reasoning",
-                        badgeColor = DshAccent,
-                        subtitle = "Architectural planning, chain-of-thought (<think>) & verification",
-                        agentKind = AgentKind.DSH
-                    )
-                )
-            }
-
-            sections.add(
-                EngineSection(
-                    agentKind = AgentKind.DSH,
-                    title = "DeepSeek Harness (Master Engine)",
-                    badge = "🐋 Primary Orchestrator",
-                    accentColor = DshAccent,
-                    entries = dshList
-                )
-            )
-        }
-
-        // 2. ⚡ Antigravity (Gemini) Engine
+        // 1. ⚡ Antigravity (Gemini) Engine
         if (AgentKind.AGY in enabledAgents) {
             val agyList = mutableListOf<ModelItemEntry>()
 
@@ -224,7 +173,6 @@ fun ModelSelectorBottomSheet(
             )
         }
 
-        // 2. 🟣 Claude Code CLI Engine
         // 2. 🟣 Claude Code CLI Engine
         if (AgentKind.CLAUDE in enabledAgents) {
             val claudeList = mutableListOf<ModelItemEntry>()
@@ -468,10 +416,74 @@ fun ModelSelectorBottomSheet(
                         fontSize = 16.5.sp
                     )
                     Text(
-                        text = "DeepSeek Master Engine & Autonomous CLI Subagents",
+                        text = "Pick the engine and model for this conversation",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // Antigravity CLI update & new-model analysis entry point
+            if (onOpenAnalysis != null) {
+                Surface(
+                    onClick = onOpenAnalysis,
+                    shape = RoundedCornerShape(14.dp),
+                    color = GeminiBlue.copy(alpha = 0.10f),
+                    border = BorderStroke(1.dp, GeminiBlue.copy(alpha = 0.28f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = GeminiBlue,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Antigravity CLI & Model Analysis",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (newModelIds.isNotEmpty())
+                                    "${newModelIds.size} newly detected model" +
+                                        if (newModelIds.size == 1) "" else "s"
+                                else "Check for new CLI releases and newly added models",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (newModelIds.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF10B981).copy(alpha = 0.18f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "NEW",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF10B981)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -582,9 +594,6 @@ fun ModelSelectorBottomSheet(
                                                 AgentKind.OPENCODE -> currentAgent == AgentKind.OPENCODE && (
                                                     openCodeSelModelId == entry.id
                                                 )
-                                                AgentKind.DSH -> currentAgent == AgentKind.DSH && (
-                                                    dshBackend?.selectedModelId?.value == entry.id || selectedModelId == entry.id || (dshBackend?.selectedModelId?.value.isNullOrBlank() && entry.id == "deepseek-chat")
-                                                )
                                                 else -> false
                                             }
 
@@ -630,6 +639,24 @@ fun ModelSelectorBottomSheet(
                                                                     maxLines = 1,
                                                                     softWrap = false
                                                                 )
+                                                            }
+
+                                                            if (entry.id in newModelIds) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(6.dp))
+                                                                        .background(Color(0xFF10B981).copy(alpha = 0.18f))
+                                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = "NEW",
+                                                                        fontSize = 10.5.sp,
+                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                        color = Color(0xFF10B981),
+                                                                        maxLines = 1,
+                                                                        softWrap = false
+                                                                    )
+                                                                }
                                                             }
 
                                                             if (isSelected) {
@@ -706,6 +733,25 @@ fun ModelSelectorBottomSheet(
                                                             overflow = TextOverflow.Ellipsis,
                                                             modifier = Modifier.weight(1f, fill = false)
                                                         )
+
+                                                        if (entry.tiers.any { it.id in newModelIds }) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF10B981).copy(alpha = 0.18f))
+                                                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "NEW",
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = Color(0xFF10B981),
+                                                                    maxLines = 1,
+                                                                    softWrap = false
+                                                                )
+                                                            }
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                        }
 
                                                         if (isGroupActive) {
                                                             Box(

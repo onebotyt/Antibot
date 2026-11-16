@@ -737,15 +737,12 @@ fun ChatHistoryDrawer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Row 2: Filter Chips [All] [Antigravity] [Local] [Claude] [OpenCode] [Codex]
+            // Row 2: Filter Chips [All] [Antigravity] [Claude] [OpenCode] [Codex]
             val filterOptions = buildList<Pair<com.example.gemini.domain.model.AgentKind?, String>> {
                 add(null to "All")
                 val activeAgents = if (enabledAgents.isNotEmpty()) enabledAgents else setOf(
                     com.example.gemini.domain.model.AgentKind.AGY
                 )
-                if (com.example.gemini.domain.model.AgentKind.DSH in activeAgents) {
-                    add(com.example.gemini.domain.model.AgentKind.DSH to "DeepSeek")
-                }
                 if (com.example.gemini.domain.model.AgentKind.AGY in activeAgents) {
                     add(com.example.gemini.domain.model.AgentKind.AGY to "Antigravity")
                 }

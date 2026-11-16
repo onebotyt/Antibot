@@ -2432,6 +2432,149 @@ All files created here persist inside the application.
         }
     }
 
+    /** A ready-to-start command line plus the environment it needs. */
+    private class LocalLaunch(
+        val command: List<String>,
+        val environment: Map<String, String>
+    )
+
+    /**
+     * The proot command line that runs [command] inside the Ubuntu rootfs, with the
+     * app's home directory bound at /root/workspace.
+     */
+    private fun buildProotLaunch(
+        context: Context,
+        command: String,
+        customEnv: Map<String, String>? = null,
+        workingDir: String = "/root"
+    ): LocalLaunch {
+        val prootBin = getProotBinaryPath(context)
+        val ubuntuDir = getUbuntuRootDir(context)
+        val homeDir = getHomeDir(context)
+        val prootTmpDir = File(context.filesDir, "tmp").apply {
+            mkdirs()
+            try { Os.chmod(absolutePath, 511) } catch (_: Exception) {}
+        }
+        val shmDir = File(context.filesDir, "shm").apply {
+            mkdirs()
+            try { Os.chmod(absolutePath, 511) } catch (_: Exception) {}
+        }
+        val sysdataBindings = setupFakeSysdata(context)
+        val cmdList = mutableListOf(
+            prootBin,
+            "--kill-on-exit",
+            "--link2symlink",
+            "--sysvipc",
+            "--kernel-release=\\Linux\\localhost\\6.1.0\\2026.08\\aarch64\\localdomain\\-1\\",
+            "-L",
+            "--change-id=0:0",
+            "--rootfs=${ubuntuDir.absolutePath}",
+            "--cwd=$workingDir",
+            "--bind=/dev",
+            "--bind=/proc",
+            "--bind=/sys",
+            "--bind=/dev/urandom:/dev/random",
+            "--bind=${shmDir.absolutePath}:/dev/shm",
+            "--bind=${prootTmpDir.absolutePath}:/tmp"
+        )
+        for ((fakeFile, guestPath) in sysdataBindings) {
+            cmdList.add("--bind=${fakeFile.absolutePath}:$guestPath")
+        }
+        listOf(
+            "/apex", "/odm", "/product", "/system", "/system_ext", "/vendor",
+            "/plat_property_contexts", "/property_contexts"
+        ).forEach { hostPath ->
+            if (File(hostPath).exists()) {
+                val destInRootfs = File(ubuntuDir, hostPath.removePrefix("/"))
+                if (File(hostPath).isDirectory) {
+                    destInRootfs.mkdirs()
+                } else {
+                    destInRootfs.parentFile?.mkdirs()
+                    if (!destInRootfs.exists()) {
+                        try { destInRootfs.createNewFile() } catch (_: Exception) {}
+                    }
+                }
+                cmdList.add("-b")
+                cmdList.add(hostPath)
+            }
+        }
+        if (File("/storage").exists() && File("/storage").canRead()) {
+            cmdList.add("-b")
+            cmdList.add("/storage")
+        }
+        if (File("/storage/emulated/0").exists()) {
+            cmdList.add("-b")
+            cmdList.add("/storage/emulated/0:/sdcard")
+        } else if (File("/sdcard").exists()) {
+            cmdList.add("-b")
+            cmdList.add("/sdcard")
+        }
+        cmdList.addAll(
+            listOf(
+                "-b", "${homeDir.absolutePath}:/root/workspace",
+                "-w", workingDir,
+                "/bin/bash", "-c", command
+            )
+        )
+        val environment = mutableMapOf(
+            "HOME" to "/root",
+            "USER" to "root",
+            "TERM" to "xterm-256color",
+            "LANG" to "C.UTF-8",
+            "PATH" to "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "TMPDIR" to "/tmp",
+            "DEBIAN_FRONTEND" to "noninteractive",
+            "PROOT_LOADER" to getProotLoaderPath(context),
+            "PROOT_TMP_DIR" to prootTmpDir.absolutePath,
+            "LD_LIBRARY_PATH" to "${context.filesDir.absolutePath}/lib:${context.filesDir.absolutePath}/bin"
+        )
+        if (customEnv != null) {
+            environment.putAll(customEnv)
+        }
+        return LocalLaunch(cmdList, environment)
+    }
+
+    /**
+     * Starts a long-lived process with piped stdin/stdout (stderr merged in) so a caller
+     * can drive it turn by turn. The caller owns the process: close its stdin or destroy it.
+     */
+    fun startInteractiveProcess(
+        context: Context,
+        command: String,
+        workingDir: String? = null,
+        customEnv: Map<String, String>? = null
+    ): Process {
+        if (!isTermuxPackage(context) && isUbuntuInstalled(context)) {
+            val launch = buildProotLaunch(context, command, customEnv, workingDir ?: "/root")
+            val pb = ProcessBuilder(launch.command)
+            pb.environment().putAll(launch.environment)
+            pb.redirectErrorStream(true)
+            return pb.start()
+        }
+
+        // This app's own prefix: run with its bin directory first on PATH.
+        val home = getHomeDir(context)
+        val bin = getBinDir(context)
+        val shell = listOf(File(bin, "bash"), File(bin, "sh"), File("/system/bin/sh"))
+            .firstOrNull { it.exists() && it.canExecute() }
+            ?: File("/system/bin/sh")
+        val pb = ProcessBuilder(shell.absolutePath, "-c", command)
+        pb.directory(workingDir?.takeIf { File(it).isDirectory } ?: home)
+        pb.environment().apply {
+            put("HOME", home.absolutePath)
+            put("PATH", "${home.absolutePath}/.local/bin:${bin.absolutePath}:${getPrefixDir(context).absolutePath}/bin:/system/bin:/system/xbin")
+            put("TMPDIR", getTmpDir(context).absolutePath)
+            put("LANG", "en_US.UTF-8")
+            put("LC_ALL", "en_US.UTF-8")
+            put("TERM", "xterm-256color")
+            put("LD_LIBRARY_PATH", getLdLibraryPath(context))
+            customEnv?.let { putAll(it) }
+        }
+        pb.redirectErrorStream(true)
+        return pb.start()
+    }
+
+
     suspend fun executeCommand(
         command: String,
         context: Context? = null,
@@ -2444,89 +2587,9 @@ All files created here persist inside the application.
         val env = mutableMapOf<String, String>()
 
         if (context != null && !isTermuxPackage(context) && isUbuntuInstalled(context)) {
-            val prootBin = getProotBinaryPath(context)
-            val ubuntuDir = getUbuntuRootDir(context)
-            val homeDir = getHomeDir(context)
-            val prootTmpDir = File(context.filesDir, "tmp").apply {
-                mkdirs()
-                try { Os.chmod(absolutePath, 511) } catch (_: Exception) {}
-            }
-            val shmDir = File(context.filesDir, "shm").apply {
-                mkdirs()
-                try { Os.chmod(absolutePath, 511) } catch (_: Exception) {}
-            }
-            val sysdataBindings = setupFakeSysdata(context)
-            val cmdList = mutableListOf(
-                prootBin,
-                "--kill-on-exit",
-                "--link2symlink",
-                "--sysvipc",
-                "--kernel-release=\\Linux\\localhost\\6.1.0\\2026.08\\aarch64\\localdomain\\-1\\",
-                "-L",
-                "--change-id=0:0",
-                "--rootfs=${ubuntuDir.absolutePath}",
-                "--cwd=/root",
-                "--bind=/dev",
-                "--bind=/proc",
-                "--bind=/sys",
-                "--bind=/dev/urandom:/dev/random",
-                "--bind=${shmDir.absolutePath}:/dev/shm",
-                "--bind=${prootTmpDir.absolutePath}:/tmp"
-            )
-            for ((fakeFile, guestPath) in sysdataBindings) {
-                cmdList.add("--bind=${fakeFile.absolutePath}:$guestPath")
-            }
-            listOf(
-                "/apex", "/odm", "/product", "/system", "/system_ext", "/vendor",
-                "/plat_property_contexts", "/property_contexts"
-            ).forEach { hostPath ->
-                if (File(hostPath).exists()) {
-                    val destInRootfs = File(ubuntuDir, hostPath.removePrefix("/"))
-                    if (File(hostPath).isDirectory) {
-                        destInRootfs.mkdirs()
-                    } else {
-                        destInRootfs.parentFile?.mkdirs()
-                        if (!destInRootfs.exists()) {
-                            try { destInRootfs.createNewFile() } catch (_: Exception) {}
-                        }
-                    }
-                    cmdList.add("-b")
-                    cmdList.add(hostPath)
-                }
-            }
-            if (File("/storage").exists() && File("/storage").canRead()) {
-                cmdList.add("-b")
-                cmdList.add("/storage")
-            }
-            if (File("/storage/emulated/0").exists()) {
-                cmdList.add("-b")
-                cmdList.add("/storage/emulated/0:/sdcard")
-            } else if (File("/sdcard").exists()) {
-                cmdList.add("-b")
-                cmdList.add("/sdcard")
-            }
-            cmdList.addAll(
-                listOf(
-                    "-b", "${homeDir.absolutePath}:/root/workspace",
-                    "-w", "/root",
-                    "/bin/bash", "-c", command
-                )
-            )
-            val processBuilder = ProcessBuilder(cmdList)
-            processBuilder.environment()["HOME"] = "/root"
-            processBuilder.environment()["USER"] = "root"
-            processBuilder.environment()["TERM"] = "xterm-256color"
-            processBuilder.environment()["LANG"] = "C.UTF-8"
-            processBuilder.environment()["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-            processBuilder.environment()["TMPDIR"] = "/tmp"
-            processBuilder.environment()["DEBIAN_FRONTEND"] = "noninteractive"
-            // processBuilder.environment()["PROOT_NO_SECCOMP"] = "1"
-            processBuilder.environment()["PROOT_LOADER"] = getProotLoaderPath(context)
-            processBuilder.environment()["PROOT_TMP_DIR"] = prootTmpDir.absolutePath
-            processBuilder.environment()["LD_LIBRARY_PATH"] = "${context.filesDir.absolutePath}/lib:${context.filesDir.absolutePath}/bin"
-            if (customEnv != null) {
-                processBuilder.environment().putAll(customEnv)
-            }
+            val launch = buildProotLaunch(context, command, customEnv)
+            val processBuilder = ProcessBuilder(launch.command)
+            processBuilder.environment().putAll(launch.environment)
             processBuilder.redirectErrorStream(true)
             return@withContext try {
                 val process = processBuilder.start()
