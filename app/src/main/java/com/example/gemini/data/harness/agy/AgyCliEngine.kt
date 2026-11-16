@@ -76,6 +76,7 @@ class AgyCliEngine(
             process = started
             readerJob = scope.launch(Dispatchers.IO) { readLoop(started) }
             Log.i(TAG, "agy started: $binaryPath ${args.joinToString(" ")}")
+            Unit
         }.onFailure { Log.e(TAG, "Could not start agy: ${it.message}", it) }
     }
 

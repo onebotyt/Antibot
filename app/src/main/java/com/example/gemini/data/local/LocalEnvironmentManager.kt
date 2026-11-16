@@ -2559,7 +2559,7 @@ All files created here persist inside the application.
             .firstOrNull { it.exists() && it.canExecute() }
             ?: File("/system/bin/sh")
         val pb = ProcessBuilder(shell.absolutePath, "-c", command)
-        pb.directory(workingDir?.takeIf { File(it).isDirectory } ?: home)
+        pb.directory(workingDir?.let { File(it) }?.takeIf { it.isDirectory } ?: home)
         pb.environment().apply {
             put("HOME", home.absolutePath)
             put("PATH", "${home.absolutePath}/.local/bin:${bin.absolutePath}:${getPrefixDir(context).absolutePath}/bin:/system/bin:/system/xbin")

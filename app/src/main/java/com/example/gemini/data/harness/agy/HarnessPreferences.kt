@@ -14,22 +14,23 @@ import kotlinx.coroutines.flow.asStateFlow
  * Kept in SharedPreferences because a harness session must survive process death.
  */
 class HarnessPreferences(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private val _config = MutableStateFlow(read())
     val config: StateFlow<HarnessConfig> = _config.asStateFlow()
 
     /** The `agy` path as the CLI's filesystem sees it. */
     val binaryPath: String
-        get() = prefs.getString(KEY_BINARY, defaultBinaryPath(context)) ?: defaultBinaryPath(context)
+        get() = prefs.getString(KEY_BINARY, defaultBinaryPath(appContext)) ?: defaultBinaryPath(appContext)
 
     val isHostedInUbuntu: Boolean
-        get() = !LocalEnvironmentManager.isTermuxPackage(context) &&
-            LocalEnvironmentManager.isUbuntuInstalled(context)
+        get() = !LocalEnvironmentManager.isTermuxPackage(appContext) &&
+            LocalEnvironmentManager.isUbuntuInstalled(appContext)
 
     /** Where the CLI runs: the workspace it may edit. */
     val workingDir: String
-        get() = if (isHostedInUbuntu) "/root/workspace" else LocalEnvironmentManager.getHomeDir(context).absolutePath
+        get() = if (isHostedInUbuntu) "/root/workspace" else LocalEnvironmentManager.getHomeDir(appContext).absolutePath
 
     fun setConfig(config: HarnessConfig) {
         prefs.edit()
